@@ -6,6 +6,10 @@ workspace dependencies and run `npm run dev:mobile`. For an Android development
 build, run `npm run android:mobile`; the Android SDK is required. Run
 `npm run typecheck --workspace @hydrosense/mobile` and
 `npm run test --workspace @hydrosense/mobile` to validate this package.
+The workspace scripts configure Node's module search path so the hoisted Expo
+Metro tools can resolve the mobile workspace's Expo installation. Use
+`npm run export --workspace @hydrosense/mobile -- --platform android` to export
+an Android bundle with the same configuration.
 For a browser preview, open `http://localhost:8081` after starting Expo.
 The mobile interface adapts the web app's glass palette, gradients,
 branding, and reading cards to touch-friendly phone and tablet layouts. Native

@@ -4,8 +4,9 @@
   "version": "0.1.0",
   "main": "index.ts",
   "scripts": {
-    "start": "expo start",
-    "android": "expo run:android",
+    "start": "node scripts/expo.cjs start",
+    "android": "node scripts/expo.cjs run:android",
+    "export": "node scripts/expo.cjs export",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

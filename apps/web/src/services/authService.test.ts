@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   authService,
   DEMO_ADMIN_CREDENTIALS,
+  DEMO_ROLE_CREDENTIALS,
   getCurrentUser,
   signOut,
   SUBSCRIBED_HATCHERIES,
@@ -55,6 +56,24 @@ describe('authService', () => {
     expect(result).toMatchObject({ status: 'approved', redirectPath: '/' });
     expect(getCurrentUser()).toMatchObject({ id: 'demo-admin', role: 'admin', status: 'approved' });
     expect(JSON.parse(window.localStorage.getItem(SESSION_KEY) ?? '{}')).toEqual({ userId: 'demo-admin' });
+  });
+
+  it.each(DEMO_ROLE_CREDENTIALS)('signs in the $role demo account and restores its session', async ({ role, email, password }) => {
+    await expect(authService.signIn(email, 'wrong-password')).rejects.toThrow('Email or password is incorrect.');
+    await expect(authService.signIn(email, password)).resolves.toMatchObject({ status: 'approved', user: { role, email } });
+    expect(getCurrentUser()).toMatchObject({ role, email });
+    signOut();
+    expect(getCurrentUser()).toBeNull();
+  });
+
+  it('does not overwrite existing demo accounts or recreate a removed account', async () => {
+    await signInAsAdmin();
+    const [operator] = DEMO_ROLE_CREDENTIALS;
+    const account = (await authService.listApprovedUsers()).find((user) => user.email === operator.email);
+    expect(account).toBeDefined();
+    await authService.removeAccount(account!.id);
+    signOut();
+    await expect(authService.signIn(operator.email, operator.password)).rejects.toThrow('Email or password is incorrect.');
   });
 
   it('does not sign in pending accounts and checks the password before reporting pending status', async () => {

@@ -28,6 +28,11 @@ export const DEMO_ADMIN_CREDENTIALS = {
   password: import.meta.env.VITE_ADMIN_PASSWORD || 'hydrosense_team_2026',
 } as const;
 
+export const DEMO_ROLE_CREDENTIALS = [
+  { role: 'operator', email: 'operator@demo.invalid', password: 'DemoOperator2026!' },
+  { role: 'manager', email: 'manager@demo.invalid', password: 'DemoManager2026!' },
+] as const;
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
   || 'https://iafooterjwbihuzwakoc.supabase.co';
 const API_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -35,6 +40,7 @@ const API_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
 const ACCOUNTS_KEY = 'hydrosense.auth.accounts.v2';
 const SESSION_KEY = 'hydrosense.auth.session.v2';
+const DEMO_ROLES_SEEDED_KEY = 'hydrosense.auth.demo-roles-seeded.v1';
 const ADMIN_ID = 'demo-admin';
 const ADMIN_SALT = 'hydrosense-demo-admin-v2';
 const DUMMY_SALT = 'hydrosense-auth-invalid-account-v2';
@@ -202,6 +208,38 @@ async function hashPassword(password: string, salt: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+async function seedDemoRoleAccounts(): Promise<void> {
+  if (window.localStorage.getItem(DEMO_ROLES_SEEDED_KEY) === 'true') return;
+  const seeded = await Promise.all(DEMO_ROLE_CREDENTIALS.map(async ({ role, email, password }): Promise<StoredAccount> => {
+    const saltBytes = window.crypto.getRandomValues(new Uint8Array(16));
+    const passwordSalt = Array.from(saltBytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    return {
+      user: {
+        id: `account-${window.crypto.randomUUID()}`,
+        firstName: 'Demo',
+        lastName: role === 'operator' ? 'Operator' : 'Manager',
+        email,
+        role,
+        requestedRole: null,
+        status: 'approved',
+        hatcheryId: SUBSCRIBED_HATCHERIES[0].id,
+        createdAt: new Date().toISOString(),
+      },
+      passwordSalt,
+      passwordHash: await hashPassword(password, passwordSalt),
+    };
+  }));
+  if (window.localStorage.getItem(DEMO_ROLES_SEEDED_KEY) === 'true') return;
+  const accounts = readAccounts();
+  for (const account of seeded) {
+    if (account.user.email !== adminUser.email && !accounts.some((existing) => existing.user.email.toLowerCase() === account.user.email)) {
+      accounts.push(account);
+    }
+  }
+  writeAccounts(accounts);
+  window.localStorage.setItem(DEMO_ROLES_SEEDED_KEY, 'true');
+}
+
 function secureEquals(left: string, right: string) {
   if (left.length !== right.length) return false;
   let difference = 0;
@@ -343,6 +381,7 @@ export const authService = {
       notifyAuthChanged();
       return { status: 'approved', user, redirectPath: '/' };
     }
+    await seedDemoRoleAccounts();
     const normalizedEmail = email.trim().toLowerCase();
     const accounts = readAccounts();
     const isAdmin = normalizedEmail === adminUser.email;
@@ -409,6 +448,7 @@ export const authService = {
     const normalizedEmail = values.email.trim().toLowerCase();
     const accounts = readAccounts();
     if (!normalizedEmail || normalizedEmail === adminUser.email ||
+        DEMO_ROLE_CREDENTIALS.some((account) => account.email === normalizedEmail) ||
         accounts.some((account) => account.user.email.toLowerCase() === normalizedEmail)) {
       throw new Error('An account with this email already exists. Sign in instead.');
     }
