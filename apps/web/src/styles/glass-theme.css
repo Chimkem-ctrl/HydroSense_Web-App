@@ -2,11 +2,6 @@
    Colours come from the role variables in design-system/tokens.css; sizes from styles/tokens.css. */
 
 .glass-shell.app-shell {
-  background:
-    radial-gradient(ellipse 60% 50% at 88% 0%, var(--bg-glow), transparent 70%),
-    radial-gradient(ellipse 50% 45% at 8% 100%, var(--bg-glow), transparent 70%),
-    linear-gradient(135deg, var(--bg-from), var(--bg-via) 52%, var(--bg-to));
-  background-attachment: fixed;
   font-size: var(--font-body);
 }
 
@@ -14,7 +9,7 @@
 .glass-shell .card, .glass-shell .state-box {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-card);
-  background: var(--glass-bg-strong);
+  background: rgba(0, 0, 0, 0.45);
   box-shadow: var(--glass-shadow);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
@@ -31,11 +26,13 @@
   .glass-shell .main-area { margin-left: 220px; }
 }
 .glass-shell .sidebar {
+  --text-primary: #fff;
+  --text-secondary: #e3e3e3;
   inset: 0 auto 0 0;
   width: 220px;
   border-color: var(--glass-border);
   border-radius: 0;
-  background: var(--glass-bg-strong);
+  background: rgba(0, 0, 0, 0.45);
   box-shadow: none;
   padding: 0 12px 12px;
   -webkit-backdrop-filter: none;
@@ -75,7 +72,7 @@
   padding: 0;
   overflow-x: clip;
   border-radius: 0;
-  background: var(--glass-bg-strong);
+  background: transparent;
 }
 .glass-shell .page-controls {
   position: sticky;
@@ -87,7 +84,7 @@
   gap: var(--space-2);
   margin: 0;
   border-bottom: 1px solid var(--glass-border);
-  background: var(--glass-bg-strong);
+  background: rgba(0, 0, 0, 0.45);
   padding: 8px clamp(16px, 3vw, 36px);
 }
 .glass-shell .page-view {
@@ -99,7 +96,7 @@
 .glass-shell .page-controls .select-control, .glass-shell .page-controls .icon-button, .glass-shell .page-controls .connection-pill {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-control);
-  background: var(--glass-bg-strong);
+  background: rgba(0, 0, 0, 0.35);
   height: 40px;
   min-height: 40px;
   -webkit-backdrop-filter: none;
@@ -222,7 +219,7 @@
 .glass-shell .live-screen .live-section-heading p, .glass-shell .live-screen .live-update { color: var(--text-secondary); font-size: 13px; line-height: 1.4; }
 .glass-shell .live-screen .live-overview-grid { align-items: stretch; gap: var(--space-4); }
 .glass-shell .live-screen .glass-advisories { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: var(--space-4); }
-.glass-shell .live-screen .live-advisory-tile { display: flex; min-width: 0; min-height: 68px; align-items: center; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--glass-bg-strong); padding: var(--space-3); }
+.glass-shell .live-screen .live-advisory-tile { display: flex; min-width: 0; min-height: 68px; align-items: center; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: rgba(0, 0, 0, 0.35); padding: var(--space-3); }
 .glass-shell .live-screen .live-advisory-tile .advisory-chip { max-width: 100%; min-height: 44px; }
 .glass-shell .live-screen .live-device-details { gap: var(--space-4); }
 .glass-shell .live-screen .live-device-details > .inline { align-items: center; gap: var(--space-2); }

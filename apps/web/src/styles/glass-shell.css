@@ -178,7 +178,6 @@ html, .glass-shell .side-nav, .glass-shell .table-wrap, .glass-shell .popover, .
 }
 .auth-background::after { display: none; }
 .auth-background .auth-panel h1, .auth-background .welcome-panel h1, .auth-background .glass-title { color: var(--text-primary); }
-.auth-background .glass-panel:not(.terms-modal) { background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); }
 .auth-background .glass-subtitle { color: var(--text-secondary); line-height: 1.5; }
 .auth-background .form-label, .auth-background .terms-field, .auth-background .terms-modal h2 { color: var(--text-primary); }
 .auth-background .form-control, .auth-background .password-control { min-height: 44px; border-color: var(--control-border); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--glass-bg-strong); }
@@ -191,7 +190,6 @@ html, .glass-shell .side-nav, .glass-shell .table-wrap, .glass-shell .popover, .
 .auth-background .auth-footer, .auth-background .operator-signup-intro, .auth-background .panel-description, .auth-background .auth-demo-disclaimer, .auth-background .demo-login-box, .auth-background .demo-login-box small, .auth-background .terms-modal p, .auth-background .form-status { color: var(--text-secondary); }
 .auth-background .forgot-link-row a, .auth-background .auth-footer a, .auth-background .inline-link, .auth-background .demo-login-box strong { color: var(--accent); }
 .auth-background .field-error { color: var(--critical-text); }
-.auth-background .auth-panel h1, .auth-background .welcome-panel h1 { font-size: 24px; }
 .auth-background .demo-login-box { border-color: var(--control-border); background: var(--glass-bg-strong); }
 .auth-background .modal-backdrop { background: var(--overlay); }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

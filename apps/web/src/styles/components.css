@@ -23,7 +23,7 @@
 .glass-panel {
   position: relative;
   border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.16));
-  border-radius: var(--radius-card, 20px);
+  border-radius: 17px;
   background:
     /* soft light bloom in the top-left corner */
     radial-gradient(
@@ -73,7 +73,7 @@
 
 .form-field {
   min-width: 0;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   text-align: left;
 }
 
@@ -81,14 +81,14 @@
   display: block;
   margin: 0 0 6px 2px;
   color: rgba(255, 255, 255, 0.94);
-  font-size: 0.875rem;
+  font-size: 0.82rem;
   font-weight: 500;
 }
 
 .form-control,
 .password-control {
   width: 100%;
-  min-height: 44px;
+  min-height: 42px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   color: var(--color-white);
@@ -138,8 +138,8 @@
 
 .password-toggle {
   display: inline-flex;
-  width: 44px;
-  height: 44px;
+  width: 34px;
+  height: 34px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -158,7 +158,7 @@
 .primary-button,
 .secondary-button {
   display: inline-flex;
-  min-height: 44px;
+  min-height: 39px;
   align-items: center;
   justify-content: center;
   gap: 9px;
@@ -210,7 +210,7 @@
   display: block;
   margin: 5px 2px 0;
   color: var(--color-error);
-  font-size: 0.75rem;
+  font-size: 0.73rem;
   line-height: 1.35;
 }
 
