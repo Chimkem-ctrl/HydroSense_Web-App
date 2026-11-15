@@ -1,4 +1,4 @@
-import { HelpCircle } from 'lucide-react';
+import { AlertTriangle, Check, HelpCircle } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import type { AdvisoryState } from '@hydrosense/shared';
@@ -7,7 +7,7 @@ import { AdvisoryEvidence } from './AdvisoryEvidence';
 const levelLabel = { low: 'Low', watch: 'Watch', high: 'High' } as const;
 const kindLabel = { salinity: 'Salinity', ammonia: 'Ammonia' } as const;
 
-export function AdvisoryChip({ advisory, tankId }: { advisory: AdvisoryState; tankId: string }) {
+export function AdvisoryChip({ advisory, tankId, statusOnly = false }: { advisory: AdvisoryState; tankId: string; statusOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<'above' | 'below'>('below');
   const [popoverMaxHeight, setPopoverMaxHeight] = useState<number>();
@@ -65,9 +65,18 @@ export function AdvisoryChip({ advisory, tankId }: { advisory: AdvisoryState; ta
         onMouseLeave={scheduleClose}
         onClick={togglePopover}
       >
-        <span className="advisory-dot" aria-hidden="true" />
-        <span>{kindLabel[advisory.kind]} · {levelLabel[advisory.level]}</span>
-        <HelpCircle size={15} aria-hidden="true" />
+        {statusOnly ? (
+          <>
+            {advisory.level === 'low' ? <Check size={15} aria-hidden="true" /> : <AlertTriangle size={15} aria-hidden="true" />}
+            <span>{levelLabel[advisory.level]}</span>
+          </>
+        ) : (
+          <>
+            <span className="advisory-dot" aria-hidden="true" />
+            <span>{kindLabel[advisory.kind]} · {levelLabel[advisory.level]}</span>
+            <HelpCircle size={15} aria-hidden="true" />
+          </>
+        )}
       </button>
       {open && (
         <div

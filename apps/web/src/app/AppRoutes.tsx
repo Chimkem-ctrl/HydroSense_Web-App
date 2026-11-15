@@ -1,5 +1,4 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
-import type { Role } from '@hydrosense/shared';
 import type { ReactNode } from 'react';
 import { ROLE_ACCESS } from './config';
 import { RoleGuard } from './auth/RoleGuard';
@@ -7,7 +6,6 @@ import { PublicOnly, RequireAuth } from './auth/RouteGuards';
 import { AppShell } from '../components/shell/AppShell';
 import LiveMonitorPage from '../pages/LiveMonitorPage';
 import TankOverviewPage from '../pages/TankOverviewPage';
-import SystemHealthPage from '../pages/SystemHealthPage';
 import TrendsPage from '../pages/TrendsPage';
 import ProfilePage from '../pages/ProfilePage';
 import {
@@ -27,7 +25,7 @@ import PendingApprovalPage from '../pages/auth/PendingApprovalPage';
 import AccountSettingsPage from '../pages/settings/AccountSettingsPage';
 
 function Guarded({ path, children }: { path: keyof typeof ROLE_ACCESS; children: ReactNode }) {
-  return <RoleGuard roles={ROLE_ACCESS[path] as Role[]}>{children}</RoleGuard>;
+  return <RoleGuard roles={ROLE_ACCESS[path]}>{children}</RoleGuard>;
 }
 
 export default function AppRoutes() {
@@ -40,7 +38,7 @@ export default function AppRoutes() {
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route index element={<LiveMonitorPage />} />
         <Route path="tanks" element={<TankOverviewPage />} />
-        <Route path="health" element={<SystemHealthPage />} />
+        <Route path="health" element={<Navigate to="/tanks" replace />} />
         <Route path="trends" element={<TrendsPage />} />
         <Route path="history" element={<Guarded path="history"><HistoryPage /></Guarded>} />
         <Route path="alerts" element={<AlertsPage />} />

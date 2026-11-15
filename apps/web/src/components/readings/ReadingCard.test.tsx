@@ -42,4 +42,14 @@ describe('ReadingCard', () => {
     expect(screen.getByRole('img', { name: /Safe ≥4 mg\/L/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Display scale 0–8 mg/L' })).toBeInTheDocument();
   });
+
+  it('shows stale readings neutrally and invalid values as probe issues', () => {
+    const { rerender } = render(<ReadingCard parameter="temperature" reading={{ ...reading, temperature: 40 }} showRangeMeter stale />);
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+    expect(screen.queryByText('Critical')).not.toBeInTheDocument();
+    rerender(<ReadingCard parameter="temperature" reading={{ ...reading, temperature: 126 }} showRangeMeter />);
+    expect(screen.getByText('Check probe')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.queryByText('Critical')).not.toBeInTheDocument();
+  });
 });

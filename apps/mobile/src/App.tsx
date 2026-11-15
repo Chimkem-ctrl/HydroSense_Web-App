@@ -11,21 +11,25 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
-import { Activity, AlertTriangle, Database, LayoutDashboard, Wifi } from 'lucide-react-native';
+import { Activity, AlertTriangle, LayoutDashboard, MoreHorizontal, Waves } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isBottomBarRoute } from './navigation';
 import type { BottomBarRoute, MainTabParamList, RootStackParamList } from './navigation';
 import {
   AlertDetailScreen,
+  ActivityLogsScreen,
+  BatchTrackingScreen,
   AlertsScreen,
   AppearanceScreen,
   CalibrationScreen,
   ConnectionNotice,
   ExportScreen,
   FieldEntryScreen,
+  FleetScreen,
   HistoryScreen,
   HomeScreen,
-  AdminReviewScreen,
+  TanksScreen,
+  MoreScreen,
   ManagerReviewScreen,
   SettingsScreen,
   StatusScreen,
@@ -39,6 +43,7 @@ import { CriticalAlertModal } from './components/CriticalAlertModal';
 import { api, liveClient } from './services/client';
 import { queryClient, queryPersister } from './services/queryClient';
 import { canAccess } from './access';
+import { canShowPlannedFeature, mobileFeatureFlags } from './features';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
@@ -66,39 +71,41 @@ function MainTabs() {
   const { user } = useSession();
   return <Tabs.Navigator tabBar={(props) => <MobileTabBar {...props} />} screenOptions={{ header: (props) => <HeaderToolbar {...props} /> }}>
     <Tabs.Screen name="Home" component={HomeScreen} />
+    <Tabs.Screen name="Tanks" component={TanksScreen} />
     <Tabs.Screen name="Alerts" component={AlertsScreen} />
     <Tabs.Screen name="Trends" component={TrendsScreen} />
+    <Tabs.Screen name="More" component={MoreScreen} />
     {canAccess(user?.role ?? null, 'history') && <Tabs.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />}
     <Tabs.Screen name="Status" component={StatusScreen} />
-    {user?.role === 'manager' && <Tabs.Screen name="Review" component={ManagerReviewScreen} options={{ title: 'Review' }} />}
-    {user?.role === 'admin' && <Tabs.Screen name="Review" component={AdminReviewScreen} options={{ title: 'Admin' }} />}
+    {canAccess(user?.role ?? null, 'validation') && <Tabs.Screen name="Review" component={ManagerReviewScreen} options={{ title: 'Validation' }} />}
     <Tabs.Screen name="Settings" component={SettingsScreen} />
   </Tabs.Navigator>;
 }
 
 const tabIcons = {
   Home: LayoutDashboard,
+  Tanks: Waves,
   Alerts: AlertTriangle,
   Trends: Activity,
-  History: Database,
-  Status: Wifi,
+  More: MoreHorizontal,
 } satisfies Record<BottomBarRoute, typeof Activity>;
 
 function MobileTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   return <View style={{ backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }}>
+    <CriticalAlertModal />
     <View style={{ flexDirection: 'row', paddingHorizontal: 8, paddingTop: 6, gap: 2 }}>
       {state.routes.map((route, index) => {
         if (!isBottomBarRoute(route.name)) return null;
-        const selected = state.index === index;
+        const selected = state.index === index || (route.name === 'More' && !isBottomBarRoute(state.routes[state.index].name));
         const options = descriptors[route.key].options;
         const label = typeof options.tabBarLabel === 'string' ? options.tabBarLabel : options.title ?? route.name;
         const Icon = tabIcons[route.name];
         return <Pressable key={route.key} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={options.tabBarAccessibilityLabel ?? label}
           onPress={() => {
             const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-            if (!selected && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+            if (state.index !== index && !event.defaultPrevented) navigation.navigate(route.name, route.params);
           }}
           onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
           style={{ flex: 1, minHeight: 55, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.card, gap: 3, backgroundColor: selected ? colors.selected : 'transparent' }}>
@@ -184,16 +191,18 @@ function AppNavigation() {
         </> : <>
           <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
           <Stack.Screen name="Appearance" component={AppearanceScreen} options={{ title: 'Appearance' }} />
-          <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert detail' }} />
+          <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert detail', presentation: Platform.OS === 'web' ? 'card' : 'formSheet', sheetAllowedDetents: [0.8, 1], sheetGrabberVisible: true }} />
           <Stack.Screen name="Calibration" component={CalibrationScreen} options={{ title: 'Calibration' }} />
           <Stack.Screen name="FieldEntry" component={FieldEntryScreen} options={{ title: 'Field entry' }} />
+          <Stack.Screen name="ActivityLogs" component={ActivityLogsScreen} options={{ title: 'Activity logs' }} />
           <Stack.Screen name="Export" component={ExportScreen} options={{ title: 'Export' }} />
+          {canShowPlannedFeature(user.role, 'fleet', mobileFeatureFlags.fleet) && <Stack.Screen name="Fleet" component={FleetScreen} options={{ title: 'Fleet view' }} />}
+          {canShowPlannedFeature(user.role, 'batchTracking', mobileFeatureFlags.batchTracking) && <Stack.Screen name="BatchTracking" component={BatchTrackingScreen} options={{ title: 'Batch tracking' }} />}
           {canAccess(user.role, 'validation') && <Stack.Screen name="ValidationReview" component={ManagerReviewScreen} options={{ title: 'Validation review' }} />}
         </>}
       </Stack.Navigator>
     </NavigationContainer>
     <ConnectionNotice online={online} />
-    {user && <CriticalAlertModal />}
   </>;
 }
 

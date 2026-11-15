@@ -1,3 +1,4 @@
+import { ROLE_MATRIX } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
 
 export type Tier = 'free' | 'premium' | 'enterprise';
@@ -51,28 +52,26 @@ export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Admin',
 };
 
-export const ROLE_ACCESS: Record<string, Role[]> = {
-  live: ['operator', 'manager', 'admin'],
-  tanks: ['operator', 'manager', 'admin'],
-  health: ['operator', 'manager', 'admin'],
-  trends: ['operator', 'manager', 'admin'],
-  history: ['manager', 'admin'],
-  alerts: ['operator', 'manager', 'admin'],
-  thresholds: ['manager', 'admin'],
-  entries: ['operator', 'manager', 'admin'],
-  reports: ['operator', 'manager', 'admin'],
-  calibration: ['operator', 'manager', 'admin'],
-  validation: ['manager', 'admin'],
-  users: ['admin'],
-  logs: ['admin'],
-  profile: ['operator', 'manager', 'admin'],
-  enterpriseFeatures: ['manager', 'admin'],
+export const ROLE_ACCESS = {
+  live: ROLE_MATRIX.live,
+  tanks: ROLE_MATRIX.tanks,
+  trends: ROLE_MATRIX.trends,
+  history: ROLE_MATRIX.history,
+  alerts: ROLE_MATRIX.alerts,
+  thresholds: ROLE_MATRIX.thresholdsAndRules,
+  entries: ROLE_MATRIX.activityLogs,
+  reports: ROLE_MATRIX.reports,
+  calibration: ROLE_MATRIX.calibration,
+  validation: ROLE_MATRIX.validation,
+  users: ROLE_MATRIX.usersAndRoles,
+  logs: ROLE_MATRIX.auditLogs,
+  profile: ROLE_MATRIX.profile,
+  enterpriseFeatures: ROLE_MATRIX.fleet,
 };
 
 export const NAV_ITEMS = [
   { path: '/', label: 'Live monitor', group: 'Monitor', roles: ROLE_ACCESS.live },
-  { path: '/tanks', label: 'Tank overview', group: 'Monitor', roles: ROLE_ACCESS.tanks },
-  { path: '/health', label: 'System health', group: 'Monitor', roles: ROLE_ACCESS.health },
+  { path: '/tanks', label: 'Tanks & system health', group: 'Monitor', roles: ROLE_ACCESS.tanks },
   { path: '/trends', label: 'Trends', group: 'Monitor', roles: ROLE_ACCESS.trends },
   { path: '/history', label: 'Historical logs', group: 'Records', roles: ROLE_ACCESS.history },
   { path: '/alerts', label: 'Alerts center', group: 'Monitor', roles: ROLE_ACCESS.alerts },

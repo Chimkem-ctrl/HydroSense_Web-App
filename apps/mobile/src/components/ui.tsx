@@ -76,7 +76,7 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1 },
   scroll: { flexGrow: 1 },
   authScroll: { justifyContent: 'center' },
-  page: { width: '100%', maxWidth: 1100, alignSelf: 'center', paddingTop: uiScale.spacing[5], paddingBottom: uiScale.spacing[6], gap: uiScale.spacing[3], backgroundColor: colors.canvas },
+  page: { width: '100%', maxWidth: 1100, alignSelf: 'center', paddingTop: uiScale.spacing[5], paddingBottom: uiScale.spacing[6], gap: uiScale.spacing[3] },
   authPage: { maxWidth: 480, paddingTop: uiScale.spacing[6], paddingBottom: uiScale.spacing[6] },
   brand: { alignItems: 'center', gap: uiScale.spacing[2], marginBottom: uiScale.spacing[2] },
   brandCompact: { flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2], minWidth: 0 },

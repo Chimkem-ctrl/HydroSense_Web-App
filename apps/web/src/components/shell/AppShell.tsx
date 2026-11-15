@@ -19,10 +19,10 @@ import {
   Users,
   Waves,
   UserRound,
-  Wifi,
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { can, canAccessRole } from '@hydrosense/shared';
 import { liveClient } from '../../app/api';
 import { NAV_ITEMS, tierConfig } from '../../app/config';
 import { useRole } from '../../app/auth/RoleContext';
@@ -35,7 +35,6 @@ import { CriticalAlertModal } from './CriticalAlertModal';
 const icons: Record<string, LucideIcon> = {
   '/': LayoutDashboard,
   '/tanks': Waves,
-  '/health': Wifi,
   '/trends': Activity,
   '/history': Database,
   '/alerts': AlertTriangle,
@@ -94,7 +93,7 @@ export function AppShell() {
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [accountMenuOpen]);
 
-  const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(role));
+  const visibleItems = NAV_ITEMS.filter((item) => canAccessRole(role, item.roles));
   const openAlerts = (alerts.data ?? []).filter((alert) => alert.status === 'open');
   const criticalAlerts = openAlerts.filter((alert) => alert.severity === 'critical');
   return (
@@ -120,7 +119,7 @@ export function AppShell() {
               })}
             </section>
           ))}
-          {(role === 'admin' || role === 'manager') && (tierConfig.fleetView || tierConfig.batchTracking) && (
+          {can(role, 'fleet') && (tierConfig.fleetView || tierConfig.batchTracking) && (
             <section aria-label="Enterprise features">
               <p className="nav-group">Enterprise · coming soon</p>
               {soonItems.filter(({ path }) => path === '/fleet' ? tierConfig.fleetView : tierConfig.batchTracking).map(({ path, label, icon: Icon }) => <NavLink key={path} to={path} className="nav-link"><Icon size={18} /><span>{label}</span></NavLink>)}

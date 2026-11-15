@@ -1,13 +1,13 @@
-import { canAccessRole } from '@hydrosense/shared';
+import { can } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
 
-const access: Record<'history' | 'thresholds' | 'validation' | 'admin', Role[]> = {
-  history: ['manager', 'admin'],
-  thresholds: ['manager', 'admin'],
-  validation: ['manager', 'admin'],
-  admin: ['admin'],
-};
+const access = {
+  history: 'history',
+  thresholds: 'thresholdsAndRules',
+  validation: 'validation',
+  admin: 'usersAndRoles',
+} as const;
 
 export function canAccess(role: Role | null, feature: keyof typeof access): boolean {
-  return canAccessRole(role, access[feature]);
+  return can(role, access[feature]);
 }

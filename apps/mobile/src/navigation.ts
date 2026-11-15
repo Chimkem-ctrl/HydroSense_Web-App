@@ -1,14 +1,16 @@
 export type MainTabParamList = {
   Home: undefined;
+  Tanks: undefined;
   Alerts: undefined;
   Trends: undefined;
+  More: undefined;
   History: undefined;
   Status: undefined;
   Review: undefined;
   Settings: undefined;
 };
 
-export const bottomBarRoutes = ['Home', 'Alerts', 'Trends', 'History', 'Status'] as const satisfies readonly (keyof MainTabParamList)[];
+export const bottomBarRoutes = ['Home', 'Tanks', 'Alerts', 'Trends', 'More'] as const satisfies readonly (keyof MainTabParamList)[];
 export type BottomBarRoute = (typeof bottomBarRoutes)[number];
 
 export function isBottomBarRoute(name: string): name is BottomBarRoute {
@@ -25,6 +27,9 @@ export type RootStackParamList = {
   AlertDetail: { alertId: string };
   Calibration: undefined;
   FieldEntry: undefined;
+  ActivityLogs: undefined;
   Export: undefined;
   ValidationReview: undefined;
+  Fleet: undefined;
+  BatchTracking: undefined;
 };

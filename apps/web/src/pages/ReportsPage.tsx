@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { buildReport, formatManilaDateTime, getManilaDateString, toCsv } from '@hydrosense/shared';
+import { buildReport, can, formatManilaDateTime, getManilaDateString, toCsv } from '@hydrosense/shared';
 import type { ReportData, ReportSection } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
 import { tierConfig } from '../app/config';
@@ -35,32 +35,33 @@ function manilaEnd(date: string) {
 export default function ReportsPage() {
   const { tankId } = useSelectedTank();
   const { userName, role } = useRole();
-  const canExport = role === 'manager' || role === 'admin';
+  const canExport = can(role, 'exportReports');
+  const canViewValidation = can(role, 'validation');
   const [type, setType] = useState<ExportType>('readings');
   const [selectedTankIds, setSelectedTankIds] = useState<string[]>([]);
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - Math.min(7, tierConfig.retentionDays) * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
   const minimumDate = getManilaDateString(new Date(Date.now() - Math.max(0, tierConfig.retentionDays - 1) * 86_400_000));
   const maximumDate = getManilaDateString();
-  const [sections, setSections] = useState<ReportSection[]>(reportSections.map(({ value }) => value));
+  const [sections, setSections] = useState<ReportSection[]>(() => reportSections.filter(({ value }) => value !== 'validation' || canViewValidation).map(({ value }) => value));
   const [preview, setPreview] = useState(false);
   const [notice, setNotice] = useState('');
   useEffect(() => {
     if (tankId) setSelectedTankIds([tankId]);
   }, [tankId]);
   const dataQuery = useQuery({
-    queryKey: ['report-data'],
+    queryKey: ['report-data', role],
     queryFn: async (): Promise<ReportData> => {
-      const [tanks, readings, alerts, thresholds, activityLogs, calibrationLogs, validationRows, deviceStatuses] = await Promise.all([
+      const [tanks, readings, alerts, thresholds, activityLogs, calibrationLogs, deviceStatuses] = await Promise.all([
         api.listTanks(),
         api.listReadings(),
         api.listAlerts(),
         api.listThresholds(),
         api.listActivityLogs(),
         api.listCalibrationLogs(),
-        api.listValidationRows(),
         api.listDeviceStatuses(),
       ]);
+      const validationRows = canViewValidation ? await api.listValidationRows() : [];
       const advisoryRows = await Promise.all(tanks.map(async (tank) => [tank.id, await api.listAdvisories(tank.id)] as const));
       return {
         tanks,
@@ -128,7 +129,7 @@ export default function ReportsPage() {
       <StaleQueryState updatedAt={dataQuery.dataUpdatedAt} />
       <section className="card stack">
         <div className="form-grid">
-          <label className="field">CSV dataset<select value={type} onChange={(event) => setType(event.target.value as ExportType)}><option value="readings">Raw readings</option><option value="alerts">Alerts</option><option value="activity">Activity logs</option><option value="calibration">Calibration log</option><option value="validation">Validation</option></select></label>
+          <label className="field">CSV dataset<select value={type} onChange={(event) => setType(event.target.value as ExportType)}><option value="readings">Raw readings</option><option value="alerts">Alerts</option><option value="activity">Activity logs</option><option value="calibration">Calibration log</option>{canViewValidation && <option value="validation">Validation</option>}</select></label>
           <label className="field">From<input type="date" value={from} min={minimumDate} max={to} onChange={(event) => setFrom(event.target.value)} /></label>
           <label className="field">To<input type="date" value={to} min={from} max={maximumDate} onChange={(event) => setTo(event.target.value)} /></label>
         </div>
@@ -146,7 +147,7 @@ export default function ReportsPage() {
         <fieldset className="stack">
           <legend>Report sections</legend>
           <div className="inline">
-            {reportSections.map(({ value, label }) => (
+            {reportSections.filter(({ value }) => value !== 'validation' || canViewValidation).map(({ value, label }) => (
               <label className="check-row" key={value}>
                 <input type="checkbox" checked={sections.includes(value)} onChange={(event) => setSections((current) => event.target.checked ? [...current, value] : current.filter((section) => section !== value))} />
                 <span>{label}</span>
@@ -174,6 +175,7 @@ export default function ReportsPage() {
           {sections.includes('statistics') && <div className="table-wrap"><table><thead><tr><th>Parameter</th><th>Min</th><th>Max</th><th>Mean</th><th>Std dev</th><th>In range</th><th>Excursions</th><th>Longest (h)</th></tr></thead><tbody>
             {model.statistics.map((row) => <tr key={row.parameter}><td>{row.parameter}</td><td className="table-numeric">{row.min?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.max?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.mean?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.standardDeviation?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.percentInRange?.toFixed(1) ?? '—'}%</td><td className="table-numeric">{row.excursions}</td><td className="table-numeric">{row.longestExcursionHours.toFixed(1)}</td></tr>)}
           </tbody></table></div>}
+          {sections.includes('statistics') && <p>Invalid readings excluded: {model.statistics.reduce((count, item) => count + item.invalidReadings, 0)}.</p>}
           {sections.includes('alerts') && <p>Alerts: {model.alertCounts.critical} critical, {model.alertCounts.warning} warning · {model.alertCounts.open} open, {model.alertCounts.acknowledged} acknowledged, {model.alertCounts.resolved} resolved.</p>}
           {sections.includes('data-quality') && <p>Expected readings: {model.dataQuality.expectedReadings} · Received: {model.dataQuality.receivedReadings} ({model.dataQuality.receivedPercent.toFixed(1)}%).</p>}
           {sections.includes('thresholds') && <p>Thresholds used: {model.thresholds.map((threshold) => `${threshold.parameter} ${threshold.min ?? '—'}–${threshold.max ?? '—'}`).join(' · ')}</p>}
@@ -184,7 +186,6 @@ export default function ReportsPage() {
           {sections.includes('raw-readings') && model.rawReadings.slice(0, 10).map((row) => <p className="small" key={row.id}>{formatManilaDateTime(row.timestamp)} PHT · {row.tankId} · {row.temperature} °C · {row.doMgL} mg/L · pH {row.ph}</p>)}
           <p className="small muted">Monitoring and alert system only. Salinity and ammonia are rule-based advisories, not measurements.</p>
           <div className="inline"><button className="button" type="button" onClick={() => setPreview(false)}>Close</button>{canExport && <button className="button button-primary" type="button" onClick={() => window.print()}>Print / Save PDF</button>}</div>
-          {!canExport && <p className="small muted">Operators may view reports; export is available to managers and administrators.</p>}
         </section>
       </div>}
     </div>

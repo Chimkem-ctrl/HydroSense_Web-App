@@ -45,7 +45,7 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
     { name: 'Trends', label: 'Trends', icon: Activity, group: 'Monitor' },
     { name: 'Alerts', label: 'Alerts center', icon: AlertTriangle, group: 'Monitor' },
     ...(canAccess(user?.role ?? null, 'history') ? [{ name: 'History', label: 'Historical logs', icon: Database, group: 'Records' } satisfies Destination] : []),
-    ...(user?.role === 'manager' || user?.role === 'admin' ? [{ name: 'Review', label: user.role === 'admin' ? 'Admin overview' : 'Validation review', icon: ClipboardList, group: 'Manage' } satisfies Destination] : []),
+    ...(canAccess(user?.role ?? null, 'validation') ? [{ name: 'Review', label: 'Validation review', icon: ClipboardList, group: 'Manage' } satisfies Destination] : []),
     { name: 'Settings', label: 'Settings', icon: Settings, group: 'Manage' },
   ];
   const connectionLabel = getConnectionLabel(online, connection, latestReading.data?.timestamp, Date.now());

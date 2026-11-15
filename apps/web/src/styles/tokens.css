@@ -27,13 +27,13 @@
   --radius-lg: 18px;
   --radius-card: 20px;
   --radius-control: 999px;
-  --font-body: 1rem;
-  --font-h1: clamp(1.5rem, 1.4rem + .4vw, 1.75rem);
-  --font-h2: clamp(1.125rem, 1.05rem + .2vw, 1.25rem);
-  --font-h3: clamp(1.125rem, 1.05rem + .2vw, 1.25rem);
-  --font-button: .9375rem;
-  --font-caption: .75rem;
-  --font-display: clamp(2.25rem, 1.5rem + 2.5vw, 3.25rem);
+  --font-body: 14px;
+  --font-h1: 28px;
+  --font-h2: 20px;
+  --font-h3: 20px;
+  --font-button: 14px;
+  --font-caption: 12px;
+  --font-kpi: 28px;
   --page-padding: var(--space-6);
 }
 

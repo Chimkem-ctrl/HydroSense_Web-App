@@ -10,6 +10,8 @@ import type {
   Threshold,
   ValidationRow,
 } from './types';
+import { DEFAULT_THRESHOLDS } from './rules/status';
+import { isValidMeasurement } from './rules/reading';
 
 export type ReportSection =
   | 'summary'
@@ -55,6 +57,7 @@ export interface ParameterStatistics {
   excursions: number;
   longestExcursionHours: number;
   readings: number;
+  invalidReadings: number;
 }
 
 export interface ReportModel {
@@ -80,9 +83,9 @@ export interface ReportModel {
 }
 
 const parameterDefinitions = {
-  temperature: { unit: '°C', min: 28, max: 32, read: (reading: Reading) => reading.temperature },
-  do: { unit: 'mg/L', min: 4, max: Number.POSITIVE_INFINITY, read: (reading: Reading) => reading.doMgL },
-  ph: { unit: 'pH', min: 6, max: 8, read: (reading: Reading) => reading.ph },
+  temperature: { unit: '°C', read: (reading: Reading) => reading.temperature },
+  do: { unit: 'mg/L', read: (reading: Reading) => reading.doMgL },
+  ph: { unit: 'pH', read: (reading: Reading) => reading.ph },
 } as const;
 
 function isWithinRange(timestamp: string, from: number, to: number) {
@@ -96,12 +99,13 @@ export function calculateParameterStatistics(
   thresholds: Threshold[],
 ): ParameterStatistics {
   const definition = parameterDefinitions[parameter];
-  const threshold = thresholds.find((item) => item.parameter === parameter);
-  const min = threshold?.min ?? definition.min;
-  const max = threshold?.max ?? definition.max;
+  const threshold = thresholds.find((item) => item.parameter === parameter) ?? DEFAULT_THRESHOLDS.find((item) => item.parameter === parameter);
+  const min = threshold?.min ?? Number.NEGATIVE_INFINITY;
+  const max = threshold?.max ?? Number.POSITIVE_INFINITY;
+  const invalidReadings = readings.filter((reading) => !isValidMeasurement(parameter, definition.read(reading))).length;
   const samples = readings
-    .map((reading) => ({ timestamp: Date.parse(reading.timestamp), value: definition.read(reading) }))
-    .filter((sample) => Number.isFinite(sample.timestamp) && Number.isFinite(sample.value))
+    .map((reading) => ({ tankId: reading.tankId, timestamp: Date.parse(reading.timestamp), value: definition.read(reading) }))
+    .filter((sample) => Number.isFinite(sample.timestamp) && isValidMeasurement(parameter, sample.value))
     .sort((left, right) => left.timestamp - right.timestamp);
   if (!samples.length) {
     return {
@@ -115,6 +119,7 @@ export function calculateParameterStatistics(
       excursions: 0,
       longestExcursionHours: 0,
       readings: 0,
+      invalidReadings,
     };
   }
   const values = samples.map((sample) => sample.value);
@@ -123,20 +128,31 @@ export function calculateParameterStatistics(
   const inRange = (value: number) => value >= min && value <= max;
   let excursions = 0;
   let longestExcursionMs = 0;
-  let currentExcursionMs = 0;
-  samples.forEach((sample, index) => {
-    const outside = !inRange(sample.value);
-    if (outside && (index === 0 || inRange(samples[index - 1].value))) excursions += 1;
-    if (!outside) {
-      longestExcursionMs = Math.max(longestExcursionMs, currentExcursionMs);
-      currentExcursionMs = 0;
-      return;
-    }
-    const next = samples[index + 1];
-    const interval = next ? next.timestamp - sample.timestamp : 0;
-    currentExcursionMs += interval > 0 && interval <= 3.5 * 60 * 60 * 1000 ? interval : 0;
-  });
-  longestExcursionMs = Math.max(longestExcursionMs, currentExcursionMs);
+  for (const tankId of new Set(readings.map((reading) => reading.tankId))) {
+    const tankSamples = readings
+      .filter((reading) => reading.tankId === tankId)
+      .map((reading) => ({ timestamp: Date.parse(reading.timestamp), value: definition.read(reading) }))
+      .filter((sample) => Number.isFinite(sample.timestamp))
+      .sort((left, right) => left.timestamp - right.timestamp);
+    let active = false;
+    let duration = 0;
+    tankSamples.forEach((sample, index) => {
+      const previous = tankSamples[index - 1];
+      const interval = previous ? sample.timestamp - previous.timestamp : 0;
+      const continuous = previous && interval > 0 && interval <= 3.5 * 60 * 60 * 1000 && isValidMeasurement(parameter, previous.value);
+      if (active && continuous && isValidMeasurement(parameter, sample.value)) duration += interval;
+      if (!continuous || !isValidMeasurement(parameter, sample.value) || inRange(sample.value)) {
+        longestExcursionMs = Math.max(longestExcursionMs, duration);
+        duration = 0;
+        active = false;
+      }
+      if (isValidMeasurement(parameter, sample.value) && !inRange(sample.value) && !active) {
+        excursions += 1;
+        active = true;
+      }
+    });
+    longestExcursionMs = Math.max(longestExcursionMs, duration);
+  }
   return {
     parameter,
     unit: definition.unit,
@@ -148,6 +164,7 @@ export function calculateParameterStatistics(
     excursions,
     longestExcursionHours: longestExcursionMs / 3_600_000,
     readings: values.length,
+    invalidReadings,
   };
 }
 

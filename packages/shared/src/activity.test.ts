@@ -42,6 +42,7 @@ describe('activity log validation', () => {
 
   it('shares the operation and event choices with both logging forms', () => {
     expect(ACTIVITY_OPERATION_TYPES).toContain('Freshwater dosing (log only)');
+    expect(ACTIVITY_OPERATION_TYPES).toContain('Feeding');
     expect(ACTIVITY_EVENT_TYPES).toContain('Rainfall');
   });
 });

@@ -39,8 +39,9 @@ API root is shared by sign-in and all data requests.
 For a local API use an address reachable from the device: `10.0.2.2` is the
 Android emulator host address; a physical device needs the computer's LAN
 address. Never put a service-role key or other secret in Expo public variables.
-Set `EXPO_PUBLIC_DATA_MODE=mock` for the separate demo roles and sample data;
-mock mode does not create or authenticate backend accounts.
+Set `EXPO_PUBLIC_DATA_MODE=mock` to use sample monitoring data. Sign-in still
+uses the configured backend account and its assigned role; mock mode does not
+create backend accounts.
 
 The web signup page currently contains demo-only terms, which do not describe
 backend sign-up. The mobile form shows those same terms with an explicit
@@ -58,23 +59,33 @@ at the next sign-in; API authorization must remain enforced server-side.
 SecureStore is not available on web, so browser preview sessions and tokens are
 kept in memory only and require sign-in again after a page reload. Native
 notification handling is disabled in the browser preview.
-The current backend allows approved operators to call the readings endpoint
-directly, so hiding the History tab does not restrict historical data at the
-API. Enforcing the web's history restriction requires a backend change.
 
 API queries refresh every 30 seconds while active. Set `EXPO_PUBLIC_WS_URL`
 only if a compatible live WebSocket service is available; the Supabase REST
 function does not itself provide that stream. Notification navigation is wired
 but push-token registration and delivery require backend integration.
 
-The Operator home supports monitoring, alerts, calibration and field entries.
-Managers additionally get history, threshold editing and a read-only validation
-review. Admins can approve or reject pending accounts in API mode and view an
-account/audit overview. Account review is unavailable in mobile demo mode.
-These are example mobile views, not complete web feature parity:
-other account management, tolerance editing, full reporting and other
-web features remain on the web. UI route restrictions are not a security
-boundary; the backend must independently enforce every required permission.
+The bottom tabs are Home, Tanks, Alerts, Trends and More. Operators can use
+history, reports, calibration and field entries. Managers and admins can also
+manage tanks, edit thresholds and review validation. Mobile account management
+and audit views are not currently exposed. These views do not yet provide full
+web feature parity. UI route restrictions are not a security boundary; the
+backend must independently enforce every required permission.
+
+Fleet view and batch tracking are placeholders, hidden by default. Setting
+`EXPO_PUBLIC_ENABLE_FLEET=true` or `EXPO_PUBLIC_ENABLE_BATCH_TRACKING=true`
+before starting or building Expo exposes the corresponding coming-soon screen
+only to managers and admins. These flags do not enable operational features.
+
+The mobile report builder exports PDF, CSV or XLSX through the native share
+sheet, with tank, date and section selections. Available sections are summary,
+statistics, alerts and readings; other web report sections are not yet
+available. To avoid incomplete reports, export stops if a tank reaches the
+API's 500-reading limit or the alert response reaches 1,000 records. Use a
+shorter reading date range where possible. PDF's built-in font cannot encode
+every writing system; unsupported text causes an export error rather than
+silently changing it. CSV and XLSX support Unicode. Android bundling and file
+formats are tested, but native sharing still needs testing on a device.
 
 Deploy the updated Supabase API function before using the updated signup and
 approval flows; older deployments expect a requested role and a text address.

@@ -1,6 +1,7 @@
 import type { ActivityLog, AdvisoryRuleSettings, AlertItem, CalibrationLog, DashboardUser, ManualEntry, Tank, Threshold, ValidationTolerance } from '../types';
 import { mapManualEntryToActivityLog } from '../activity';
 import { DEFAULT_ADVISORY_RULES, getAmmoniaAdvisory, getSalinityAdvisory } from '../rules/advisory';
+import { isValidMeasurement } from '../rules/reading';
 import { DEFAULT_VALIDATION_TOLERANCES } from '../validation';
 import {
   mockAdvisoryStates,
@@ -112,7 +113,18 @@ export class MockApiClient implements HydroSenseApi {
     return clone(rows[rows.length - 1] ?? null);
   }
 
-  async listDeviceStatuses() { return clone(this.devices); }
+  async listDeviceStatuses() {
+    return clone(this.devices.map((device) => {
+      const tank = this.tanks.find((item) => item.deviceId === device.deviceId);
+      const latest = this.readings.filter((reading) => reading.tankId === tank?.id)
+        .reduce<typeof this.readings[number] | undefined>((current, reading) =>
+          !current || reading.timestamp > current.timestamp ? reading : current, undefined);
+      if (!latest) return device;
+      const invalidParameters = (['temperature', 'do', 'ph'] as const).filter((parameter) =>
+        !isValidMeasurement(parameter, parameter === 'do' ? latest.doMgL : latest[parameter]));
+      return { ...device, invalidParameters, probeCheckedAt: latest.timestamp };
+    }));
+  }
   async listAlerts(tankId?: string) { return clone(this.alerts.filter((alert) => !tankId || alert.tankId === tankId)); }
   async listAlertResponses(alertId: string) { return clone(this.responses.filter((response) => response.alertId === alertId)); }
 
@@ -278,17 +290,22 @@ export class MockApiClient implements HydroSenseApi {
     const latest = readings[readings.length - 1];
     if (!latest) return;
     const entries = this.entries.filter((entry) => entry.tankId === tankId);
+    const events = this.activityLogs
+      .filter((event) => event.tankId === tankId || event.tankId === 'hatchery')
+      .map(({ type, tankId: scope }) => ({ type, scope }));
     const previousAmmonia = this.advisories[tankId]?.find((item) => item.kind === 'ammonia');
     this.advisories[tankId] = [
       getSalinityAdvisory({
         temperatureC: latest.temperature,
         rainEvent: entries.some((entry) => entry.type === 'rain_event'),
         freshwaterDosing: entries.some((entry) => entry.type === 'freshwater_dosing'),
+        events,
       }, this.advisorySettings, updatedAt),
       getAmmoniaAdvisory({
         temperatureC: latest.temperature,
         ph: latest.ph,
         feedingLoad: previousAmmonia?.inputs.feedingLoad === 'high' ? 'high' : 'usual',
+        events,
       }, this.advisorySettings, updatedAt),
     ];
   }
