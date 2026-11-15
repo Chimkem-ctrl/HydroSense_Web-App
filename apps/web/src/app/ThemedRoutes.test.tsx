@@ -20,8 +20,6 @@ const routes = [
   ['/admin/users', 'Users & roles'],
   ['/admin/logs', 'Audit & system logs'],
   ['/profile', 'My profile'],
-  ['/fleet', 'Multi-site fleet view · Coming soon'],
-  ['/batch', 'Batch tracking · Coming soon'],
 ] as const;
 
 function signInAs(role: 'operator' | 'manager' | 'admin', phone?: string) {
@@ -271,14 +269,20 @@ describe('themed dashboard routes', () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it.each(['/fleet', '/batch'])('places the heading outside the coming-soon card on %s', async (path) => {
+  it.each(['admin', 'manager'] as const)('does not show enterprise features for %s', async (role) => {
+    signInAs(role);
+    window.history.replaceState({}, '', '/');
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Live monitor', level: 1 });
+    expect(screen.queryByRole('region', { name: 'Enterprise features' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Multi-site fleet|Batch tracking/ })).not.toBeInTheDocument();
+  });
+
+  it.each(['/fleet', '/batch'])('redirects removed route %s to the home page', async (path) => {
     window.history.replaceState({}, '', path);
-    const { container } = render(<App />);
-    const heading = await screen.findByRole('heading', { level: 1 });
-    expect(heading.closest('.card')).toBeNull();
-    expect(container.querySelector('.coming-soon-page > .page-heading')).toContainElement(heading);
-    expect(screen.getByRole('heading', { name: 'Not available yet' })).toBeInTheDocument();
-    expect(screen.getByText('No batch or fleet data is displayed until the feature is implemented.')).toBeInTheDocument();
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Live monitor', level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
   });
 
   it('opens the selected activity form without duplicate kind buttons', async () => {

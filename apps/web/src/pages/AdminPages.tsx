@@ -201,14 +201,3 @@ export function AdminLogsPage() {
     </div>
   );
 }
-
-export function ComingSoonPage({ feature }: { feature: string }) {
-  const available = feature.toLowerCase().includes('fleet') ? tierConfig.fleetView : tierConfig.batchTracking;
-  return <div className="stack coming-soon-page">
-    <PageHeading title={`${feature} · Coming soon`} description={available ? 'This Enterprise feature is planned but not available in the pilot dashboard.' : 'This feature requires the Enterprise tier.'} />
-    <section className="card coming-soon-card">
-      <h2 className="card-title">Not available yet</h2>
-      <p className="muted">No batch or fleet data is displayed until the feature is implemented.</p>
-    </section>
-  </div>;
-}

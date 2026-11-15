@@ -19,7 +19,7 @@ import {
   ThresholdsPage,
   ValidationPage,
 } from '../pages/RecordPages';
-import { ComingSoonPage, AdminLogsPage, AdminUsersPage } from '../pages/AdminPages';
+import { AdminLogsPage, AdminUsersPage } from '../pages/AdminPages';
 import SignInPage from '../pages/auth/SignInPage';
 import SignUpPage from '../pages/auth/SignUpPage';
 import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
@@ -53,8 +53,6 @@ export default function AppRoutes() {
         <Route path="admin/logs" element={<Guarded path="logs"><AdminLogsPage /></Guarded>} />
         <Route path="settings/notifications" element={<Navigate to="/profile" replace />} />
         <Route path="profile" element={<Guarded path="profile"><ProfilePage /></Guarded>} />
-        <Route path="fleet" element={<Guarded path="enterpriseFeatures"><ComingSoonPage feature="Multi-site fleet view" /></Guarded>} />
-        <Route path="batch" element={<Guarded path="enterpriseFeatures"><ComingSoonPage feature="Batch tracking" /></Guarded>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { liveClient } from '../../app/api';
-import { NAV_ITEMS, tierConfig } from '../../app/config';
+import { NAV_ITEMS } from '../../app/config';
 import { useRole } from '../../app/auth/RoleContext';
 import { signOut } from '../../services/authService';
 import { useSelectedTank } from '../../app/tank/TankContext';
@@ -48,11 +48,6 @@ const icons: Record<string, LucideIcon> = {
   '/admin/logs': ClipboardList,
   '/profile': UserRound,
 };
-
-const soonItems = [
-  { path: '/fleet', label: 'Multi-site fleet', icon: Waves },
-  { path: '/batch', label: 'Batch tracking', icon: Database },
-];
 
 export function AppShell() {
   const { role, userName } = useRole();
@@ -127,12 +122,6 @@ export function AppShell() {
               })}
             </section>
           ))}
-          {(role === 'admin' || role === 'manager') && (tierConfig.fleetView || tierConfig.batchTracking) && (
-            <section aria-label="Enterprise features">
-              <p className="nav-group">Enterprise · coming soon</p>
-              {soonItems.filter(({ path }) => path === '/fleet' ? tierConfig.fleetView : tierConfig.batchTracking).map(({ path, label, icon: Icon }) => <NavLink key={path} to={path} className="nav-link"><Icon size={18} /><span>{label}</span></NavLink>)}
-            </section>
-          )}
         </nav>
         <div className="sidebar-footer">
           <span className="small muted sidebar-role">Pilot workspace · {role.toUpperCase()}</span>

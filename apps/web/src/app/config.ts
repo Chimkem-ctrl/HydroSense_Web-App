@@ -10,8 +10,6 @@ export interface TierConfig {
   analytics: boolean;
   teamAccounts: boolean;
   integrations: boolean;
-  fleetView: boolean;
-  batchTracking: boolean;
   pilotUnlocked: boolean;
 }
 
@@ -28,9 +26,9 @@ if (unlockSetting !== undefined && unlockSetting !== 'true' && unlockSetting !==
 }
 const pilotUnlocked = import.meta.env.VITE_PILOT_UNLOCK_ALL !== 'false';
 const tierFeatures: Record<Tier, Omit<TierConfig, 'tier' | 'pilotUnlocked'>> = {
-  free: { nodeLimit: 2, refreshIntervalMs: 30_000, retentionDays: 1, analytics: false, teamAccounts: false, integrations: false, fleetView: false, batchTracking: false },
-  premium: { nodeLimit: 20, refreshIntervalMs: 10_000, retentionDays: 30, analytics: true, teamAccounts: true, integrations: true, fleetView: false, batchTracking: false },
-  enterprise: { nodeLimit: 200, refreshIntervalMs: 5_000, retentionDays: 365, analytics: true, teamAccounts: true, integrations: true, fleetView: true, batchTracking: true },
+  free: { nodeLimit: 2, refreshIntervalMs: 30_000, retentionDays: 1, analytics: false, teamAccounts: false, integrations: false },
+  premium: { nodeLimit: 20, refreshIntervalMs: 10_000, retentionDays: 30, analytics: true, teamAccounts: true, integrations: true },
+  enterprise: { nodeLimit: 200, refreshIntervalMs: 5_000, retentionDays: 365, analytics: true, teamAccounts: true, integrations: true },
 };
 
 export const tierConfig: TierConfig = {
@@ -66,7 +64,6 @@ export const ROLE_ACCESS: Record<string, Role[]> = {
   users: ['manager', 'admin'],
   logs: ['admin'],
   profile: ['operator', 'manager', 'admin'],
-  enterpriseFeatures: ['manager', 'admin'],
 };
 
 export const NAV_ITEMS = [
