@@ -22,7 +22,6 @@ import {
   ActivityLogsScreen,
   AlertDetailScreen,
   AlertsScreen,
-  AppearanceScreen,
   CalibrationAndMaintenanceScreen,
   ConnectionNotice,
   FieldEntryScreen,
@@ -222,7 +221,6 @@ function AppNavigation() {
           <Stack.Screen name="PendingApproval" component={PendingApprovalScreen} options={{ title: 'Account request' }} />
         </> : <>
           <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-          <Stack.Screen name="Appearance" component={AppearanceScreen} options={{ title: 'Appearance' }} />
           <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert detail' }} />
           {canAccess(user.role, 'validation') && <Stack.Screen name="ValidationReview" component={ManagerReviewScreen} options={{ title: 'Validation review' }} />}
         </>}

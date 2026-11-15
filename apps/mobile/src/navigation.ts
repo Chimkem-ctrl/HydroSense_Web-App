@@ -28,7 +28,6 @@ export type RootStackParamList = {
   ForgotPassword: undefined;
   PendingApproval: undefined;
   Main: undefined;
-  Appearance: undefined;
   AlertDetail: { alertId: string };
   ValidationReview: undefined;
 };

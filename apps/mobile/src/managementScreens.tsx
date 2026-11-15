@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { formatManilaDateTime } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
 import { canAccess } from './access';
 import { Button, Card, DataRow, Page, StateMessage, Title } from './components/ui';
 import { AlertPreferenceControls, DeviceMaintenanceControls, SecurityControls } from './components/ProfileControls';
+import { AppearanceOptions } from './components/AppearanceOptions';
 import { groupByHatchery, hatcheryLabel } from './management';
-import type { MainTabParamList } from './navigation';
 import { api, DATA_MODE, getAccountProfile, listPendingAccounts, removeAccount, reviewPendingAccount } from './services/client';
 import { useSession, useTankSelection } from './state';
 import { uiScale, useTheme } from './theme';
@@ -47,7 +46,7 @@ function confirmAction(title: string, message: string, action: () => void, destr
   Alert.alert(title, message, [{ text: 'Cancel', style: 'cancel' }, { text: title, style: destructive ? 'destructive' : 'default', onPress: action }]);
 }
 
-export function ProfileScreen({ navigation }: BottomTabScreenProps<MainTabParamList, 'Profile'>) {
+export function ProfileScreen() {
   const { user } = useSession();
   const { tanks, tankId, isLoading, error, refetch } = useTankSelection();
   const profile = useProfile();
@@ -78,7 +77,7 @@ export function ProfileScreen({ navigation }: BottomTabScreenProps<MainTabParamL
         </Card>
       </>}
     <Card title="Alert notifications"><AlertPreferenceControls phone={profile.data?.phone} email={profile.data?.email} /></Card>
-    <Card title="Appearance"><Button label="Choose theme" secondary onPress={() => navigation.getParent()?.navigate('Appearance')} /></Card>
+    <Card title="Appearance"><AppearanceOptions /></Card>
     <Card title="Security"><SecurityControls email={profile.data?.email} /></Card>
     <Card title="Device maintenance">
       {isLoading ? <StateMessage message="Loading selected tank..." loading /> : error ? <><StateMessage message={`Could not load tank: ${error.message}`} /><Button label="Retry" secondary onPress={refetch} /></> : <>

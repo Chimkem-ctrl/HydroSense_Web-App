@@ -30,8 +30,8 @@ import { DATA_MODE, api, listPendingAccounts } from './services/client';
 import { canAccess } from './access';
 import { useSession, useTankSelection } from './state';
 import { Button, Card, createFormStyles, DataRow, Page, StateMessage, Title } from './components/ui';
+import { AppearanceOptions } from './components/AppearanceOptions';
 import { uiScale, useTheme } from './theme';
-import type { ThemeChoice } from './theme';
 
 type Props<T extends keyof MainTabParamList> = BottomTabScreenProps<MainTabParamList, T>;
 type RootProps<T extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, T>;
@@ -273,7 +273,7 @@ export function ManagerReviewScreen() {
   </Page>;
 }
 
-export function SettingsScreen({ navigation }: Props<'Settings'>) {
+export function SettingsScreen() {
   const { colors } = useTheme();
   const { user, signOut } = useSession();
   const { tankId } = useTankSelection();
@@ -281,33 +281,10 @@ export function SettingsScreen({ navigation }: Props<'Settings'>) {
     <Title detail={`${user?.name ?? 'User'} · ${user?.role ?? ''}`}>Settings</Title>
     <TankPicker />
     <Card title="Appearance">
-      <Button label="Choose theme" secondary onPress={() => navigation.getParent()?.navigate('Appearance')} />
+      <AppearanceOptions />
     </Card>
     <Button label="Sign out" secondary onPress={() => void signOut().catch((error: unknown) => Alert.alert('Sign-out cleanup issue', error instanceof Error ? error.message : 'Some local data could not be cleared.'))} />
     <Text style={{ color: colors.muted, fontSize: 12 }}>Mode: {DATA_MODE} · Tank: {tankId}</Text>
-  </Page>;
-}
-
-const themeOptions: { value: ThemeChoice; label: string; hint: string }[] = [
-  { value: 'system', label: 'System', hint: 'Match your device setting' },
-  { value: 'light', label: 'Light', hint: 'Light background' },
-  { value: 'dark', label: 'Dark', hint: 'Dark background, easier to read at night' },
-];
-
-export function AppearanceScreen() {
-  const { choice, setChoice, colors, error } = useTheme();
-  return <Page>
-    <Title detail="Set appearance preferences">Appearance</Title>
-    <Card title="Theme">
-      {themeOptions.map((option) => <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: choice === option.value }} onPress={() => void setChoice(option.value)}
-        style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, backgroundColor: choice === option.value ? colors.selected : colors.surface, borderWidth: 1, borderColor: choice === option.value ? colors.teal : colors.border }}>
-        <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: choice === option.value ? colors.teal : colors.muted, alignItems: 'center', justifyContent: 'center' }}>
-          {choice === option.value && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.teal }} />}
-        </View>
-        <View style={{ flex: 1, gap: uiScale.spacing[1] }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{option.label}</Text><Text style={{ color: colors.muted, fontSize: 14 }}>{option.hint}</Text></View>
-      </Pressable>)}
-      {error && <Text accessibilityRole="alert" style={{ color: colors.critical }}>{error}</Text>}
-    </Card>
   </Page>;
 }
 
