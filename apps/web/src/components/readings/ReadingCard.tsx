@@ -17,6 +17,8 @@ export function ReadingCard({ parameter, reading, threshold, showRangeMeter = fa
   const configuredThreshold = threshold ?? DEFAULT_THRESHOLDS.find((item) => item.parameter === parameter);
   const status = getParameterStatus(parameter, value, configuredThreshold);
   const unit = config[parameter].unit;
+  const formattedValue = formatParameter(parameter, value);
+  const numericValue = formattedValue.slice(0, -unit.length).trimEnd();
   const min = configuredThreshold?.min;
   const max = configuredThreshold?.max;
   const safeRange = min !== undefined && max !== undefined
@@ -39,7 +41,7 @@ export function ReadingCard({ parameter, reading, threshold, showRangeMeter = fa
         <span className="reading-label">{config[parameter].title}</span>
         <StatusBadge level={status.level} label={status.label} />
       </div>
-      <strong className="reading-number">{formatParameter(parameter, value)}</strong>
+      <strong className="reading-number"><span>{numericValue}</span>{' '}<span className="reading-unit">{unit}</span></strong>
       <p className="reading-status">{distance}</p>
       {showScale ? (
         <div className="reading-scale">

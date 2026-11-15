@@ -1,12 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { PropsWithChildren } from 'react';
-import { useColorScheme } from 'react-native';
+import { AccessibilityInfo, Platform, useColorScheme } from 'react-native';
 import { parseThemeChoice, resolveTheme } from './themePreference';
 import type { ThemeChoice, ThemeMode } from './themePreference';
 
 export type { ThemeChoice } from './themePreference';
 export const THEME_KEY = 'hydrosense.mobile.theme';
+
+export const uiScale = {
+  spacing: { 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32 },
+  type: { caption: 12, body: 16, section: 18, title: 28 },
+  radius: { control: 12, card: 20, pill: 999 },
+} as const;
 
 export const palettes = {
   light: {
@@ -30,6 +36,8 @@ interface ThemeValue {
   choice: ThemeChoice;
   mode: ThemeMode;
   colors: Palette;
+  reduceMotion: boolean;
+  reduceTransparency: boolean;
   setChoice: (choice: ThemeChoice) => Promise<void>;
   error: string | null;
 }
@@ -40,6 +48,8 @@ export function ThemeProvider({ children }: PropsWithChildren) {
   const system = useColorScheme();
   const [choice, setChoiceState] = useState<ThemeChoice>('system');
   const [error, setError] = useState<string | null>(null);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [reduceTransparency, setReduceTransparency] = useState(false);
   const changed = useRef(false);
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
@@ -51,6 +61,36 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       if (active) setError('Could not load the saved appearance preference.');
     });
     return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    const motionSubscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch((failure: unknown) => {
+      console.error('Could not read the reduced-motion preference.', failure);
+    });
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const preference = window.matchMedia('(prefers-reduced-transparency: reduce)');
+      setReduceTransparency(preference.matches);
+      const update = (event: MediaQueryListEvent) => setReduceTransparency(event.matches);
+      preference.addEventListener('change', update);
+      return () => {
+        motionSubscription.remove();
+        preference.removeEventListener('change', update);
+      };
+    }
+
+    if (Platform.OS === 'ios') {
+      const transparencySubscription = AccessibilityInfo.addEventListener('reduceTransparencyChanged', setReduceTransparency);
+      AccessibilityInfo.isReduceTransparencyEnabled().then(setReduceTransparency).catch((failure: unknown) => {
+        console.error('Could not read the reduced-transparency preference.', failure);
+      });
+      return () => {
+        motionSubscription.remove();
+        transparencySubscription.remove();
+      };
+    }
+
+    return () => motionSubscription.remove();
   }, []);
   const setChoice = useCallback(async (next: ThemeChoice) => {
     changed.current = true;
@@ -66,7 +106,7 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     }
   }, []);
   const mode = resolveTheme(choice, system);
-  const value = useMemo(() => ({ choice, mode, colors: palettes[mode], setChoice, error }), [choice, mode, setChoice, error]);
+  const value = useMemo(() => ({ choice, mode, colors: palettes[mode], reduceMotion, reduceTransparency, setChoice, error }), [choice, mode, reduceMotion, reduceTransparency, setChoice, error]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 

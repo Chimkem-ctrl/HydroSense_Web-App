@@ -176,7 +176,7 @@ export default function ActivityLogsPage() {
     <div className="stack">
       <PageHeading
         title="Activity logs"
-        description="Record hatchery operations, water-quality observations and environmental events for shift handover."
+        description="Log operations, water-quality checks, and environmental events for shift handover."
       />
       <div className="inline">
         <button type="button" className="button button-primary" onClick={() => openLog('OPERATION')}>Log operation</button>

@@ -16,9 +16,10 @@ const reading = {
 describe('ReadingCard', () => {
   it('shows a labeled status, reading value, distance and configured safe range', () => {
     render(<ReadingCard parameter="temperature" reading={reading} threshold={{ parameter: 'temperature', min: 30, max: 32 }} />);
-    expect(screen.getByRole('article', { name: 'Temperature reading' })).toBeInTheDocument();
+    const card = screen.getByRole('article', { name: 'Temperature reading' });
+    expect(card).toBeInTheDocument();
     expect(screen.getByText('Warning')).toBeInTheDocument();
-    expect(screen.getByText('29.8 °C')).toBeInTheDocument();
+    expect(card.querySelector('.reading-number')).toHaveTextContent('29.8 °C');
     expect(screen.getByText('Safe 30–32 °C')).toBeInTheDocument();
   });
 

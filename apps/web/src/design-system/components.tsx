@@ -127,7 +127,7 @@ export function EmptyState({ children }: Children) {
 }
 
 export function DataTable({ headers, rows }: { headers: string[]; rows: ReactNode[][] }) {
-  return <div className="ds-table-wrap"><table className="ds-table"><thead><tr>{headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>;
+  return <div className="ds-table-wrap"><table className="ds-table"><thead><tr>{headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex} title={typeof cell === 'string' || typeof cell === 'number' ? String(cell) : undefined}>{cell}</td>)}</tr>)}</tbody></table></div>;
 }
 
 export function Overlay({ open, onClose, title, side = false, children }: Children & { open: boolean; onClose: () => void; title: string; side?: boolean }) {

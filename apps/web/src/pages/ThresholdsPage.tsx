@@ -76,7 +76,7 @@ export default function ThresholdsPage() {
 
   return (
     <div className="stack">
-      <PageHeading title="Thresholds & advisory rules" description="Edit measured-parameter limits and rule settings. Changes apply to display and alerts; they do not control devices." />
+      <PageHeading title="Thresholds & advisory rules" description="Set measurement limits and advisory rules. Changes affect labels and alerts only; they do not control devices." />
       <StaleQueryState updatedAt={thresholdsQuery.dataUpdatedAt} />
       <StaleQueryState updatedAt={rulesQuery.dataUpdatedAt} />
       <section className="card stack">

@@ -51,12 +51,13 @@ export default function LiveMonitorPage() {
           <ReadingCard parameter="ph" reading={reading.data} threshold={thresholds.data?.find((item) => item.parameter === 'ph')} showRangeMeter showUpdatedTimestamp={false} />
         </div>
       </section>
+      <div className="live-overview-grid">
       <section className="card live-panel" aria-labelledby="live-advisories-title">
         <div className="live-section-heading">
           <div><h2 id="live-advisories-title">Water-quality advisories</h2><p>Rule-based estimates, not sensor readings.</p></div>
         </div>
         {advisories.isLoading ? <LoadingState label="Loading advisories" /> : advisories.isError ? <ErrorState error={advisories.error} onRetry={() => void advisories.refetch()} /> : (
-          advisories.data?.length ? <div className="glass-advisories">{advisories.data.map((item) => <article className="card glass" key={item.kind}><AdvisoryChip advisory={item} tankId={tankId} /></article>)}</div> : <EmptyState>No advisories are available for this tank.</EmptyState>
+          advisories.data?.length ? <div className="glass-advisories">{advisories.data.map((item) => <article className="live-advisory-tile" key={item.kind}><AdvisoryChip advisory={item} tankId={tankId} /></article>)}</div> : <EmptyState>No advisories are available for this tank.</EmptyState>
         )}
       </section>
       <section className="card live-panel" aria-labelledby="live-device-title">
@@ -68,14 +69,20 @@ export default function LiveMonitorPage() {
                 <span className="badge"><Gauge size={14} />Battery {device.batteryPct > 0 ? `${device.batteryPct}%` : 'Unavailable'}</span>
                 {alerts.isLoading ? <span className="badge">Loading alerts…</span> : alerts.isError ? <ErrorState error={alerts.error} onRetry={() => void alerts.refetch()} /> : <span className="badge"><AlertTriangle size={14} />{(alerts.data ?? []).length} open alerts</span>}
               </div>
-              <p className="small muted">{device.deviceId && <>{device.deviceId} · </>}Wi-Fi {device.wifiRssi} dBm · Last seen {formatManilaDateTime(device.lastSeen)} PHT · Sampled every 3 h</p>
+              <p className="small muted live-device-meta">
+                {device.deviceId && <span>{device.deviceId} · </span>}
+                <span>Wi-Fi {device.wifiRssi} dBm · </span>
+                <span>Last seen {formatManilaDateTime(device.lastSeen)} PHT · </span>
+                <span>Sampled every 3 h</span>
+              </p>
             </div>
           ) : <EmptyState>No device is assigned to this tank.</EmptyState>}
       </section>
+      </div>
       {reading.data.ec != null || reading.data.salinity != null || reading.data.tds != null || reading.data.doSaturation != null || reading.data.doProbeTemperature != null ? (
         <section className="card live-panel" aria-labelledby="live-expanded-title">
           <div className="live-section-heading"><div><h2 id="live-expanded-title">Expanded sensor readings</h2><p>Additional measurements from the selected tank</p></div></div>
-          <div className="advisory-row">
+          <div className="advisory-row live-reading-chips">
             {reading.data.ec != null && <span className="badge">EC {reading.data.ec.toFixed(2)} uS/cm</span>}
             {reading.data.salinity != null && <span className="badge">Salinity {reading.data.salinity.toFixed(2)} ppm</span>}
             {reading.data.tds != null && <span className="badge">TDS {reading.data.tds.toFixed(2)} ppm</span>}

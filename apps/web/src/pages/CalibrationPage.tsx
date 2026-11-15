@@ -61,7 +61,7 @@ export default function CalibrationPage() {
 
   return (
     <div className="stack">
-      <PageHeading title="Calibration & maintenance" description="Record pH and dissolved-oxygen calibration results and track due dates. Checklist items are observations only." />
+      <PageHeading title="Calibration & maintenance" description="Log pH and dissolved-oxygen calibration results and due dates. Checklists are informational only." />
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
       <form className="card stack" onSubmit={submit}>
         <h2 className="card-title">Log calibration</h2>
@@ -91,7 +91,7 @@ export default function CalibrationPage() {
           <div className="table-wrap"><table><thead><tr><th>Parameter</th><th>Standard</th><th>Before</th><th>After</th><th>Date (PHT)</th><th>Next due</th><th>Technician</th></tr></thead><tbody>
             {query.data.map((log) => {
               const overdue = new Date(log.nextDue) < new Date();
-              return <tr key={log.id}><td>{log.parameter.toUpperCase()}</td><td>{log.standard}</td><td>{log.before}</td><td>{log.after}</td><td>{formatManilaDateTime(log.date)}</td><td className={overdue ? 'row-overdue' : ''}>{formatManilaDateTime(log.nextDue)}{overdue ? ' · OVERDUE' : ''}</td><td>{log.user}</td></tr>;
+              return <tr key={log.id}><td>{log.parameter.toUpperCase()}</td><td>{log.standard}</td><td className="table-numeric">{log.before}</td><td className="table-numeric">{log.after}</td><td>{formatManilaDateTime(log.date)}</td><td className={overdue ? 'row-overdue' : ''}>{formatManilaDateTime(log.nextDue)}{overdue ? ' · OVERDUE' : ''}</td><td>{log.user}</td></tr>;
             })}
           </tbody></table></div>
         )}

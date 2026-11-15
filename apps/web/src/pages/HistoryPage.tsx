@@ -56,7 +56,7 @@ export default function HistoryPage() {
 
   return (
     <div className="stack">
-      <PageHeading title="Historical logs" description="Filter and sort the measured water-quality readings." />
+      <PageHeading title="Historical logs" description="Filter and sort water-quality readings." />
       <section className="card inline" aria-label="History filters">
         <label className="field">From<input type="date" value={from} min={minimumDate} max={to} onChange={(event) => { setFrom(event.target.value); setPage(0); }} /></label>
         <label className="field">To<input type="date" value={to} min={from} max={maximumDate} onChange={(event) => { setTo(event.target.value); setPage(0); }} /></label>
@@ -69,7 +69,7 @@ export default function HistoryPage() {
           <div className="table-wrap">
             <table>
               <thead><tr><th>{sortButton('Date / time (PHT)', 'timestamp')}</th><th>Tank</th>{parameter === 'all' ? <><th>{sortButton('Temperature (°C)', 'temperature')}</th><th>{sortButton('DO (mg/L)', 'do')}</th><th>{sortButton('pH', 'ph')}</th></> : <><th>Parameter</th><th>{sortButton(parameter === 'do' ? 'DO (mg/L)' : parameter === 'ph' ? 'pH' : 'Temperature (°C)', parameter)}</th></>}</tr></thead>
-              <tbody>{visible.map((row) => <tr key={row.id}><td>{formatManilaDateTime(row.timestamp)}</td><td>{row.tankId}</td>{parameter === 'all' ? <><td>{row.temperature.toFixed(2)}</td><td>{row.doMgL.toFixed(2)}</td><td>{row.ph.toFixed(2)}</td></> : <><td>{parameter === 'do' ? 'Dissolved oxygen' : parameter === 'ph' ? 'pH' : 'Temperature'}</td><td>{parameterValue(row, parameter).toFixed(2)}</td></>}</tr>)}</tbody>
+              <tbody>{visible.map((row) => <tr key={row.id}><td>{formatManilaDateTime(row.timestamp)}</td><td>{row.tankId}</td>{parameter === 'all' ? <><td className="table-numeric">{row.temperature.toFixed(2)}</td><td className="table-numeric">{row.doMgL.toFixed(2)}</td><td className="table-numeric">{row.ph.toFixed(2)}</td></> : <><td>{parameter === 'do' ? 'Dissolved oxygen' : parameter === 'ph' ? 'pH' : 'Temperature'}</td><td className="table-numeric">{parameterValue(row, parameter).toFixed(2)}</td></>}</tr>)}</tbody>
             </table>
           </div>
           <div className="inline" style={{ justifyContent: 'space-between', marginTop: 14 }}>

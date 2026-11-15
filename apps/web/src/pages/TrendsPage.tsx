@@ -59,7 +59,7 @@ export default function TrendsPage() {
 
   return (
     <div className="stack trends-screen">
-      <PageHeading title="Trend charts" description="Three-hour readings with parameter-safe bands and the overnight window highlighted." actions={
+      <PageHeading title="Trend charts" description="View 3-hour trends, safe bands, and the 22:00-06:00 overnight window." actions={
         <div className="tabs" role="group" aria-label="Trend range">
           {([['24h', '24 hours', 1], ['7d', '7 days', 7], ['cycle', 'Full cycle', 21]] as const).map(([value, label, days]) => (
             <button type="button" className="tab" aria-pressed={range === value} disabled={days > tierConfig.retentionDays} key={value} onClick={() => setRange(value)}>{label}</button>
@@ -74,7 +74,7 @@ export default function TrendsPage() {
         <section className="card glass">
           <h2 className="card-title">Range statistics</h2>
           <div className="table-wrap"><table><thead><tr><th>Parameter</th><th>Min</th><th>Max</th><th>Mean</th><th>Std dev</th><th>Readings in range</th><th>Excursions</th><th>Longest (h)</th></tr></thead><tbody>
-            {summaries.map((summary) => <tr key={summary.parameter}><td>{summary.parameter}</td><td>{summary.min?.toFixed(2) ?? '—'}</td><td>{summary.max?.toFixed(2) ?? '—'}</td><td>{summary.mean?.toFixed(2) ?? '—'}</td><td>{summary.standardDeviation?.toFixed(2) ?? '—'}</td><td>{summary.percentInRange?.toFixed(1) ?? '—'}%</td><td>{summary.excursions}</td><td>{summary.longestExcursionHours.toFixed(1)}</td></tr>)}
+            {summaries.map((summary) => <tr key={summary.parameter}><td>{summary.parameter}</td><td className="table-numeric">{summary.min?.toFixed(2) ?? '—'}</td><td className="table-numeric">{summary.max?.toFixed(2) ?? '—'}</td><td className="table-numeric">{summary.mean?.toFixed(2) ?? '—'}</td><td className="table-numeric">{summary.standardDeviation?.toFixed(2) ?? '—'}</td><td className="table-numeric">{summary.percentInRange?.toFixed(1) ?? '—'}%</td><td className="table-numeric">{summary.excursions}</td><td className="table-numeric">{summary.longestExcursionHours.toFixed(1)}</td></tr>)}
           </tbody></table></div>
         </section>
         <section className="trend-charts">
@@ -111,7 +111,7 @@ export default function TrendsPage() {
         <section className="card glass">
           <h2 className="card-title">Alert frequency by day</h2>
           {!Object.keys(alertsByDay).length ? <EmptyState>No alerts occurred in this range.</EmptyState> : <div className="table-wrap"><table><thead><tr><th>Date (PHT)</th><th>Warning</th><th>Critical</th></tr></thead><tbody>
-            {Object.entries(alertsByDay).sort(([left], [right]) => left.localeCompare(right)).map(([day, counts]) => <tr key={day}><td>{day}</td><td>{counts.warning}</td><td>{counts.critical}</td></tr>)}
+            {Object.entries(alertsByDay).sort(([left], [right]) => left.localeCompare(right)).map(([day, counts]) => <tr key={day}><td>{day}</td><td className="table-numeric">{counts.warning}</td><td className="table-numeric">{counts.critical}</td></tr>)}
           </tbody></table></div>}
         </section>
         </>

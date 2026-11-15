@@ -90,22 +90,25 @@ export default function TankOverviewPage() {
 
   return (
     <div className="stack">
-      <PageHeading title="Tank overview" description="Current readings and rearing status for available larval tanks." />
+      <PageHeading title="Tank overview" description="View current readings and rearing status for available tanks." />
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
       {devices.isError && <ErrorState error={devices.error} onRetry={() => void devices.refetch()} />}
       {isAdmin && (
         <section className="card stack">
-          <div className="inline" style={{ justifyContent: 'space-between' }}>
-            <h2 className="card-title">Tank and hardware management</h2>
-            <span className="small muted">{query.data?.length ?? 0} / {tierConfig.nodeLimit} tanks</span>
-          </div>
-          <p className="small muted">Register a monitoring node by assigning its hardware ID. Mock devices start with sample data; API devices remain offline until their first status update. No device controls are available.</p>
-          <form className="grid grid-2" onSubmit={submitTank}>
-            <label className="field">Tank name<input name="name" required maxLength={80} placeholder="Larval Tank C" /></label>
-            <label className="field">Hatchery / site<input name="site" required maxLength={120} placeholder="Hatchery name and location" /></label>
-            <label className="field">Rearing start date<input name="rearingStartDate" type="date" required /></label>
-            <label className="field">Monitoring hardware ID<input name="deviceId" required maxLength={80} placeholder="HS-MF-003" /></label>
-            <button type="submit" className="button button-primary" disabled={createTank.isPending || (query.data?.length ?? 0) >= tierConfig.nodeLimit}>Register tank and link hardware</button>
+          <form className="stack tank-management-form" onSubmit={submitTank}>
+            <div className="tank-management-header">
+              <div className="tank-management-heading">
+                <h2 className="card-title">Tank and hardware management</h2>
+                <span className="small muted">{query.data?.length ?? 0} / {tierConfig.nodeLimit} tanks</span>
+              </div>
+              <button type="submit" className="button button-primary tank-submit" disabled={createTank.isPending || (query.data?.length ?? 0) >= tierConfig.nodeLimit}>Register tank and link hardware</button>
+            </div>
+            <div className="grid tank-management-fields">
+              <label className="field">Tank name<input name="name" required maxLength={80} placeholder="Larval Tank C" /></label>
+              <label className="field">Hatchery / site<input name="site" required maxLength={120} placeholder="Hatchery name and location" /></label>
+              <label className="field">Rearing start date<input name="rearingStartDate" type="date" required /></label>
+              <label className="field">Monitoring hardware ID<input name="deviceId" required maxLength={80} placeholder="HS-MF-003" /></label>
+            </div>
           </form>
           {(query.data?.length ?? 0) >= tierConfig.nodeLimit && <p className="small muted">The configured tier node limit has been reached.</p>}
           {formError && <p className="state-error" role="alert">{formError}</p>}
@@ -113,16 +116,24 @@ export default function TankOverviewPage() {
         </section>
       )}
       {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data?.length ? <EmptyState>No tanks are registered.</EmptyState> : (
-        <section className="grid grid-2">
+        <section className="tank-overview-grid">
           {query.data.map(({ tank, reading, advisories, alerts }) => {
             const device = devices.data?.find((item) => item.deviceId === tank.deviceId);
             const hasRecentReading = Boolean(reading && Date.now() - new Date(reading.timestamp).getTime() <= 15 * 60 * 1000);
             const deviceStatus = device?.online || hasRecentReading ? 'Online' : device ? 'Offline' : 'Status unavailable';
             return (
-            <article key={tank.id} className="card stack" aria-label={tank.name}>
+            <article key={tank.id} className="card stack tank-overview-card" aria-label={tank.name}>
               <header className="inline" style={{ justifyContent: 'space-between' }}>
-                <div><h2 className="card-title" style={{ marginBottom: 0 }}>{tank.name}</h2><p className="small muted">{tank.site} · Node {tank.deviceId} · {deviceStatus}</p></div>
-                <span className="badge"><strong>Day {getRaisingDay(tank.rearingStartDate)}</strong> / 21</span>
+                <div>
+                  <h2 className="card-title" style={{ marginBottom: 0 }}>{tank.name}</h2>
+                  <p className="small muted">Node {tank.deviceId}</p>
+                </div>
+                <div className="tank-overview-header-actions">
+                  <span className="badge"><strong>Day {getRaisingDay(tank.rearingStartDate)}</strong> / 21</span>
+                  <span className={`connection-pill ${deviceStatus === 'Online' ? 'connection-online' : 'connection-offline'}`} aria-label={`Tank status ${deviceStatus}`}>
+                    <span aria-hidden="true">●</span><span>{deviceStatus}</span>
+                  </span>
+                </div>
               </header>
               {reading ? (
                 <>
@@ -135,8 +146,10 @@ export default function TankOverviewPage() {
                 </>
               ) : <EmptyState>No reading available.</EmptyState>}
               <div className="advisory-row">{advisories.map((item) => <AdvisoryChip key={item.kind} advisory={item} tankId={tank.id} />)}</div>
-              <span className={`badge ${alerts.length ? 'level-warning' : 'level-normal'}`}>{alerts.length} open alerts</span>
-              {isAdmin && <button className="button button-danger" type="button" disabled={deleteTank.isPending || query.data.length <= 1} title={query.data.length <= 1 ? 'At least one tank must remain registered.' : undefined} onClick={() => removeTank(tank)}>Remove tank</button>}
+              <div className="tank-card-actions">
+                <span className={`badge tank-alert-count ${alerts.length ? 'level-warning' : 'level-normal'}`}>{alerts.length} open alerts</span>
+                {isAdmin && <button className="button button-danger tank-remove-button" type="button" disabled={deleteTank.isPending || query.data.length <= 1} title={query.data.length <= 1 ? 'At least one tank must remain registered.' : undefined} onClick={() => removeTank(tank)}>Remove tank</button>}
+              </div>
             </article>
           );})}
         </section>

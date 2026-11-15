@@ -34,7 +34,7 @@ export default function ValidationPage() {
 
   return (
     <div className="stack">
-      <PageHeading title="Validation view" description="Compare sensor averages with manual or laboratory references. Tolerances are editable." />
+      <PageHeading title="Validation view" description="Compare sensor averages with manual or lab readings. Edit tolerances." />
       <StaleQueryState updatedAt={rowsQuery.dataUpdatedAt} />
       <StaleQueryState updatedAt={tolerancesQuery.dataUpdatedAt} />
       {rowsQuery.isLoading || tolerancesQuery.isLoading ? <LoadingState /> : rowsQuery.isError ? <ErrorState error={rowsQuery.error} onRetry={() => void rowsQuery.refetch()} /> : tolerancesQuery.isError ? <ErrorState error={tolerancesQuery.error} onRetry={() => void tolerancesQuery.refetch()} /> : !rows.length ? <EmptyState>No validation comparisons are available.</EmptyState> : (
@@ -51,7 +51,7 @@ export default function ValidationPage() {
           </section>
           <section className="card">
             <div className="table-wrap"><table><thead><tr><th>Parameter</th><th>HydroSense mean</th><th>Reference</th><th>Error</th><th>% error</th><th>Tolerance</th><th>Result</th></tr></thead><tbody>
-              {rows.map((row) => <tr key={row.parameter}><td>{row.parameter}</td><td>{row.hydrosenseMean}</td><td>{row.reference}</td><td>{row.error}</td><td>{row.pctError}%</td><td>±{row.tolerance}</td><td><StatusBadge level={row.pass ? 'normal' : 'critical'} label={row.pass ? 'Pass' : 'Fail'} /></td></tr>)}
+              {rows.map((row) => <tr key={row.parameter}><td>{row.parameter}</td><td className="table-numeric">{row.hydrosenseMean}</td><td className="table-numeric">{row.reference}</td><td className="table-numeric">{row.error}</td><td className="table-numeric">{row.pctError}%</td><td className="table-numeric">±{row.tolerance}</td><td><StatusBadge level={row.pass ? 'normal' : 'critical'} label={row.pass ? 'Pass' : 'Fail'} /></td></tr>)}
             </tbody></table></div>
           </section>
         </>

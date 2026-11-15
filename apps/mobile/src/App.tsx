@@ -33,7 +33,7 @@ import {
 } from './screens';
 import { LoginScreen, SignUpScreen, PendingApprovalScreen, ForgotPasswordScreen } from './authScreens';
 import { useSession, SessionProvider, TankProvider } from './state';
-import { ThemeProvider, useTheme } from './theme';
+import { ThemeProvider, uiScale, useTheme } from './theme';
 import { HeaderToolbar } from './components/HeaderToolbar';
 import { CriticalAlertModal } from './components/CriticalAlertModal';
 import { api, liveClient } from './services/client';
@@ -101,9 +101,9 @@ function MobileTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             if (!selected && !event.defaultPrevented) navigation.navigate(route.name, route.params);
           }}
           onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
-          style={{ flex: 1, minHeight: 55, alignItems: 'center', justifyContent: 'center', borderRadius: 16, gap: 3, backgroundColor: selected ? colors.selected : 'transparent' }}>
+          style={{ flex: 1, minHeight: 55, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.card, gap: 3, backgroundColor: selected ? colors.selected : 'transparent' }}>
           <Icon size={20} color={selected ? colors.teal : colors.muted} strokeWidth={2} />
-          <Text style={{ fontSize: 11, fontWeight: selected ? '700' : '500', color: selected ? colors.teal : colors.muted }}>{label}</Text>
+          <Text style={{ fontSize: uiScale.type.caption, fontWeight: selected ? '700' : '500', color: selected ? colors.teal : colors.muted }}>{label}</Text>
         </Pressable>;
       })}
     </View>

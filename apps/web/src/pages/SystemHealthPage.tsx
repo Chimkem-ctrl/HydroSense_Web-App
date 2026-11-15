@@ -17,7 +17,7 @@ export default function SystemHealthPage() {
   const tankList = tanks.data ?? [];
   return (
     <div className="stack">
-      <PageHeading title="System health" description="Connection, power, signal and pending synchronization for monitoring devices." />
+      <PageHeading title="System health" description="Check device connection, power, signal, and sync status." />
       {devices.dataUpdatedAt && Date.now() - devices.dataUpdatedAt > 3 * 3_600_000 && <StaleState updatedAt={devices.dataUpdatedAt} />}
       {devices.isLoading || tanks.isLoading ? <LoadingState /> : devices.isError ? <ErrorState error={devices.error} onRetry={() => void devices.refetch()} /> : tanks.isError ? <ErrorState error={tanks.error} onRetry={() => void tanks.refetch()} /> : !devices.data?.length ? <EmptyState>No device status is available.</EmptyState> : (
         <section className="grid grid-2">

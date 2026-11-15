@@ -3,7 +3,7 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 import NetInfo from '@react-native-community/netinfo';
 import { useQuery } from '@tanstack/react-query';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
-import { Activity, AlertTriangle, Bell, ChevronDown, ClipboardList, Database, LayoutDashboard, LogOut, Menu, Palette as PaletteIcon, Settings, Waves, Wifi, X } from 'lucide-react-native';
+import { Activity, AlertTriangle, Bell, ChevronDown, ClipboardList, Database, LayoutDashboard, LogOut, Menu, Palette as PaletteIcon, Settings, Waves, Wifi, WifiOff, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MainTabParamList } from '../navigation';
 import { canAccess } from '../access';
@@ -11,14 +11,14 @@ import { api, liveClient } from '../services/client';
 import { getConnectionLabel } from '../services/connectionStatus';
 import { useSession, useTankSelection } from '../state';
 import { Brand } from './ui';
-import { useTheme } from '../theme';
+import { uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
 
 type Panel = 'navigation' | 'tanks' | 'account' | null;
 type Destination = { name: keyof MainTabParamList; label: string; icon: typeof Menu; group: 'Monitor' | 'Records' | 'Manage' };
 
 export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
-  const { colors } = useTheme();
+  const { colors, reduceMotion } = useTheme();
   const styles = createStyles(colors);
   const { user, signOut } = useSession();
   const { tanks, tankId, setTankId, isLoading, error, refetch } = useTankSelection();
@@ -83,13 +83,13 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
           <Waves size={16} color={colors.teal} /><Text numberOfLines={1} style={styles.tankText}>{tank?.name ?? (isLoading ? 'Loading tanks…' : error ? 'Tanks unavailable' : 'Select tank')}</Text><ChevronDown size={16} color={colors.muted} />
         </Pressable>
         <View accessibilityLabel={`Connection ${connectionLabel}`} style={styles.connection}>
-          <View style={[styles.dot, { backgroundColor: connectionLabel === 'Live' ? '#16a34a' : colors.warning }]} />
+          {connectionLabel === 'Live' ? <Wifi size={16} color="#16a34a" /> : <WifiOff size={16} color={colors.warning} />}
           <Text style={styles.connectionText}>{connectionLabel}</Text>
         </View>
       </View>
       {alerts.isError && <Text style={styles.error}>Could not load alert count. Open alerts to retry.</Text>}
     </View>
-    <Modal visible={panel !== null} transparent animationType="fade" onRequestClose={() => setPanel(null)}>
+    <Modal visible={panel !== null} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setPanel(null)}>
       <View style={styles.overlay}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={StyleSheet.absoluteFill} />
         <SafeAreaView edges={['top', 'bottom']} style={[styles.panel, panel !== 'navigation' && styles.sheet]}>
@@ -126,30 +126,29 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   brandSlot: { flex: 1, minWidth: 0, overflow: 'hidden' },
-  iconButton: { width: 44, height: 44, flexShrink: 0, borderRadius: 22, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
-  avatar: { width: 44, height: 44, flexShrink: 0, borderRadius: 22, backgroundColor: colors.selected, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: colors.teal, fontWeight: '800', fontSize: 13 },
+  iconButton: { width: 48, height: 48, flexShrink: 0, borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 48, height: 48, flexShrink: 0, borderRadius: uiScale.radius.pill, backgroundColor: colors.selected, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: colors.teal, fontWeight: '800', fontSize: uiScale.type.caption },
   badge: { position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, paddingHorizontal: 3, borderRadius: 10, backgroundColor: '#b51c1c', alignItems: 'center', justifyContent: 'center' },
-  badgeText: { color: 'white', fontWeight: '700', fontSize: 10 },
+  badgeText: { color: 'white', fontWeight: '700', fontSize: uiScale.type.caption },
   controls: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tankButton: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 22, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 14 },
-  tankText: { flex: 1, color: colors.ink, fontWeight: '700', fontSize: 13 },
-  connection: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 22, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 12 },
+  tankButton: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 14 },
+  tankText: { flex: 1, color: colors.ink, fontWeight: '700', fontSize: uiScale.type.caption },
+  connection: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 12 },
   connectionText: { color: colors.muted, fontWeight: '700', fontSize: 12 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  error: { color: colors.critical, fontSize: 13, lineHeight: 19 },
+  error: { color: colors.critical, fontSize: 14, lineHeight: 20 },
   overlay: { flex: 1, backgroundColor: colors.overlay, flexDirection: 'row' },
   panel: { backgroundColor: colors.surface, width: '85%', maxWidth: 340 },
   sheet: { alignSelf: 'flex-end', width: '100%', maxWidth: undefined, maxHeight: '80%', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   panelHeader: { paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border },
   panelTitle: { color: colors.ink, fontSize: 19, fontWeight: '700' },
-  close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  close: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   panelContent: { padding: 20, gap: 12 },
   group: { gap: 4, marginTop: 8 },
-  groupLabel: { color: colors.muted, fontSize: 11, letterSpacing: 1, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 8 },
+  groupLabel: { color: colors.muted, fontSize: uiScale.type.caption, letterSpacing: 1, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 8 },
   menuItem: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14 },
   selected: { backgroundColor: colors.selected },
   itemText: { color: colors.ink, fontSize: 14, fontWeight: '600' },
-  selectedText: { color: colors.teal, fontWeight: '700', fontSize: 13 },
-  description: { color: colors.muted, fontSize: 13, lineHeight: 20 },
+  selectedText: { color: colors.teal, fontWeight: '700', fontSize: 14 },
+  description: { color: colors.muted, fontSize: 14, lineHeight: 20 },
 });

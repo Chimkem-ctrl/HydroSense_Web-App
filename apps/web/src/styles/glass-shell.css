@@ -47,12 +47,12 @@ html, .glass-shell .side-nav, .glass-shell .table-wrap, .glass-shell .popover, .
 .glass-shell .nav-link { border-radius: var(--radius-md); }
 .glass-shell .nav-link:hover, .glass-shell .nav-link[aria-current='page'] { background: var(--accent-soft); color: var(--accent); }
 .glass-shell .page-content { position: relative; background: transparent; }
-.page-controls { position: absolute; z-index: 15; top: clamp(16px, 2.5vw, 32px); right: clamp(16px, 2.5vw, 32px); display: flex; align-items: center; justify-content: flex-end; gap: 12px; max-width: 550px; }
+.glass-shell .page-content { min-width: 0; overflow-x: clip; }
+.page-controls { position: relative; z-index: 15; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; max-width: 100%; margin-bottom: 16px; }
 .page-controls .user-name { max-width: 160px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.page-controls .select-control { min-width: 0; max-width: min(45vw, 260px); }
 .page-view { min-width: 0; }
-.glass-shell .page-heading { min-height: 44px; padding-right: 550px; flex-wrap: wrap; }
-.glass-shell .glass-greeting { padding-right: 550px; }
-.glass-shell .page-view > .state-box { margin-top: 60px; }
+.glass-shell .page-heading { min-height: 0; flex-wrap: wrap; }
 .glass-shell .select-control, .glass-shell .icon-button, .glass-shell .button, .glass-shell .tab, .theme-control {
   border-color: var(--control-border); border-radius: var(--radius-pill); color: var(--text-primary); background: var(--glass-bg-strong);
 }
@@ -75,7 +75,7 @@ html, .glass-shell .side-nav, .glass-shell .table-wrap, .glass-shell .popover, .
 .advisory-evidence li + li { margin-top: 8px; }
 .glass-shell .dialog-backdrop { background: var(--overlay); }
 .glass-shell .dialog.card { background: var(--glass-bg-strong); backdrop-filter: none; -webkit-backdrop-filter: none; }
-.glass-shell .table-wrap { max-width: 100%; }
+.glass-shell .table-wrap { max-width: 100%; max-height: min(65vh, 640px); }
 .glass-shell th { position: sticky; top: 0; z-index: 1; background: var(--glass-bg-strong); color: var(--text-secondary); }
 .glass-shell tbody tr:nth-child(even) { background: var(--row-hover); }
 .glass-shell .tab[aria-selected='true'], .glass-shell .tab[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); color: var(--text-primary); }
@@ -88,6 +88,7 @@ html, .glass-shell .side-nav, .glass-shell .table-wrap, .glass-shell .popover, .
 }
 .auth-background::before, .auth-background::after { display: none; }
 .auth-background .auth-panel h1, .auth-background .welcome-panel h1, .auth-background .glass-title { color: var(--text-primary); }
+.auth-background .glass-panel:not(.terms-modal) { background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); }
 .auth-background .glass-subtitle { color: var(--text-secondary); line-height: 1.5; }
 .auth-background .form-label, .auth-background .terms-field, .auth-background .terms-modal h2 { color: var(--text-primary); }
 .auth-background .form-control, .auth-background .password-control { min-height: 44px; border-color: var(--control-border); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--glass-bg-strong); }
@@ -100,6 +101,7 @@ html, .glass-shell .side-nav, .glass-shell .table-wrap, .glass-shell .popover, .
 .auth-background .auth-footer, .auth-background .operator-signup-intro, .auth-background .panel-description, .auth-background .auth-demo-disclaimer, .auth-background .demo-login-box, .auth-background .demo-login-box small, .auth-background .terms-modal p, .auth-background .form-status { color: var(--text-secondary); }
 .auth-background .forgot-link-row a, .auth-background .auth-footer a, .auth-background .inline-link, .auth-background .demo-login-box strong { color: var(--accent); }
 .auth-background .field-error { color: var(--critical-text); }
+.auth-background .auth-panel h1, .auth-background .welcome-panel h1 { font-size: 24px; }
 .auth-background .demo-login-box { border-color: var(--control-border); background: var(--glass-bg-strong); }
 .auth-background .modal-backdrop { background: var(--overlay); }
 .auth-background .terms-modal { background: var(--glass-bg-strong); backdrop-filter: none; -webkit-backdrop-filter: none; }
@@ -108,16 +110,25 @@ html, .glass-shell .side-nav, .glass-shell .table-wrap, .glass-shell .popover, .
   .glass-shell .sidebar { width: 72px; }
   .glass-shell .side-nav { scrollbar-gutter: stable both-edges; }
   .glass-shell .main-area { margin-left: 104px; }
-  .page-controls { position: relative; top: auto; right: auto; max-width: none; flex-wrap: wrap; justify-content: flex-start; margin-bottom: 24px; }
-  .glass-shell .page-heading, .glass-shell .glass-greeting { padding-right: 0; }
-  .glass-shell .page-view > .state-box { margin-top: 0; }
+  .page-controls { justify-content: flex-start; }
 }
 @media (max-width: 700px) {
   .glass-shell .sidebar { width: min(300px, 86vw); }
   .glass-shell .side-nav { scrollbar-gutter: stable; }
   .glass-shell .main-area { margin-left: 0; }
-  .page-controls { gap: 8px; margin-bottom: 18px; }
+  .page-controls { gap: 8px; margin-bottom: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .glass-shell *, .auth-background * { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-shell .sidebar,
+  .glass-shell .account-menu-popover,
+  .glass-shell .popover,
+  .glass-shell .dialog.card,
+  .auth-background .glass-panel:not(.terms-modal) {
+    background: var(--glass-bg-strong);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }

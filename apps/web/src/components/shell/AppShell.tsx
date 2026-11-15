@@ -149,8 +149,8 @@ export function AppShell() {
             <span className={`connection-pill ${displayConnection === 'connected' ? 'connection-online' : 'connection-offline'}`} aria-label={`Connection ${displayConnection}`}>
               <span aria-hidden="true">●</span><span>{displayConnection === 'connected' ? 'Live' : displayConnection === 'connecting' ? 'Connecting' : 'Offline'}</span>
             </span>
-            <Link to="/alerts" className="icon-button" aria-label={`${openAlerts.length} open alerts`}>
-              <Bell size={18} /><span>{openAlerts.length}</span>
+            <Link to="/alerts" className="icon-button header-alert-link" aria-label={`${openAlerts.length} open alerts`}>
+              <Bell size={18} /><span className="header-alert-count">{openAlerts.length}</span>
             </Link>
             <div className="account-menu">
                <button type="button" className="icon-button" aria-haspopup="menu" aria-expanded={accountMenuOpen} aria-label={`Account menu for ${userName}`} title={userName} onClick={() => setAccountMenuOpen((open) => !open)}>

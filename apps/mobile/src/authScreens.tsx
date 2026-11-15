@@ -8,7 +8,7 @@ import type { PhoneCountryCode } from '@hydrosense/shared';
 import type { RootStackParamList } from './navigation';
 import { Brand, Button, Card, createFormStyles, Page, Title } from './components/ui';
 import { PhoneField } from './components/PhoneField';
-import { useTheme } from './theme';
+import { uiScale, useTheme } from './theme';
 import { useSession } from './state';
 import { API_BASE_URL, API_KEY, DATA_MODE } from './services/client';
 import { authenticate, HATCHERY, requestAccount, requestPasswordReset, validateSignIn } from './services/auth';
@@ -43,7 +43,7 @@ function AuthField({ label, value, onChange, placeholder, secure, keyboard }: {
 
 function Message({ text }: { text: string }) {
   const { colors } = useTheme();
-  return text ? <Text accessibilityRole="alert" style={{ color: colors.critical, lineHeight: 20 }}>{text}</Text> : null;
+  return text ? <Text accessibilityRole="alert" style={{ color: colors.critical, fontSize: uiScale.type.caption, lineHeight: 18 }}>{text}</Text> : null;
 }
 
 function AddressPicker({ label, value, options, disabled, onChange }: { label: string; value: string; options: readonly { id: string; name: string }[]; disabled?: boolean; onChange: (value: string) => void }) {
@@ -61,8 +61,8 @@ function AddressPicker({ label, value, options, disabled, onChange }: { label: s
     <Portal><Dialog visible={open} onDismiss={() => setOpen(false)}>
       <Dialog.Title>{label}</Dialog.Title><Dialog.Content>
         <TextInput accessibilityLabel={`Search ${label}`} style={ui.input} value={search} onChangeText={setSearch} placeholder="Search" placeholderTextColor={colors.muted} />
-        <FlatList style={{ height: 300 }} keyboardShouldPersistTaps="handled" data={options.filter((option) => option.name.toLowerCase().includes(search.toLowerCase()))}
-          keyExtractor={(item) => item.id} renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => { onChange(item.id); setOpen(false); }} style={{ padding: 14 }}><Text style={{ color: colors.ink }}>{item.name}</Text></Pressable>} />
+        <FlatList style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled" data={options.filter((option) => option.name.toLowerCase().includes(search.toLowerCase()))}
+          keyExtractor={(item) => item.id} renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => { onChange(item.id); setOpen(false); }} style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: uiScale.spacing[4] }}><Text style={{ color: colors.ink, fontSize: uiScale.type.body }}>{item.name}</Text></Pressable>} />
       </Dialog.Content><Dialog.Actions><Button label="Cancel" secondary onPress={() => setOpen(false)} /></Dialog.Actions>
     </Dialog></Portal>
   </View>;
@@ -113,7 +113,7 @@ export function LoginScreen({ navigation }: Props<'Login'>) {
       </> : <>
         <AuthField label="Email" value={email} onChange={setEmail} keyboard="email-address" placeholder="Enter your email" />
         <AuthField label="Password" value={password} onChange={setPassword} secure placeholder="Enter your password" />
-        <Pressable accessibilityRole="button" disabled={busy} onPress={() => navigation.navigate('ForgotPassword')} style={{ alignSelf: 'flex-end', paddingVertical: 8 }}><Text style={{ color: colors.teal, fontWeight: '700' }}>Forgot password?</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={busy} onPress={() => navigation.navigate('ForgotPassword')} style={{ minHeight: 48, alignSelf: 'flex-end', justifyContent: 'center', paddingHorizontal: uiScale.spacing[2] }}><Text style={{ color: colors.teal, fontWeight: '700' }}>Forgot password?</Text></Pressable>
         <Button label={busy ? 'Signing in…' : 'Sign In'} disabled={busy} onPress={() => void submit()} />
         <Text style={{ color: colors.muted, textAlign: 'center', fontSize: 14 }}>
           Don't have an account?{' '}
@@ -211,11 +211,11 @@ export function SignUpScreen({ navigation }: Props<'SignUp'>) {
       <PhoneField label="Emergency contact number" value={values.emergencyContactPhone} country={emergencyCountry} onChange={(v) => setField('emergencyContactPhone', v)} onCountryChange={(country) => { setEmergencyCountry(country); setError(''); }} />
       <AuthField label="Password" value={values.password} onChange={(v) => setField('password', v)} secure placeholder="At least 8 characters" />
       <AuthField label="Confirm password" value={values.confirmPassword} onChange={(v) => setField('confirmPassword', v)} secure placeholder="Re-enter your password" />
-      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 5 }}>
-        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: values.termsAccepted }} onPress={() => setField('termsAccepted', !values.termsAccepted)} style={{ paddingVertical: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: uiScale.spacing[1] }}>
+        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: values.termsAccepted }} onPress={() => setField('termsAccepted', !values.termsAccepted)} style={{ minHeight: 48, justifyContent: 'center', paddingVertical: uiScale.spacing[2] }}>
           <Text style={{ color: colors.ink }}>{values.termsAccepted ? '[x]' : '[ ]'} I have read and agree to the</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" onPress={() => setShowTerms(true)}><Text style={{ color: colors.teal, fontWeight: '700' }}>Terms and Conditions</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setShowTerms(true)} style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: uiScale.spacing[2] }}><Text style={{ color: colors.teal, fontWeight: '700' }}>Terms and Conditions</Text></Pressable>
       </View>
       <Message text={error} />
       <Button label={busy ? 'Submitting…' : 'Submit Request'} disabled={busy} onPress={() => void submit()} />

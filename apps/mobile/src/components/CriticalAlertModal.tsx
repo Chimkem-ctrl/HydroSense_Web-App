@@ -10,7 +10,7 @@ import { Button } from './ui';
 export const CRITICAL_ACK_NOTE = 'Acknowledged from the critical alert pop-up.';
 
 export function CriticalAlertModal() {
-  const { colors } = useTheme();
+  const { colors, reduceMotion } = useTheme();
   const { user } = useSession();
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ['alerts', 'critical-popup'], queryFn: () => api.listAlerts(), enabled: Boolean(user), refetchInterval: 30000 });
@@ -29,7 +29,7 @@ export function CriticalAlertModal() {
     },
   });
   if (!alert) return null;
-  return <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => undefined}>
+  return <Modal visible transparent animationType={reduceMotion ? 'none' : 'fade'} statusBarTranslucent onRequestClose={() => undefined}>
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: 'rgba(2, 9, 17, 0.78)' }}>
       <View accessibilityViewIsModal accessibilityRole="alert" style={{ width: '100%', maxWidth: 420, gap: 12, alignItems: 'center', padding: 24, borderRadius: 20, borderWidth: 1, borderColor: colors.critical, backgroundColor: colors.surface }}>
         <View style={{ width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: `${colors.critical}24` }}>
@@ -37,7 +37,7 @@ export function CriticalAlertModal() {
         </View>
         <Text style={{ color: colors.critical, fontSize: 22, fontWeight: '800' }}>Critical alert</Text>
         <Text style={{ color: colors.ink, fontSize: 16, textAlign: 'center', lineHeight: 24 }}>{alert.parameter} is at {alert.value} in {alert.tankId}. Threshold: {alert.threshold}.</Text>
-        <Text style={{ color: colors.muted, fontSize: 13, textAlign: 'center' }}>Raised {formatManilaDateTime(alert.createdAt)} PHT{critical.length > 1 ? ` · ${critical.length - 1} more critical ${critical.length - 1 === 1 ? 'alert' : 'alerts'} waiting` : ''}</Text>
+        <Text style={{ color: colors.muted, fontSize: 14, textAlign: 'center' }}>Raised {formatManilaDateTime(alert.createdAt)} PHT{critical.length > 1 ? ` · ${critical.length - 1} more critical ${critical.length - 1 === 1 ? 'alert' : 'alerts'} waiting` : ''}</Text>
         {mutation.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>{mutation.error.message}</Text>}
         <View style={{ alignSelf: 'stretch', marginTop: 4 }}>
           <Button label={mutation.isPending ? 'Acknowledging…' : 'Acknowledge'} disabled={mutation.isPending} onPress={() => mutation.mutate(alert.id)} />

@@ -75,7 +75,7 @@ export function AdminUsersPage() {
   });
   return (
     <div className="stack admin-users-page">
-      <PageHeading title="Users & roles" description={`Team accounts · tier node limit ${tierConfig.nodeLimit}. Role changes apply to the frontend mock API only until the backend is connected.`} />
+      <PageHeading title="Users & roles" description={`Manage team accounts · node limit ${tierConfig.nodeLimit}. Demo role changes stay in the frontend until the backend is connected.`} />
       <StaleQueryState updatedAt={users.dataUpdatedAt} />
       <section className="card admin-users-panel" aria-labelledby="pending-requests-title">
         <div className="admin-users-heading">
@@ -136,7 +136,7 @@ export function AdminLogsPage() {
   const query = useQuery({ queryKey: ['audit-logs'], queryFn: () => api.listAuditLogs() });
   return (
     <div className="stack">
-      <PageHeading title="Audit & system logs" description="Administrative actions and operational events, timestamped in Asia/Manila." />
+      <PageHeading title="Audit & system logs" description="Review admin actions and operational events (Asia/Manila)." />
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
       {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data?.length ? <EmptyState>No audit or system logs are available.</EmptyState> : (
         <section className="card"><div className="table-wrap"><table><thead><tr><th>Time (PHT)</th><th>User</th><th>Action</th><th>Detail</th></tr></thead><tbody>{query.data.map((log) => <tr key={log.id}><td>{formatManilaDateTime(log.timestamp)}</td><td>{log.user}</td><td>{log.action}</td><td>{log.detail}</td></tr>)}</tbody></table></div></section>

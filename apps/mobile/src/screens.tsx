@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Alert, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart } from 'react-native-gifted-charts';
+import { AlertCircle, AlertTriangle, CheckCircle2 } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -25,7 +26,7 @@ import { DATA_MODE, api, listPendingAccounts, reviewPendingAccount } from './ser
 import { canAccess } from './access';
 import { useSession, useTankSelection } from './state';
 import { Button, Card, createFormStyles, DataRow, Page, StateMessage, Title } from './components/ui';
-import { useTheme } from './theme';
+import { uiScale, useTheme } from './theme';
 import type { ThemeChoice } from './theme';
 
 type Props<T extends keyof MainTabParamList> = BottomTabScreenProps<MainTabParamList, T>;
@@ -50,7 +51,7 @@ function TankPicker() {
   if (isLoading) return <StateMessage message="Loading tanks…" loading />;
   if (error) return <Card><StateMessage message={`Could not load tanks: ${error.message}`} /><Button label="Retry tank list" onPress={refetch} secondary /></Card>;
   if (tanks.length === 0) return <StateMessage message="No tanks are available for this account." />;
-  return <View accessibilityLabel="Select tank" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{tanks.map((tank) => <Pressable accessibilityRole="button" accessibilityState={{ selected: tank.id === tankId }} key={tank.id} onPress={() => setTankId(tank.id)} style={{ minHeight: 44, justifyContent: 'center', borderRadius: 22, borderWidth: 1, borderColor: tank.id === tankId ? colors.teal : colors.border, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: tank.id === tankId ? colors.selected : colors.surface }}><Text style={{ color: tank.id === tankId ? colors.teal : colors.ink, fontWeight: '700' }}>{tank.name}</Text></Pressable>)}</View>;
+  return <View accessibilityLabel="Select tank" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>{tanks.map((tank) => <Pressable accessibilityRole="button" accessibilityState={{ selected: tank.id === tankId }} key={tank.id} onPress={() => setTankId(tank.id)} style={{ minHeight: 48, justifyContent: 'center', borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: tank.id === tankId ? colors.teal : colors.border, paddingVertical: uiScale.spacing[2], paddingHorizontal: uiScale.spacing[4], backgroundColor: tank.id === tankId ? colors.selected : colors.surface }}><Text style={{ color: tank.id === tankId ? colors.teal : colors.ink, fontWeight: '700', fontSize: uiScale.type.body }}>{tank.name}</Text></Pressable>)}</View>;
 }
 
 function ReadingCard({ parameter, reading, threshold }: { parameter: MeasuredParameter; reading: Reading; threshold?: Threshold }) {
@@ -67,14 +68,18 @@ function ReadingCard({ parameter, reading, threshold }: { parameter: MeasuredPar
   const position = scaleMin !== undefined && scaleMax !== undefined && scaleMax > scaleMin
     ? Math.max(0, Math.min(100, (value - scaleMin) / (scaleMax - scaleMin) * 100)) : null;
   const statusColor = status.level === 'normal' ? colors.normal : status.level === 'warning' ? colors.warning : colors.critical;
+  const StatusIcon = status.level === 'normal' ? CheckCircle2 : status.level === 'warning' ? AlertTriangle : AlertCircle;
   return <Card>
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: uiScale.spacing[2] }}>
       <Text style={{ color: colors.muted, fontSize: 14, fontWeight: '700', flexShrink: 1 }}>{label}</Text>
-      <Text style={{ color: statusColor, borderColor: statusColor, borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, fontSize: 12, fontWeight: '700' }}>{status.label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderColor: statusColor, borderWidth: 1, borderRadius: uiScale.radius.pill, paddingHorizontal: uiScale.spacing[2], paddingVertical: uiScale.spacing[1] }}>
+        <StatusIcon size={16} color={statusColor} />
+        <Text style={{ color: statusColor, fontSize: uiScale.type.caption, fontWeight: '700' }}>{status.label}</Text>
+      </View>
     </View>
-    <Text style={{ color: colors.ink, fontSize: 38, fontWeight: '400' }}>{formatParameter(parameter, value)}</Text>
+    <Text style={{ color: colors.ink, fontSize: 38, fontWeight: '400', fontVariant: ['tabular-nums'] }}>{formatParameter(parameter, value)}</Text>
     <Text style={{ color: colors.muted, lineHeight: 20 }}>{status.distance}{'\n'}Safe {safe}</Text>
-    {position !== null && <View style={{ gap: 8, marginTop: 4 }}>
+    {position !== null && <View style={{ gap: uiScale.spacing[2], marginTop: uiScale.spacing[1] }}>
       <LinearGradient colors={['#3b82f6', '#22c55e', '#eab308', '#f97316', '#ef4444']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ height: 8, borderRadius: 8, marginHorizontal: 7 }}>
         <View style={{ position: 'absolute', left: `${position}%`, top: -4, marginLeft: -7, height: 16, width: 16, borderRadius: 8, borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.surface }} />
       </LinearGradient>
@@ -99,11 +104,11 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
   const device = devices.data?.find((item) => item.deviceId === tank?.deviceId);
   const openCount = alerts.data?.filter((item) => item.status !== 'resolved').length ?? 0;
   return <Page>
-    <View style={{ gap: 5 }}><Text style={{ color: colors.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1 }}>WATER QUALITY MONITORING</Text><Text style={{ color: colors.ink, fontSize: 28, fontWeight: '500' }}>Welcome, {user?.name}.</Text></View>
+    <View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700', letterSpacing: 1 }}>WATER QUALITY MONITORING</Text><Text style={{ color: colors.ink, fontSize: uiScale.type.title, fontWeight: '500' }}>Welcome, {user?.name}.</Text></View>
     <Title detail={tank ? `${tank.name} · ${tank.site} · rearing day ${getRaisingDay(tank.rearingStartDate)}/21` : 'Live water-quality status'}>Live monitor</Title>
     <TankPicker />
     {isLoading || thresholds.isLoading ? <StateMessage message="Loading latest readings and thresholds…" loading /> : isError || thresholds.isError ? <Card><StateMessage message={`Could not load readings or thresholds: ${(thresholds.error ?? null)?.message ?? 'Check your connection.'}`} /><Button label="Retry" onPress={() => { void refetch(); void thresholds.refetch(); }} secondary /></Card> : reading && statuses ? <>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>
         {(['temperature', 'do', 'ph'] as const).map((parameter) => <View key={parameter} style={{ width: width >= 950 ? '32%' : width >= 600 ? '48%' : '100%' }}><ReadingCard parameter={parameter} reading={reading} threshold={thresholds.data?.find((item) => item.parameter === parameter)} /></View>)}
       </View>
       <Card title="Water-quality advisories">
@@ -134,14 +139,18 @@ export function AlertsScreen({ navigation }: Props<'Alerts'>) {
   const query = useQuery({ queryKey: ['alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
   const rows = [...(query.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return <Page>
-    <Title detail="Review active and recent alerts">Alerts</Title>
+    <Title detail="Review alerts and responses">Alerts</Title>
     <TankPicker />
     <Card title="Alert list">
-      {query.isLoading ? <StateMessage message="Loading alerts…" loading /> : query.isError ? <StateMessage message="Alert data could not be loaded." /> : rows.length === 0 ? <StateMessage message="No alerts are recorded for this tank." /> : rows.map((alert) => <Pressable key={alert.id} onPress={() => navigation.getParent()?.navigate('AlertDetail', { alertId: alert.id })} style={{ paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 4 }}>
-        <Text style={{ color: alert.severity === 'critical' ? colors.critical : colors.warning, fontWeight: '800' }}>{alertTitle(alert)} · {alert.status}</Text>
+      {query.isLoading ? <StateMessage message="Loading alerts…" loading /> : query.isError ? <StateMessage message="Alert data could not be loaded." /> : rows.length === 0 ? <StateMessage message="No alerts are recorded for this tank." /> : rows.map((alert) => {
+        const StatusIcon = alert.severity === 'critical' ? AlertCircle : AlertTriangle;
+        const statusColor = alert.severity === 'critical' ? colors.critical : colors.warning;
+        return <Pressable key={alert.id} onPress={() => navigation.getParent()?.navigate('AlertDetail', { alertId: alert.id })} style={{ minHeight: 64, justifyContent: 'center', paddingVertical: uiScale.spacing[3], borderBottomWidth: 1, borderBottomColor: colors.border, gap: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[1] }}><StatusIcon size={16} color={statusColor} /><Text style={{ color: statusColor, fontWeight: '800' }}>{alertTitle(alert)} · {alert.status}</Text></View>
         <Text style={{ color: colors.ink }}>{alert.value} · threshold {alert.threshold}</Text>
         <Text style={{ color: colors.muted }}>{formatManilaDateTime(alert.createdAt)} PHT · tap for details</Text>
-      </Pressable>)}
+      </Pressable>;
+      })}
     </Card>
   </Page>;
 }
@@ -181,7 +190,7 @@ export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
   });
   const alert = alertQuery.data;
   return <Page>
-    <Title detail="Acknowledge, investigate, and record resolution">Alert detail</Title>
+    <Title detail="Review the alert and record verified actions">Alert detail</Title>
     {alertQuery.isLoading ? <StateMessage message="Loading alert…" loading /> : alertQuery.isError ? <StateMessage message="Could not load alert details." /> : !alert ? <StateMessage message="Alert was not found." /> : <Card title={alertTitle(alert)}>
       <DataRow label="Tank" value={alert.tankId} />
       <DataRow label="Value" value={`${alert.value}`} detail={`Threshold: ${alert.threshold}`} />
@@ -198,15 +207,16 @@ export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
 
 export function TrendsScreen() {
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
   const { tankId } = useTankSelection();
   const from = useMemo(() => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), []);
   const readings = useQuery({ queryKey: ['mobile-trends', tankId], queryFn: () => api.listReadings({ tankId, from }), enabled: Boolean(tankId) });
-  const data = [...(readings.data ?? [])].sort((a, b) => a.timestamp.localeCompare(b.timestamp)).map((row, index) => ({ value: row.doMgL, label: index % 2 === 0 ? new Date(row.timestamp).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '' }));
+  const data = [...(readings.data ?? [])].sort((a, b) => a.timestamp.localeCompare(b.timestamp)).map((row, index) => ({ value: row.doMgL, label: index % 2 === 0 ? new Date(row.timestamp).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false }) : '' }));
   return <Page>
-    <Title detail="Latest 24 hours · 3-hour sampling cadence">Trends</Title>
+    <Title detail="24 hours · 3-hour intervals">Trends</Title>
     <TankPicker />
     {readings.isLoading ? <StateMessage message="Loading trend data…" loading /> : readings.isError ? <StateMessage message="Could not load trends." /> : data.length < 2 ? <StateMessage message="Not enough readings to draw a trend." /> : <Card title="Dissolved oxygen · mg/L">
-      <ScrollView horizontal showsHorizontalScrollIndicator><LineChart data={data} width={300} height={180} spacing={50} color={colors.teal} thickness={3} dataPointsColor={colors.teal} yAxisTextStyle={{ color: colors.muted }} xAxisLabelTextStyle={{ color: colors.muted, fontSize: 10 }} /></ScrollView>
+      <LineChart data={data} width={Math.min(width - 64, 640)} height={240} spacing={Math.min(50, (width - 100) / Math.max(data.length - 1, 1))} color={colors.teal} thickness={3} dataPointsColor={colors.teal} yAxisTextStyle={{ color: colors.muted, fontSize: 12 }} xAxisLabelTextStyle={{ color: colors.muted, fontSize: 12 }} />
       <Text style={{ color: colors.muted }}>Trend view is informational; review each point alongside configured thresholds and alert history.</Text>
     </Card>}
   </Page>;
@@ -218,7 +228,7 @@ export function HistoryScreen() {
   const readings = useQuery({ queryKey: ['mobile-history', tankId], queryFn: () => api.listReadings({ tankId }), enabled: Boolean(tankId) });
   const rows = [...(readings.data ?? [])].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 100);
   return <Page>
-    <Title detail="Recent sensor readings, shown in Asia/Manila time">Reading history</Title>
+    <Title detail="Recent readings · Asia/Manila time">Reading history</Title>
     <TankPicker />
     <Card title="Latest readings">
       {readings.isLoading ? <StateMessage message="Loading history…" loading /> : readings.isError ? <StateMessage message="Could not load reading history." /> : rows.length === 0 ? <StateMessage message="No history is available." /> : rows.map((reading) => <View key={reading.id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 3 }}>
@@ -253,7 +263,7 @@ export function ManagerReviewScreen() {
   const tolerances = useQuery({ queryKey: ['validation-tolerances'], queryFn: () => api.getValidationTolerances(), enabled: allowed });
   if (!allowed) return <Page><StateMessage message="You do not have access to validation." /></Page>;
   return <Page>
-    <Title detail="Compare sensor averages with reference measurements">Manager review</Title>
+    <Title detail="Compare sensor averages with reference readings">Manager review</Title>
     {rows.isLoading || tolerances.isLoading ? <StateMessage message="Loading validation…" loading /> :
       rows.isError || tolerances.isError ? <Card><StateMessage message={`Could not load validation: ${(rows.error ?? tolerances.error)?.message ?? 'Unknown error'}`} /><Button label="Retry" secondary onPress={() => { void rows.refetch(); void tolerances.refetch(); }} /></Card> :
       !rows.data?.length || !tolerances.data ? <StateMessage message="No validation comparisons are available." /> :
@@ -302,7 +312,7 @@ export function AdminReviewScreen({ navigation }: Props<'Review'>) {
             <Text style={{ color: colors.ink }}>Choose an approval role:</Text>
             <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {(['operator', 'manager', 'admin'] as const).map((role) => <Pressable key={role} accessibilityRole="radio" accessibilityState={{ checked: selectedRoles[account.id] === role }} onPress={() => setSelectedRoles((current) => ({ ...current, [account.id]: role }))}
-                style={{ padding: 10, borderWidth: 1, borderRadius: 10, borderColor: selectedRoles[account.id] === role ? colors.teal : colors.border, backgroundColor: selectedRoles[account.id] === role ? colors.selected : colors.surface }}>
+                style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: uiScale.spacing[3], borderWidth: 1, borderRadius: uiScale.radius.control, borderColor: selectedRoles[account.id] === role ? colors.teal : colors.border, backgroundColor: selectedRoles[account.id] === role ? colors.selected : colors.surface }}>
                 <Text style={{ color: colors.ink }}>{role[0].toUpperCase() + role.slice(1)}</Text>
               </Pressable>)}
             </View>
@@ -395,14 +405,14 @@ const themeOptions: { value: ThemeChoice; label: string; hint: string }[] = [
 export function AppearanceScreen() {
   const { choice, setChoice, colors, error } = useTheme();
   return <Page>
-    <Title detail="Choose how HydroSense looks on this device">Appearance</Title>
+    <Title detail="Set appearance preferences">Appearance</Title>
     <Card title="Theme">
       {themeOptions.map((option) => <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: choice === option.value }} onPress={() => void setChoice(option.value)}
         style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, backgroundColor: choice === option.value ? colors.selected : colors.surface, borderWidth: 1, borderColor: choice === option.value ? colors.teal : colors.border }}>
         <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: choice === option.value ? colors.teal : colors.muted, alignItems: 'center', justifyContent: 'center' }}>
           {choice === option.value && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.teal }} />}
         </View>
-        <View style={{ flex: 1, gap: 3 }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{option.label}</Text><Text style={{ color: colors.muted, fontSize: 13 }}>{option.hint}</Text></View>
+        <View style={{ flex: 1, gap: uiScale.spacing[1] }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{option.label}</Text><Text style={{ color: colors.muted, fontSize: 14 }}>{option.hint}</Text></View>
       </Pressable>)}
       {error && <Text accessibilityRole="alert" style={{ color: colors.critical }}>{error}</Text>}
     </Card>
@@ -432,7 +442,7 @@ export function CalibrationScreen() {
     },
   });
   return <Page>
-    <Title detail="Record pH and dissolved-oxygen instrument checks">Calibration helper</Title>
+    <Title detail="Log pH and dissolved-oxygen checks">Calibration helper</Title>
     <TankPicker />
     <Card title="Calibration record">
       <View style={{ flexDirection: 'row', gap: 8 }}><Button label="pH" secondary={parameter !== 'ph'} onPress={() => setParameter('ph')} /><Button label="Dissolved oxygen" secondary={parameter !== 'do'} onPress={() => setParameter('do')} /></View>
@@ -523,7 +533,7 @@ export function ExportScreen() {
     }
   }
   return <Page>
-    <Title detail="Share sensor readings for hatchery records">Export</Title>
+    <Title detail="Export readings for hatchery records">Export</Title>
     <TankPicker />
     <Card title="CSV export">
       {readings.isLoading || alerts.isLoading ? <StateMessage message="Preparing export…" loading /> : readings.isError ? <StateMessage message="Could not load readings." /> : <>

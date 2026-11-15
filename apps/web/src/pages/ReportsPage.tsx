@@ -124,7 +124,7 @@ export default function ReportsPage() {
 
   return (
     <div className="stack">
-      <PageHeading title="Export reports" description="Build a structured hatchery report, preview it, print to PDF, or export individual datasets as CSV." />
+      <PageHeading title="Export reports" description="Build and preview reports, print to PDF, or export datasets as CSV." />
       <StaleQueryState updatedAt={dataQuery.dataUpdatedAt} />
       <section className="card stack">
         <div className="form-grid">
@@ -172,7 +172,7 @@ export default function ReportsPage() {
           <p>Prepared by {model.generatedBy.name} ({model.generatedBy.role}) · generated {formatManilaDateTime(model.generatedAt)} PHT</p>
           {sections.includes('summary') && <p>{model.summary}</p>}
           {sections.includes('statistics') && <div className="table-wrap"><table><thead><tr><th>Parameter</th><th>Min</th><th>Max</th><th>Mean</th><th>Std dev</th><th>In range</th><th>Excursions</th><th>Longest (h)</th></tr></thead><tbody>
-            {model.statistics.map((row) => <tr key={row.parameter}><td>{row.parameter}</td><td>{row.min?.toFixed(2) ?? '—'}</td><td>{row.max?.toFixed(2) ?? '—'}</td><td>{row.mean?.toFixed(2) ?? '—'}</td><td>{row.standardDeviation?.toFixed(2) ?? '—'}</td><td>{row.percentInRange?.toFixed(1) ?? '—'}%</td><td>{row.excursions}</td><td>{row.longestExcursionHours.toFixed(1)}</td></tr>)}
+            {model.statistics.map((row) => <tr key={row.parameter}><td>{row.parameter}</td><td className="table-numeric">{row.min?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.max?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.mean?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.standardDeviation?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.percentInRange?.toFixed(1) ?? '—'}%</td><td className="table-numeric">{row.excursions}</td><td className="table-numeric">{row.longestExcursionHours.toFixed(1)}</td></tr>)}
           </tbody></table></div>}
           {sections.includes('alerts') && <p>Alerts: {model.alertCounts.critical} critical, {model.alertCounts.warning} warning · {model.alertCounts.open} open, {model.alertCounts.acknowledged} acknowledged, {model.alertCounts.resolved} resolved.</p>}
           {sections.includes('data-quality') && <p>Expected readings: {model.dataQuality.expectedReadings} · Received: {model.dataQuality.receivedReadings} ({model.dataQuality.receivedPercent.toFixed(1)}%).</p>}

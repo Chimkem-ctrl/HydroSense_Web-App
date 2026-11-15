@@ -7,7 +7,7 @@ import '../../styles/account-settings.css';
 export default function AccountSettingsPage() {
   return (
     <div className="stack settings-page">
-      <PageHeading title="Account settings" description="Manage profile, security, sessions, and connected hardware." />
+      <PageHeading title="Account settings" description="Manage your profile, security, sessions, and device connections." />
       <div className="settings-grid">
         <ProfileDetailsCard />
         <PrivacySecurityCard />

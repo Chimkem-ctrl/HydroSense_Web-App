@@ -22,7 +22,7 @@ export default function ProfilePage() {
     : 'HydroSense';
   return (
     <div className="stack profile-page">
-      <PageHeading title="My profile" description="Your account, role, hatchery assignment and alert preferences." />
+      <PageHeading title="My profile" description="View your account, role, hatchery, and alert preferences." />
       <div className="tabs" role="tablist" aria-label="Profile sections">
         <button type="button" role="tab" className="tab" aria-selected={tab === 'details'} onClick={() => selectTab('details')}>Details</button>
         <button type="button" role="tab" className="tab" aria-selected={tab === 'alerts'} onClick={() => selectTab('alerts')}>Alert preferences</button>

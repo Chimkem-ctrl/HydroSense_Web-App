@@ -81,16 +81,16 @@ export default function AlertsPage() {
   }
 
   return (
-    <div className="stack">
-      <PageHeading title="Alerts center" description="Review open alerts, record acknowledgement notes and view response history." />
+    <div className="stack alerts-screen">
+      <PageHeading title="Alerts center" description="Review alerts, record notes, and check response history." />
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
       <div className="tabs" role="tablist" aria-label="Alert status">
         {tabs.map((item) => <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} className="tab" onClick={() => setTab(item.key)}>{item.label} ({(query.data ?? []).filter((alert) => alert.status === item.key).length})</button>)}
       </div>
       {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : items.length === 0 ? <EmptyState>{`No ${tab} alerts for the selected tank.`}</EmptyState> : (
-        <section className="stack">
+        <section className="alerts-list">
           {items.map((alert) => (
-            <article className="card" key={alert.id}>
+            <article className="card alert-item" key={alert.id}>
               <div className="inline" style={{ justifyContent: 'space-between' }}>
                 <h2 className="card-title">{alert.parameter} · {alert.value}</h2>
                 <StatusBadge level={alert.severity === 'critical' ? 'critical' : 'warning'} label={alert.severity} />
