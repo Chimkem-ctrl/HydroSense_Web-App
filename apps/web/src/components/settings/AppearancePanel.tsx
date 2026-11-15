@@ -10,7 +10,8 @@ const OPTIONS: { value: ThemeChoice; label: string; hint: string }[] = [
 export function AppearancePanel() {
   const { choice, setChoice } = useTheme();
   return (
-    <section className="card profile-preferences">
+    <section id="appearance" className="card profile-preferences" aria-labelledby="appearance-title">
+      <div className="profile-panel-heading"><h2 id="appearance-title">Appearance</h2></div>
       <fieldset className="profile-theme">
         <legend>Theme</legend>
         <p className="profile-theme-description">Choose how HydroSense appears on this device.</p>

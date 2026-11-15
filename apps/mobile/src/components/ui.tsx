@@ -1,6 +1,7 @@
 import { createContext, useContext, useRef } from 'react';
 import type { ComponentProps, ComponentRef, PropsWithChildren, ReactNode, RefObject } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,7 +27,7 @@ function glassBlur(blurTarget: RefObject<ComponentRef<typeof View> | null> | nul
     : <BlurView blurTarget={blurTarget ?? undefined} blurMethod="dimezisBlurView" tint={Platform.OS === 'ios' ? 'systemUltraThinMaterial' : 'default'} intensity={Platform.OS === 'android' ? androidBlurIntensity : 25} blurReductionFactor={androidBlurReduction} style={[StyleSheet.absoluteFill, styles.cardBlur]} pointerEvents="none" />;
 }
 
-export function Page({ children, auth = false }: PropsWithChildren<{ auth?: boolean }>) {
+export function Page({ children, auth = false, bottomPadding }: PropsWithChildren<{ auth?: boolean; bottomPadding?: number }>) {
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
   const authBlurTarget = useRef<ComponentRef<typeof View> | null>(null);
@@ -34,7 +35,7 @@ export function Page({ children, auth = false }: PropsWithChildren<{ auth?: bool
   const content = <KeyboardAvoidingView style={styles.background} behavior={auth && Platform.OS === 'ios' ? 'padding' : undefined}>
       <SafeAreaView style={styles.safe} edges={auth ? ['top', 'left', 'right', 'bottom'] : ['left', 'right', 'bottom']}>
         <ScrollView style={styles.background} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, auth && styles.authScroll]}>
-          <View style={[styles.page, { paddingHorizontal: width >= 600 ? uiScale.spacing[6] : uiScale.spacing[4] }, auth && styles.authPage]}>{children}</View>
+          <View style={[styles.page, { paddingHorizontal: width >= 600 ? uiScale.spacing[6] : uiScale.spacing[4] }, bottomPadding !== undefined && { paddingBottom: bottomPadding }, auth && styles.authPage]}>{children}</View>
         </ScrollView>
       </SafeAreaView>
     </KeyboardAvoidingView>;
@@ -101,19 +102,48 @@ function DialogBlur({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof 
   return glassBlur(blurTarget, createStyles(colors));
 }
 
-export function Button({ label, onPress, disabled, secondary }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
+export function Button({ label, onPress, disabled, secondary, style }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean; style?: StyleProp<ViewStyle> }) {
   const { colors, reduceMotion } = useTheme();
   const styles = createStyles(colors);
-  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, secondary && styles.secondaryButton, disabled && styles.disabled, pressed && !reduceMotion && styles.pressed]}>
+  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, secondary && styles.secondaryButton, disabled && styles.disabled, pressed && !reduceMotion && styles.pressed, style]}>
     {secondary ? <Text style={styles.secondaryText}>{label}</Text> :
       <LinearGradient colors={['#1d4ed8', '#0369a1']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.buttonGradient}><Text style={styles.buttonText}>{label}</Text></LinearGradient>}
   </Pressable>;
 }
 
-export function StateMessage({ message, loading }: { message: string; loading?: boolean }) {
+export function FilterField({ label, value, onChangeText, placeholder }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  return <View style={styles.state}>{loading ? <ActivityIndicator color={colors.teal} /> : null}<Text style={[styles.muted, styles.centerText]}>{message}</Text></View>;
+  return <View style={styles.filterField}>
+    <Text style={styles.filterLabel}>{label}</Text>
+    <TextInput accessibilityLabel={label} style={styles.filterInput} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} autoCapitalize="none" />
+  </View>;
+}
+
+export function Chip({ label, selected, onPress }: { label: string; selected?: boolean; onPress?: () => void }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+  const content = <Text style={[styles.chipText, selected && styles.chipSelectedText]}>{label}</Text>;
+  return onPress
+    ? <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.chip, styles.selectableChip, selected && styles.chipSelected]}>{content}</Pressable>
+    : <View style={styles.chip}>{content}</View>;
+}
+
+export const createRecordStyles = (colors: Palette) => StyleSheet.create({
+  row: { gap: uiScale.spacing[1], paddingVertical: uiScale.spacing[3], borderBottomWidth: 1, borderBottomColor: colors.border },
+  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] },
+  title: { color: colors.ink, fontWeight: '700', flexShrink: 1 },
+  caption: { color: colors.muted, fontSize: uiScale.type.caption, flexShrink: 1 },
+  body: { color: colors.ink },
+  metrics: { flexDirection: 'row', gap: uiScale.spacing[2], marginTop: uiScale.spacing[1] },
+  metric: { flex: 1, minWidth: 0, gap: uiScale.spacing[1] },
+  value: { color: colors.ink, fontWeight: '700', fontVariant: ['tabular-nums'] },
+});
+
+export function StateMessage({ message, loading, spacious = false }: { message: string; loading?: boolean; spacious?: boolean }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+  return <View style={[styles.state, spacious && styles.spaciousState]}>{loading ? <ActivityIndicator color={colors.teal} /> : null}<Text style={[styles.muted, styles.centerText]}>{message}</Text></View>;
 }
 
 export function DataRow({ label, value, detail }: { label: string; value: string; detail?: string }) {
@@ -156,13 +186,22 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   cardHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   cardTitle: { color: colors.ink, fontSize: uiScale.type.section, fontWeight: '700', flexShrink: 1 },
   button: { minHeight: 48, borderRadius: uiScale.radius.pill, overflow: 'hidden', justifyContent: 'center' },
-  buttonGradient: { minHeight: 48, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
+  buttonGradient: { flexGrow: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
   buttonText: { color: 'white', fontWeight: '700', fontSize: 14, textAlign: 'center' },
   secondaryButton: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, paddingVertical: 10 },
   secondaryText: { color: colors.ink, fontWeight: '700', fontSize: 14, textAlign: 'center' },
+  filterField: { flex: 1, minWidth: 0, gap: 6 },
+  filterLabel: { color: colors.muted, fontSize: uiScale.type.caption },
+  filterInput: { minHeight: 44, minWidth: 0, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3], paddingVertical: uiScale.spacing[2], backgroundColor: colors.surface, color: colors.ink, fontSize: 14 },
+  chip: { alignSelf: 'flex-start', flexShrink: 1, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.pill, paddingHorizontal: uiScale.spacing[3], paddingVertical: uiScale.spacing[1], backgroundColor: colors.surface },
+  selectableChip: { minHeight: 44, justifyContent: 'center' },
+  chipSelected: { borderColor: colors.teal, backgroundColor: colors.selected },
+  chipText: { color: colors.ink, fontSize: uiScale.type.caption, fontWeight: '600' },
+  chipSelectedText: { color: colors.teal },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
   state: { padding: 18, alignItems: 'center', gap: 10 },
+  spaciousState: { padding: uiScale.spacing[5] },
   dataRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: uiScale.spacing[3], gap: uiScale.spacing[2] },
   dataLabel: { color: colors.ink, fontWeight: '700', fontSize: 14 },
   dataValue: { color: colors.ink, fontWeight: '700', fontSize: uiScale.type.body, flexShrink: 1, textAlign: 'right', fontVariant: ['tabular-nums'] },

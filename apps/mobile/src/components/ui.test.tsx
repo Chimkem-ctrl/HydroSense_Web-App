@@ -17,6 +17,7 @@ vi.mock('react-native', () => ({
   ScrollView: 'ScrollView',
   StyleSheet: { create: (styles: object) => styles, absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } },
   Text: 'Text',
+  TextInput: 'TextInput',
   View: 'View',
   useWindowDimensions: () => ({ width: 440 }),
 }));
@@ -29,9 +30,9 @@ vi.mock('../theme', () => ({
   useTheme: () => ({ colors: { canvas: '#eaf3ff', surface: '#ffffff', backgroundVia: '#dfeafe', backgroundTo: '#f3eefe' }, reduceTransparency: themeState.reduceTransparency }),
 }));
 
-import { BlurTargetContext, Card, GlassDialog, Page } from './ui';
+import { BlurTargetContext, Card, Chip, FilterField, GlassDialog, Page } from './ui';
 
-type ElementProps = { children?: ReactNode; style?: unknown; contentContainerStyle?: unknown; intensity?: number; blurReductionFactor?: number; tint?: string; ref?: unknown };
+type ElementProps = { children?: ReactNode; style?: unknown; contentContainerStyle?: unknown; intensity?: number; blurReductionFactor?: number; tint?: string; ref?: unknown; accessibilityLabel?: string; accessibilityState?: unknown; onChangeText?: (value: string) => void; onPress?: () => void };
 
 function findElement(node: ReactNode, type: string): ReactElement<ElementProps> | undefined {
   if (!isValidElement<ElementProps>(node)) return undefined;
@@ -47,6 +48,25 @@ function flattenStyle(style: unknown): Record<string, unknown> {
   if (Array.isArray(style)) return Object.assign({}, ...style.map(flattenStyle));
   return style && typeof style === 'object' ? { ...style } : {};
 }
+
+describe('log filter controls', () => {
+  it('labels the editable field and forwards changes', () => {
+    const onChangeText = vi.fn();
+    const input = findElement(FilterField({ label: 'From date (PHT)', value: '', onChangeText }), 'TextInput');
+    expect(input?.props.accessibilityLabel).toBe('From date (PHT)');
+    input?.props.onChangeText?.('2026-01-01');
+    expect(onChangeText).toHaveBeenCalledWith('2026-01-01');
+  });
+
+  it('exposes chip selection and forwards presses', () => {
+    const onPress = vi.fn();
+    const chip = findElement(Chip({ label: 'Temperature', selected: true, onPress }), 'Pressable');
+    expect(chip?.props.accessibilityState).toEqual({ checked: true });
+    chip?.props.onPress?.();
+    expect(onPress).toHaveBeenCalledOnce();
+    expect(findElement(Chip({ label: 'Environment' }), 'Pressable')).toBeUndefined();
+  });
+});
 
 describe('page background layers', () => {
   it('keeps authenticated page wrappers transparent and the scroll content full-height', () => {

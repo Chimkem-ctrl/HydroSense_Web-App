@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { liveClient } from '../../app/api';
-import { NAV_ITEMS, tierConfig } from '../../app/config';
+import { NAV_ITEMS } from '../../app/config';
 import { useRole } from '../../app/auth/RoleContext';
 import { signOut } from '../../services/authService';
 import { useSelectedTank } from '../../app/tank/TankContext';
@@ -43,16 +43,12 @@ const icons: Record<string, LucideIcon> = {
   '/calibration': FlaskConical,
   '/reports': FileDown,
   '/validation': Gauge,
+  '/settings/thresholds': Settings,
   '/settings': Settings,
   '/admin/users': Users,
   '/admin/logs': ClipboardList,
   '/profile': UserRound,
 };
-
-const soonItems = [
-  { path: '/fleet', label: 'Multi-site fleet', icon: Waves },
-  { path: '/batch', label: 'Batch tracking', icon: Database },
-];
 
 export function AppShell() {
   const { role, userName } = useRole();
@@ -83,7 +79,7 @@ export function AppShell() {
   useEffect(() => {
     setMenuOpen(false);
     setAccountMenuOpen(false);
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
 
   useEffect(() => {
     if (!accountMenuOpen) return undefined;
@@ -127,12 +123,6 @@ export function AppShell() {
               })}
             </section>
           ))}
-          {(role === 'admin' || role === 'manager') && (tierConfig.fleetView || tierConfig.batchTracking) && (
-            <section aria-label="Enterprise features">
-              <p className="nav-group">Enterprise · coming soon</p>
-              {soonItems.filter(({ path }) => path === '/fleet' ? tierConfig.fleetView : tierConfig.batchTracking).map(({ path, label, icon: Icon }) => <NavLink key={path} to={path} className="nav-link"><Icon size={18} /><span>{label}</span></NavLink>)}
-            </section>
-          )}
         </nav>
         <div className="sidebar-footer">
           <span className="small muted sidebar-role">Pilot workspace · {role.toUpperCase()}</span>
@@ -167,8 +157,8 @@ export function AppShell() {
                 </button>              {accountMenuOpen && <div className="account-menu-popover" role="menu" aria-label="Account options">
                 
                 <Link to="/profile" role="menuitem"><UserRound size={15} />My profile</Link>
-                <Link to="/profile?tab=alerts" role="menuitem"><Bell size={15} />Alert preferences</Link>
-                <Link to="/profile?tab=appearance" role="menuitem"><Moon size={15} />Appearance</Link>
+                <Link to="/profile#alerts" role="menuitem"><Bell size={15} />Alert preferences</Link>
+                <Link to="/profile#appearance" role="menuitem"><Moon size={15} />Appearance</Link>
                 <Link to="/signin" role="menuitem" onClick={signOut}><LogOut size={15} />Sign out</Link>
               </div>}
             </div>

@@ -303,3 +303,13 @@
 @media (prefers-reduced-motion: reduce) {
   .glass-shell *, .glass-shell *::before { transition-duration: 0.01ms !important; }
 }
+
+[data-theme='light'] .glass-shell .page-view {
+  --text-primary: #050d1c;
+  --text-secondary: #050d1c;
+  --text-muted: #050d1c;
+  --role-muted: #050d1c;
+  --text: #050d1c;
+  --muted: #050d1c;
+  color: var(--text-primary);
+}

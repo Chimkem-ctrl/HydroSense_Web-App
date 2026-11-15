@@ -19,9 +19,23 @@ const routes = [
   ['/admin/users', 'Users & roles'],
   ['/admin/logs', 'Audit & system logs'],
   ['/profile', 'My profile'],
-  ['/fleet', 'Multi-site fleet view · Coming soon'],
-  ['/batch', 'Batch tracking · Coming soon'],
 ] as const;
+
+function signInAs(role: 'operator' | 'manager' | 'admin', phone?: string) {
+  const user = {
+    id: `test-${role}`,
+    firstName: 'Test',
+    lastName: role,
+    email: `${role}@example.com`,
+    role,
+    requestedRole: role === 'admin' ? null : role,
+    status: 'approved',
+    phone,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+  window.localStorage.setItem('hydrosense.auth.accounts.v2', JSON.stringify([{ user, passwordSalt: 'salt', passwordHash: 'hash' }]));
+  window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
+}
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
@@ -108,70 +122,113 @@ describe('themed dashboard routes', () => {
     expect(screen.getByRole('heading', { name: 'Live monitor', level: 1 })).toBeInTheDocument();
   });
 
-  it('keeps account settings controls available in their sections', async () => {
-    window.history.replaceState({}, '', '/settings');
-    render(<App />);
-    const profile = await screen.findByRole('region', { name: 'Account profile' });
-    const security = screen.getByRole('region', { name: 'Privacy & Security' });
-    const devices = screen.getByRole('region', { name: 'Connected Devices' });
-    const criticalAlerts = within(profile).getByRole('switch', { name: 'Critical Alerts' });
-    expect(criticalAlerts).toBeChecked();
-    fireEvent.click(criticalAlerts);
-    expect(criticalAlerts).not.toBeChecked();
-    expect(within(devices).getByLabelText('Tank ID')).toBeInTheDocument();
-    expect(within(devices).getByLabelText('Wi-Fi password')).toHaveAttribute('type', 'password');
-    expect(within(security).getByRole('heading', { name: 'Maintenance Actions' })).toBeInTheDocument();
-    expect(within(profile).queryByRole('heading', { name: 'Maintenance Actions' })).not.toBeInTheDocument();
-    expect(within(security).queryByRole('heading', { name: 'System Log & Data Access' })).not.toBeInTheDocument();
-    expect(within(security).queryByRole('switch', { name: 'Share Diagnostic Logs' })).not.toBeInTheDocument();
-    expect(within(security).queryByRole('button', { name: /Account Audit Trail/ })).not.toBeInTheDocument();
-    fireEvent.click(within(security).getByRole('button', { name: 'Request Calibrate Sensors' }));
-    expect(within(security).getByRole('status')).toHaveTextContent('Sensor calibration requested.');
-    fireEvent.click(within(security).getByRole('button', { name: 'Request Reboot Hardware Node' }));
-    expect(within(security).getByRole('status')).toHaveTextContent('Hardware node reboot requested.');
-  });
-
-  it.each(['operator', 'manager'] as const)('shows maintenance instead of system log settings for %s', async (role) => {
-    const user = {
-      id: `test-${role}`,
-      firstName: 'Test',
-      lastName: role,
-      email: `${role}@example.com`,
-      role,
-      requestedRole: role,
-      status: 'approved',
-      createdAt: '2026-01-01T00:00:00.000Z',
-    };
-    window.localStorage.setItem('hydrosense.auth.accounts.v2', JSON.stringify([{ user, passwordSalt: 'salt', passwordHash: 'hash' }]));
-    window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
-    window.history.replaceState({}, '', '/settings');
-    render(<App />);
-    const profile = await screen.findByRole('region', { name: 'Account profile' });
-    const security = screen.getByRole('region', { name: 'Privacy & Security' });
-    expect(within(security).getByRole('heading', { name: 'Maintenance Actions' })).toBeInTheDocument();
-    expect(within(profile).queryByRole('heading', { name: 'Maintenance Actions' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'System Log & Data Access' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: 'Share Diagnostic Logs' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Account Audit Trail/ })).not.toBeInTheDocument();
-  });
-
-  it('groups profile details and keeps linked preference tabs functional', async () => {
-    window.history.replaceState({}, '', '/profile?tab=alerts');
-    render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Alert preferences', level: 2 })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Alert preferences' })).toHaveAttribute('aria-selected', 'true');
-    const email = screen.getByRole('checkbox', { name: 'Email alerts' });
-    expect(email).toBeChecked();
-    fireEvent.click(email);
-    expect(email).not.toBeChecked();
-    fireEvent.click(screen.getByRole('tab', { name: 'Appearance' }));
-    fireEvent.click(screen.getByRole('radio', { name: /Light/ }));
-    expect(document.documentElement).toHaveAttribute('data-theme', 'light');
-    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
-    for (const name of ['Contact details', 'Role & assignment', 'Emergency contact', 'Account']) {
+  it.each(['operator', 'manager', 'admin'] as const)('shows the five profile cards and unavailable actions for %s', async (role) => {
+    signInAs(role, '+639175550100');
+    window.history.replaceState({}, '', '/profile');
+    const { container } = render(<App />);
+    await screen.findByRole('heading', { name: 'My profile', level: 1 });
+    expect(Array.from(container.querySelectorAll('.profile-layout > section')).map((section) => section.id))
+      .toEqual(['profile', 'alerts', 'appearance', 'security', 'device-maintenance']);
+    for (const name of ['Profile', 'Alert notifications', 'Appearance', 'Security', 'Device maintenance']) {
       expect(screen.getByRole('region', { name })).toBeInTheDocument();
     }
+    expect(screen.getByRole('switch', { name: 'SMS alerts' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'Email alerts' })).toBeDisabled();
+    expect(screen.getByText('Valid for SMS')).toBeInTheDocument();
+    expect(screen.getByText(/Email on file:.*@example.com/)).toBeInTheDocument();
+    for (const name of ['Change password', 'Sign out other devices']) expect(screen.getByRole('button', { name })).toBeDisabled();
+    if (role === 'operator') {
+      expect(screen.getByRole('button', { name: 'Request calibration' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Request reboot' })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Reboot device' })).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByRole('button', { name: 'Reboot device' })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Request calibration' })).not.toBeInTheDocument();
+    }
+    if (role === 'admin') expect(screen.queryByRole('button', { name: 'Request a change' })).not.toBeInTheDocument();
+    else expect(screen.getByRole('button', { name: 'Request a change' })).toBeDisabled();
+    const maintenance = screen.getByRole('region', { name: 'Device maintenance' });
+    expect(await within(maintenance).findByText('Larval Tank A')).toBeInTheDocument();
+    expect(within(maintenance).getByText('HS-MF-001')).toBeInTheDocument();
+    expect(screen.queryByText('Active Sessions')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: /Light/ }));
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light');
+  });
+
+  it.each(['not a phone', ''] as const)('marks invalid or missing SMS numbers', async (phone) => {
+    signInAs('operator', phone);
+    window.history.replaceState({}, '', '/profile');
+    render(<App />);
+    expect(await screen.findByText('Not valid for SMS')).toBeInTheDocument();
+  });
+
+  it('updates device details when the selected tank changes', async () => {
+    window.history.replaceState({}, '', '/profile');
+    render(<App />);
+    const maintenance = await screen.findByRole('region', { name: 'Device maintenance' });
+    await within(maintenance).findByText('HS-MF-001');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Select tank' }), { target: { value: 'tank-b' } });
+    expect(within(maintenance).getByText('Larval Tank B')).toBeInTheDocument();
+    expect(within(maintenance).getByText('HS-MF-002')).toBeInTheDocument();
+  });
+
+  it.each(['/settings', '/settings/notifications'])('redirects %s to profile', async (path) => {
+    window.history.replaceState({}, '', path);
+    render(<App />);
+    await screen.findByRole('heading', { name: 'My profile', level: 1 });
+    expect(window.location.pathname).toBe('/profile');
     expect(window.location.search).toBe('');
+  });
+
+  it.each(['operator', 'manager', 'admin'] as const)('does not expose provisioning for %s on profile or tanks', async (role) => {
+    signInAs(role);
+    window.history.replaceState({}, '', '/profile');
+    render(<App />);
+    await screen.findByRole('heading', { name: 'My profile', level: 1 });
+    expect(screen.queryByLabelText('Tank ID')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Wi-Fi password')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('link', { name: 'Tank overview' }));
+    await screen.findByRole('heading', { name: 'Tank overview', level: 1 });
+    expect(screen.queryByLabelText('Tank ID')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Wi-Fi password')).not.toBeInTheDocument();
+    expect(screen.queryByText('Active Sessions')).not.toBeInTheDocument();
+  });
+
+  it('guards calibration from operators and permits managers', async () => {
+    signInAs('operator');
+    window.history.replaceState({}, '', '/calibration');
+    const rendered = render(<App />);
+    await screen.findByRole('heading', { name: 'Live monitor', level: 1 });
+    expect(window.location.pathname).toBe('/');
+    expect(screen.queryByRole('link', { name: 'Calibration' })).not.toBeInTheDocument();
+    rendered.unmount();
+    queryClient.clear();
+    signInAs('manager');
+    window.history.replaceState({}, '', '/calibration');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Calibration & maintenance', level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Calibration' })).toBeInTheDocument();
+  });
+
+  it('scrolls to profile hash targets on load and account-menu navigation', async () => {
+    const scroll = vi.fn();
+    const previous = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scroll;
+    try {
+      window.history.replaceState({}, '', '/profile#alerts');
+      render(<App />);
+      await screen.findByRole('heading', { name: 'My profile', level: 1 });
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll.mock.instances[0]).toBe(document.getElementById('alerts'));
+      fireEvent.click(screen.getByRole('button', { name: /Account menu for/ }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Appearance' }));
+      expect(window.location.hash).toBe('#appearance');
+      expect(scroll).toHaveBeenCalledTimes(2);
+      expect(scroll.mock.instances[1]).toBe(document.getElementById('appearance'));
+      expect(screen.queryByRole('menuitem', { name: 'Appearance' })).not.toBeInTheDocument();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = previous;
+    }
   });
 
   it('keeps pending review and team role controls accessible', async () => {
@@ -197,7 +254,7 @@ describe('themed dashboard routes', () => {
   it('preserves role updates and account removal confirmation', async () => {
     const updateRole = vi.spyOn(api, 'updateUserRole').mockRejectedValue(new Error('Role update failed'));
     const remove = vi.spyOn(authService, 'removeAccount').mockRejectedValue(new Error('Removal failed'));
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true).mockReturnValue(false);
     window.history.replaceState({}, '', '/admin/users');
     render(<App />);
     const role = await screen.findByRole('combobox', { name: 'Role for Juan Dela Cruz' });
@@ -211,14 +268,20 @@ describe('themed dashboard routes', () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it.each(['/fleet', '/batch'])('places the heading outside the coming-soon card on %s', async (path) => {
+  it.each(['admin', 'manager'] as const)('does not show enterprise features for %s', async (role) => {
+    signInAs(role);
+    window.history.replaceState({}, '', '/');
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Live monitor', level: 1 });
+    expect(screen.queryByRole('region', { name: 'Enterprise features' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Multi-site fleet|Batch tracking/ })).not.toBeInTheDocument();
+  });
+
+  it.each(['/fleet', '/batch'])('redirects removed route %s to the home page', async (path) => {
     window.history.replaceState({}, '', path);
-    const { container } = render(<App />);
-    const heading = await screen.findByRole('heading', { level: 1 });
-    expect(heading.closest('.card')).toBeNull();
-    expect(container.querySelector('.coming-soon-page > .page-heading')).toContainElement(heading);
-    expect(screen.getByRole('heading', { name: 'Not available yet' })).toBeInTheDocument();
-    expect(screen.getByText('No batch or fleet data is displayed until the feature is implemented.')).toBeInTheDocument();
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Live monitor', level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
   });
 
   it('opens the selected activity form without duplicate kind buttons', async () => {

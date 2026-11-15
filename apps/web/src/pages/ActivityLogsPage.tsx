@@ -15,6 +15,7 @@ import { useTanks } from '../app/data/hooks';
 import { PageHeading } from '../components/common/PageHeading';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 import { activityLogCsv, manilaDate } from './activityLogs';
+import { downloadCsv } from '../services/downloadCsv';
 
 type FormKind = Extract<ActivityLogKind, 'OPERATION' | 'ENVIRONMENT'>;
 type ReadingField = 'dissolvedOxygen' | 'temperature' | 'ph' | 'salinity' | 'ammonia';
@@ -44,17 +45,6 @@ function parsedReadings(raw: RawReadings) {
   });
   if (raw.method.trim()) readings.method = raw.method.trim();
   return readings;
-}
-
-function downloadCsv(csv: string, fileName: string) {
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export default function ActivityLogsPage() {
@@ -174,21 +164,21 @@ export default function ActivityLogsPage() {
   }
 
   return (
-    <div className="stack">
+    <div className="stack activity-logs-page">
       <PageHeading
         title="Activity logs"
         description="Log operations, water-quality checks, and environmental events for shift handover."
       />
-      <div className="inline">
+      <div className="inline activity-log-actions">
         <button type="button" className="button" onClick={() => openLog('OPERATION')}>Log operation</button>
         <button type="button" className="button" onClick={() => openLog('ENVIRONMENT')}>Log weather / event</button>
         {canExport && <button type="button" className="button" disabled={!filteredLogs.length} onClick={exportLogs}>Export CSV</button>}
       </div>
       {statusMessage && <p className="small muted" role="status">{statusMessage}</p>}
       <StaleQueryState updatedAt={logs.dataUpdatedAt} />
-      <section className="card stack">
+      <section className="card stack activity-log-records">
         <h2 className="card-title">Activity records</h2>
-        <div className="form-grid filter-row">
+        <div className="form-grid filter-row activity-log-filters">
           <label className="field">Kind
             <select value={kindFilter} onChange={(event) => setKindFilter(event.target.value as ActivityLogKind | 'all')}>
               <option value="all">All kinds</option>
@@ -201,15 +191,15 @@ export default function ActivityLogsPage() {
           <label className="field">To date (PHT)<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
         </div>
         {logs.isLoading ? <LoadingState /> : logs.isError ? <ErrorState error={logs.error} onRetry={() => void logs.refetch()} /> : !filteredLogs.length ? <EmptyState>No activity logs match the selected filters.</EmptyState> : (
-          <div className="table-wrap"><table><thead><tr><th>Time (PHT)</th><th>Kind</th><th>Type</th><th>Tank/scope</th><th>Details</th><th>Operator</th></tr></thead><tbody>
+          <div className="table-wrap activity-log-table-wrap"><table className="activity-log-table"><thead><tr><th>Time (PHT)</th><th>Kind</th><th>Type</th><th>Tank/scope</th><th>Details</th><th>Operator</th></tr></thead><tbody>
             {filteredLogs.map((log) => (
               <tr key={log.id}>
-                <td>{formatManilaDateTime(log.occurredAt)} PHT</td>
-                <td>{log.kind}</td>
-                <td>{log.type}</td>
-                <td>{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId}</td>
-                <td>{log.notes}{log.waterChangePercent !== undefined ? ` · ${log.waterChangePercent}% exchanged` : ''}{log.impact ? ` · Impact: ${log.impact}` : ''}</td>
-                <td>{log.operator}</td>
+                <td data-label="Time (PHT)">{formatManilaDateTime(log.occurredAt)} PHT</td>
+                <td data-label="Kind">{log.kind}</td>
+                <td data-label="Type">{log.type}</td>
+                <td data-label="Tank/scope">{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId}</td>
+                <td data-label="Details">{log.notes}{log.waterChangePercent !== undefined ? ` · ${log.waterChangePercent}% exchanged` : ''}{log.impact ? ` · Impact: ${log.impact}` : ''}</td>
+                <td data-label="Operator">{log.operator}</td>
               </tr>
             ))}
           </tbody></table></div>
@@ -223,7 +213,7 @@ export default function ActivityLogsPage() {
               <h2 id="activity-log-title" className="card-title">{modalKind === 'OPERATION' ? 'Log hatchery operation' : 'Log weather or event'}</h2>
               <p className="small muted">Add an activity record for shift handover.</p>
             </header>
-            <form className="stack" onSubmit={submitLog}>
+            <form className="stack activity-log-form" onSubmit={submitLog}>
               <label className="field">{modalKind === 'OPERATION' ? 'Tank or scope' : 'Event scope'}
                 <select value={scope} onChange={(event) => setScope(event.target.value)}>
                   <option value="hatchery">Entire hatchery</option>

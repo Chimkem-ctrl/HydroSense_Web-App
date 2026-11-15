@@ -55,23 +55,27 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="stack">
+    <div className="stack history-page">
       <PageHeading title="Historical logs" />
-      <section className="card inline" aria-label="History filters">
+      <section className="card inline history-filters" aria-label="History filters">
         <label className="field">From<input type="date" value={from} min={minimumDate} max={to} onChange={(event) => { setFrom(event.target.value); setPage(0); }} /></label>
         <label className="field">To<input type="date" value={to} min={from} max={maximumDate} onChange={(event) => { setTo(event.target.value); setPage(0); }} /></label>
         <label className="field">Parameter<select value={parameter} onChange={(event) => { setParameter(event.target.value as MeasuredParameter | 'all'); setPage(0); }}><option value="all">All measured</option><option value="temperature">Temperature</option><option value="do">Dissolved oxygen</option><option value="ph">pH</option></select></label>
       </section>
       {query.dataUpdatedAt && Date.now() - query.dataUpdatedAt > 3 * 3_600_000 && <StaleState updatedAt={query.dataUpdatedAt} />}
       {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : rows.length === 0 ? <EmptyState>No readings match the selected date range and parameter.</EmptyState> : (
-        <section className="card">
-          <div className="table-wrap">
-            <table>
+        <section className="card history-records">
+          <div className="table-wrap history-table-wrap">
+            <table className="history-table">
               <thead><tr><th>{sortButton('Date / time (PHT)', 'timestamp')}</th><th>Tank</th>{parameter === 'all' ? <><th>{sortButton('Temperature (°C)', 'temperature')}</th><th>{sortButton('DO (mg/L)', 'do')}</th><th>{sortButton('pH', 'ph')}</th></> : <><th>Parameter</th><th>{sortButton(parameter === 'do' ? 'DO (mg/L)' : parameter === 'ph' ? 'pH' : 'Temperature (°C)', parameter)}</th></>}</tr></thead>
-              <tbody>{visible.map((row) => <tr key={row.id}><td>{formatManilaDateTime(row.timestamp)}</td><td>{row.tankId}</td>{parameter === 'all' ? <><td className="table-numeric">{row.temperature.toFixed(2)}</td><td className="table-numeric">{row.doMgL.toFixed(2)}</td><td className="table-numeric">{row.ph.toFixed(2)}</td></> : <><td>{parameter === 'do' ? 'Dissolved oxygen' : parameter === 'ph' ? 'pH' : 'Temperature'}</td><td className="table-numeric">{parameterValue(row, parameter).toFixed(2)}</td></>}</tr>)}</tbody>
+              <tbody>{visible.map((row) => <tr key={row.id}>
+                <td data-label="Date / time (PHT)">{formatManilaDateTime(row.timestamp)}</td>
+                <td data-label="Tank">{row.tankId}</td>
+                {parameter === 'all' ? <><td data-label="Temperature (°C)" className="table-numeric">{row.temperature.toFixed(2)}</td><td data-label="DO (mg/L)" className="table-numeric">{row.doMgL.toFixed(2)}</td><td data-label="pH" className="table-numeric">{row.ph.toFixed(2)}</td></> : <><td data-label="Parameter">{parameter === 'do' ? 'Dissolved oxygen' : parameter === 'ph' ? 'pH' : 'Temperature'}</td><td data-label={parameter === 'do' ? 'DO (mg/L)' : parameter === 'ph' ? 'pH' : 'Temperature (°C)'} className="table-numeric">{parameterValue(row, parameter).toFixed(2)}</td></>}
+              </tr>)}</tbody>
             </table>
           </div>
-          <div className="inline" style={{ justifyContent: 'space-between', marginTop: 14 }}>
+          <div className="inline history-pagination">
             <span className="small muted">Page {page + 1} of {Math.max(1, Math.ceil(rows.length / pageSize))}</span>
             <span className="inline"><button className="button" type="button" disabled={page === 0} onClick={() => setPage((value) => value - 1)}>Previous</button><button className="button" type="button" disabled={(page + 1) * pageSize >= rows.length} onClick={() => setPage((value) => value + 1)}>Next</button></span>
           </div>

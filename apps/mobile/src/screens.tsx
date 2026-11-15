@@ -1,12 +1,14 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Alert, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Portal } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart } from 'react-native-gifted-charts';
 import { AlertCircle, AlertTriangle, CheckCircle2 } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   ACTIVITY_EVENT_TYPES,
@@ -29,9 +31,9 @@ import type { MainTabParamList, RootStackParamList } from './navigation';
 import { DATA_MODE, api, listPendingAccounts, reviewPendingAccount } from './services/client';
 import { canAccess } from './access';
 import { useSession, useTankSelection } from './state';
-import { Button, Card, createFormStyles, DataRow, Page, StateMessage, Title } from './components/ui';
+import { Button, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, Page, StateMessage, Title } from './components/ui';
 import { uiScale, useTheme } from './theme';
-import type { ThemeChoice } from './theme';
+import type { Palette, ThemeChoice } from './theme';
 
 type Props<T extends keyof MainTabParamList> = BottomTabScreenProps<MainTabParamList, T>;
 type RootProps<T extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, T>;
@@ -49,14 +51,35 @@ function Field({ label, value, onChangeText, placeholder, keyboardType = 'defaul
   return <View style={ui.formField}><Text style={ui.label}>{label}</Text><TextInput style={ui.input} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} keyboardType={keyboardType} secureTextEntry={secureTextEntry} autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'} /></View>;
 }
 
-function TankPicker() {
+function TankPicker({ horizontal = false }: { horizontal?: boolean }) {
   const { colors } = useTheme();
   const { tanks, tankId, setTankId, isLoading, error, refetch } = useTankSelection();
   if (isLoading) return <StateMessage message="Loading tanks…" loading />;
   if (error) return <Card><StateMessage message={`Could not load tanks: ${error.message}`} /><Button label="Retry tank list" onPress={refetch} secondary /></Card>;
   if (tanks.length === 0) return <StateMessage message="No tanks are available for this account." />;
-  return <View accessibilityLabel="Select tank" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>{tanks.map((tank) => <Pressable accessibilityRole="button" accessibilityState={{ selected: tank.id === tankId }} key={tank.id} onPress={() => setTankId(tank.id)} style={{ minHeight: 48, justifyContent: 'center', borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: tank.id === tankId ? colors.teal : colors.border, paddingVertical: uiScale.spacing[2], paddingHorizontal: uiScale.spacing[4], backgroundColor: tank.id === tankId ? colors.selected : colors.surface }}><Text style={{ color: tank.id === tankId ? colors.teal : colors.ink, fontWeight: '700', fontSize: uiScale.type.body }}>{tank.name}</Text></Pressable>)}</View>;
+  const chips = tanks.map((tank) => <Pressable accessibilityRole="button" accessibilityState={{ selected: tank.id === tankId }} key={tank.id} onPress={() => setTankId(tank.id)} style={{ minHeight: horizontal ? 44 : 48, justifyContent: 'center', borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: tank.id === tankId ? colors.teal : colors.border, paddingVertical: uiScale.spacing[2], paddingHorizontal: uiScale.spacing[4], backgroundColor: tank.id === tankId ? colors.selected : colors.surface }}><Text style={{ color: tank.id === tankId ? colors.teal : colors.ink, fontWeight: '700', fontSize: uiScale.type.body }}>{tank.name}</Text></Pressable>);
+  return horizontal
+    ? <ScrollView horizontal showsHorizontalScrollIndicator accessibilityLabel="Select tank" contentContainerStyle={{ gap: uiScale.spacing[2], alignItems: 'stretch' }}>{chips}</ScrollView>
+    : <View accessibilityLabel="Select tank" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>{chips}</View>;
 }
+
+const createLogScreenStyles = (colors: Palette) => StyleSheet.create({
+  cards: { gap: uiScale.spacing[4] },
+  filters: { gap: uiScale.spacing[3] },
+  dates: { flexDirection: 'row', gap: uiScale.spacing[3], alignItems: 'flex-start' },
+  label: { color: colors.muted, fontSize: uiScale.type.caption },
+  options: { flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] },
+  actions: { flexDirection: 'row', alignItems: 'stretch', gap: uiScale.spacing[3] },
+  stackedActions: { flexDirection: 'column' },
+  actionButton: { flex: 1 },
+  count: { color: colors.muted, fontSize: uiScale.type.caption },
+  modalOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: uiScale.spacing[4] },
+  modalScroll: { width: '100%', maxHeight: '90%' },
+  modalInput: { position: 'relative', zIndex: 1, minHeight: 44, color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, padding: uiScale.spacing[2] },
+  modalNotes: { minHeight: 96, textAlignVertical: 'top' },
+  modalTitle: { color: colors.ink, fontSize: uiScale.type.section, fontWeight: '700' },
+  modalError: { color: colors.critical },
+});
 
 function ReadingCard({ parameter, reading, threshold }: { parameter: MeasuredParameter; reading: Reading; threshold?: Threshold }) {
   const { colors } = useTheme();
@@ -357,6 +380,10 @@ export function AppearanceScreen() {
 
 export function ActivityLogsScreen() {
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
+  const tabBarHeight = useBottomTabBarHeight();
+  const layout = createLogScreenStyles(colors);
+  const record = createRecordStyles(colors);
   const { tankId } = useTankSelection();
   const { user } = useSession();
   const queryClient = useQueryClient();
@@ -433,42 +460,58 @@ export function ActivityLogsScreen() {
     setFormError('');
     createLog.mutate(entry);
   }
-  return <Page>
+  return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
     <Title detail="Log operations and environmental events">Activity logs</Title>
-    <TankPicker />
-    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-      <Button label="Log operation" onPress={() => openLog('OPERATION')} />
-      <Button label="Log weather / event" onPress={() => openLog('ENVIRONMENT')} />
+    <TankPicker horizontal />
+    <View style={[layout.actions, width < 360 && layout.stackedActions]}>
+      <Button style={layout.actionButton} label="Log operation" onPress={() => openLog('OPERATION')} />
+      <Button style={layout.actionButton} label="Log weather / event" onPress={() => openLog('ENVIRONMENT')} />
     </View>
-    <Card title="Activity records">
-      <View style={{ gap: 8, marginBottom: 12 }}>
-        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>Kind</Text><Text style={{ color: colors.ink }}>{kindFilter === 'all' ? 'All kinds' : kindFilter}</Text></View>
-        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>From date (PHT)</Text><Text style={{ color: colors.ink }}>{dateFrom || 'Any'}</Text></View>
-        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>To date (PHT)</Text><Text style={{ color: colors.ink }}>{dateTo || 'Any'}</Text></View>
-      </View>
-      {logs.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message="Could not load activity logs." /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." /> : filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={{ gap: 4, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(log.occurredAt)} PHT</Text>
-        <Text style={{ color: colors.muted }}>{log.kind} · {log.type}</Text>
-        <Text style={{ color: colors.muted }}>{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId}</Text>
-        <Text style={{ color: colors.ink }}>{log.notes}</Text>
-      </View>)}
-    </Card>
+    <View style={layout.cards}>
+      <Card title="Filters">
+        <View style={layout.filters}>
+          <View style={layout.filters}>
+            <Text style={layout.label}>Kind</Text>
+            <View accessibilityRole="radiogroup" style={layout.options}>
+              {([{ value: 'all', label: 'All kinds' }, { value: 'OPERATION', label: 'Operation' }, { value: 'ENVIRONMENT', label: 'Environment' }, { value: 'ALERT RESOLUTION', label: 'Alert resolution' }] as const).map((option) => <Chip key={option.value} label={option.label} selected={kindFilter === option.value} onPress={() => setKindFilter(option.value)} />)}
+            </View>
+          </View>
+          <View style={layout.dates}>
+            <FilterField label="From date (PHT)" value={dateFrom} onChangeText={setDateFrom} placeholder="YYYY-MM-DD" />
+            <FilterField label="To date (PHT)" value={dateTo} onChangeText={setDateTo} placeholder="YYYY-MM-DD" />
+          </View>
+        </View>
+      </Card>
+      <Card title="Activity records">
+        {logs.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message="Could not load activity logs." /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." spacious /> : <View>{filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={record.row}>
+          <View style={record.top}>
+            <Text style={record.caption}>{formatManilaDateTime(log.occurredAt)} PHT</Text>
+            <Chip label={log.kind.charAt(0).toUpperCase() + log.kind.slice(1).toLowerCase()} />
+          </View>
+          <Text style={record.title}>{log.type}</Text>
+          <Text style={record.caption}>{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId} · {log.operator}</Text>
+          <Text style={record.body} numberOfLines={3}>{log.notes}</Text>
+        </View>)}</View>}
+      </Card>
+    </View>
     {modalKind && (
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-        <View style={{ width: '90%', maxHeight: '80%' }}>
+      <Portal>
+        <View style={layout.modalOverlay}>
+          <ScrollView style={layout.modalScroll} keyboardShouldPersistTaps="handled">
           <Card>
-            <Text style={{ color: colors.ink, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>{modalKind === 'OPERATION' ? 'Log operation' : 'Log weather / event'}</Text>
-            <TextInput placeholder="Tank or scope" style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8, marginBottom: 8 }} placeholderTextColor={colors.muted} value={scope} onChangeText={setScope} />
-            <TextInput placeholder="Type" style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8, marginBottom: 8 }} placeholderTextColor={colors.muted} value={activityType} onChangeText={setActivityType} />
-            <TextInput placeholder="Notes" style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8, marginBottom: 8, minHeight: 60 }} placeholderTextColor={colors.muted} value={notes} onChangeText={setNotes} multiline />
-            {formError && <Text style={{ color: colors.critical, marginBottom: 8 }}>{formError}</Text>}
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Button label="Cancel" secondary onPress={() => setModalKind(null)} />
-              <Button label="Submit" disabled={createLog.isPending} onPress={submitLog} />
+            <Text style={layout.modalTitle}>{modalKind === 'OPERATION' ? 'Log operation' : 'Log weather / event'}</Text>
+            <TextInput placeholder="Tank or scope" style={layout.modalInput} placeholderTextColor={colors.muted} value={scope} onChangeText={setScope} />
+            <TextInput placeholder="Type" style={layout.modalInput} placeholderTextColor={colors.muted} value={activityType} onChangeText={setActivityType} />
+            <TextInput placeholder="Notes" style={[layout.modalInput, layout.modalNotes]} placeholderTextColor={colors.muted} value={notes} onChangeText={setNotes} multiline />
+            {formError ? <Text style={layout.modalError}>{formError}</Text> : null}
+            <View style={[layout.actions, width < 360 && layout.stackedActions]}>
+              <Button style={layout.actionButton} label="Cancel" secondary onPress={() => setModalKind(null)} />
+              <Button style={layout.actionButton} label="Submit" disabled={createLog.isPending} onPress={submitLog} />
             </View>
           </Card>
+          </ScrollView>
         </View>
-      </View>
+      </Portal>
     )}
   </Page>;
 }
@@ -666,6 +709,9 @@ function ManualEntryCard() {
 
 export function HistoryScreen() {
   const { colors } = useTheme();
+  const tabBarHeight = useBottomTabBarHeight();
+  const layout = createLogScreenStyles(colors);
+  const record = createRecordStyles(colors);
   const { tankId } = useTankSelection();
   const [parameter, setParameter] = useState<'all' | 'temperature' | 'do' | 'ph'>('all');
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - 7 * 86_400_000)));
@@ -682,22 +728,39 @@ export function HistoryScreen() {
   });
   const parameterValue = (reading: Reading, param: 'do' | 'temperature' | 'ph') => param === 'do' ? reading.doMgL : reading[param];
   const rows = (query.data ?? []).filter((row) => parameter === 'all' || Number.isFinite(parameterValue(row, parameter)));
-  return <Page>
+  return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
     <Title detail="View readings in date range">History</Title>
-    <TankPicker />
-    <Card title="Filters">
-      <View style={{ gap: 8 }}>
-        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>From date (PHT)</Text><TextInput style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8 }} placeholder={from} value={from} onChangeText={setFrom} placeholderTextColor={colors.muted} /></View>
-        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>To date (PHT)</Text><TextInput style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8 }} placeholder={to} value={to} onChangeText={setTo} placeholderTextColor={colors.muted} /></View>
-        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>Parameter</Text><Text style={{ color: colors.ink }}>{parameter === 'all' ? 'All measured' : parameter === 'do' ? 'Dissolved oxygen' : parameter}</Text></View>
-      </View>
-    </Card>
-    <Card title="Readings">
-      {query.isLoading ? <StateMessage message="Loading readings…" loading /> : query.isError ? <><StateMessage message="Could not load readings." /><Button label="Retry" secondary onPress={() => void query.refetch()} /></> : rows.length === 0 ? <StateMessage message="No readings match the selected filters." /> : rows.slice(0, 50).map((row) => <View key={row.id} style={{ gap: 4, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(row.timestamp)} PHT</Text>
-        <Text style={{ color: colors.muted }}>{row.tankId} · Temperature {row.temperature.toFixed(2)}°C · DO {row.doMgL.toFixed(2)} mg/L · pH {row.ph.toFixed(2)}</Text>
-      </View>)}
-    </Card>
+    <TankPicker horizontal />
+    <View style={layout.cards}>
+      <Card title="Filters">
+        <View style={layout.filters}>
+          <View style={layout.dates}>
+            <FilterField label="From date (PHT)" value={from} onChangeText={setFrom} placeholder={from} />
+            <FilterField label="To date (PHT)" value={to} onChangeText={setTo} placeholder={to} />
+          </View>
+          <View style={layout.filters}>
+            <Text style={layout.label}>Parameter</Text>
+            <View accessibilityRole="radiogroup" style={layout.options}>
+              {([{ value: 'all', label: 'All measured' }, { value: 'temperature', label: 'Temperature' }, { value: 'do', label: 'Dissolved oxygen' }, { value: 'ph', label: 'pH' }] as const).map((option) => <Chip key={option.value} label={option.label} selected={parameter === option.value} onPress={() => setParameter(option.value)} />)}
+            </View>
+          </View>
+        </View>
+      </Card>
+      <Card title="Readings">
+        {query.isLoading ? <StateMessage message="Loading readings…" loading /> : query.isError ? <><StateMessage message="Could not load readings." /><Button label="Retry" secondary onPress={() => void query.refetch()} /></> : <>
+          <Text style={layout.count}>{rows.length} readings{rows.length > 50 ? ' · Showing 50' : ''}</Text>
+          {rows.length === 0 ? <StateMessage message="No readings match the selected filters." spacious /> : <View>{rows.slice(0, 50).map((row) => <View key={row.id} style={record.row}>
+            <Text style={record.title}>{formatManilaDateTime(row.timestamp)} PHT</Text>
+            <View style={record.metrics}>
+              {([{ label: 'Temp (°C)', value: row.temperature }, { label: 'DO (mg/L)', value: row.doMgL }, { label: 'pH', value: row.ph }]).map((metric) => <View key={metric.label} style={record.metric}>
+                <Text style={record.caption}>{metric.label}</Text>
+                <Text style={record.value}>{Number.isFinite(metric.value) ? metric.value.toFixed(2) : '—'}</Text>
+              </View>)}
+            </View>
+          </View>)}</View>}
+        </>}
+      </Card>
+    </View>
   </Page>;
 }
 

@@ -18,12 +18,12 @@ import {
   ReportsPage,
   ValidationPage,
 } from '../pages/RecordPages';
-import { ComingSoonPage, AdminLogsPage, AdminUsersPage } from '../pages/AdminPages';
+import { ThresholdsPanel } from '../pages/ThresholdsPage';
+import { AdminLogsPage, AdminUsersPage } from '../pages/AdminPages';
 import SignInPage from '../pages/auth/SignInPage';
 import SignUpPage from '../pages/auth/SignUpPage';
 import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
 import PendingApprovalPage from '../pages/auth/PendingApprovalPage';
-import AccountSettingsPage from '../pages/settings/AccountSettingsPage';
 
 function Guarded({ path, children }: { path: keyof typeof ROLE_ACCESS; children: ReactNode }) {
   return <RoleGuard roles={ROLE_ACCESS[path] as Role[]}>{children}</RoleGuard>;
@@ -44,17 +44,15 @@ export default function AppRoutes() {
         <Route path="history" element={<Guarded path="history"><HistoryPage /></Guarded>} />
         <Route path="alerts" element={<AlertsPage />} />
         <Route path="entries" element={<ActivityLogsPage />} />
-        <Route path="calibration" element={<CalibrationPage />} />
+        <Route path="calibration" element={<Guarded path="calibration"><CalibrationPage /></Guarded>} />
         <Route path="reports" element={<Guarded path="reports"><ReportsPage /></Guarded>} />
         <Route path="validation" element={<Guarded path="validation"><ValidationPage /></Guarded>} />
-        <Route path="settings/thresholds" element={<Navigate to="/calibration" replace />} />
-        <Route path="settings" element={<Guarded path="profile"><AccountSettingsPage /></Guarded>} />
+        <Route path="settings/thresholds" element={<Guarded path="thresholds"><ThresholdsPanel /></Guarded>} />
+        <Route path="settings/notifications" element={<Navigate to="/profile" replace />} />
+        <Route path="settings" element={<Navigate to="/profile" replace />} />
         <Route path="admin/users" element={<Guarded path="users"><AdminUsersPage /></Guarded>} />
         <Route path="admin/logs" element={<Guarded path="logs"><AdminLogsPage /></Guarded>} />
-        <Route path="settings/notifications" element={<Navigate to="/profile?tab=alerts" replace />} />
         <Route path="profile" element={<Guarded path="profile"><ProfilePage /></Guarded>} />
-        <Route path="fleet" element={<Guarded path="enterpriseFeatures"><ComingSoonPage feature="Multi-site fleet view" /></Guarded>} />
-        <Route path="batch" element={<Guarded path="enterpriseFeatures"><ComingSoonPage feature="Batch tracking" /></Guarded>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

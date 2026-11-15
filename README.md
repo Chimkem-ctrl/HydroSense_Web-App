@@ -158,4 +158,3 @@ The live client reconnects after disconnect. Do not send hardware control comman
 - Salinity target (28–33 ppt) and ammonia are not measured. They appear only as advisory chips with inputs and the fired rule in a popover.
 - Asia/Manila timestamps, 24-hour time, 3-hour mock reading cadence, and overnight chart shading (22:00–06:00).
 - Operator, manager and admin navigation is role-gated. Admins can add/remove tanks and associate monitoring hardware.
-- Enterprise batch tracking and fleet view are explicitly marked as coming soon.
