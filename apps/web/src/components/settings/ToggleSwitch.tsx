@@ -5,6 +5,7 @@ interface ToggleSwitchProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   id: string;
+  disabled?: boolean;
 }
 
 export default function ToggleSwitch({
@@ -12,6 +13,7 @@ export default function ToggleSwitch({
   checked,
   onChange,
   id,
+  disabled = false,
 }: ToggleSwitchProps) {
   return (
     <div className="settings-row">
@@ -24,6 +26,7 @@ export default function ToggleSwitch({
         role="switch"
         className="toggle-switch"
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
       />
     </div>

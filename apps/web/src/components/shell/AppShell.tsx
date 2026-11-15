@@ -43,7 +43,6 @@ const icons: Record<string, LucideIcon> = {
   '/calibration': FlaskConical,
   '/reports': FileDown,
   '/validation': Gauge,
-  '/settings': Settings,
   '/settings/thresholds': Settings,
   '/admin/users': Users,
   '/admin/logs': ClipboardList,
@@ -84,7 +83,7 @@ export function AppShell() {
   useEffect(() => {
     setMenuOpen(false);
     setAccountMenuOpen(false);
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
 
   useEffect(() => {
     if (!accountMenuOpen) return undefined;
@@ -168,8 +167,8 @@ export function AppShell() {
                 </button>              {accountMenuOpen && <div className="account-menu-popover" role="menu" aria-label="Account options">
                 
                 <Link to="/profile" role="menuitem"><UserRound size={15} />My profile</Link>
-                <Link to="/profile?tab=alerts" role="menuitem"><Bell size={15} />Alert preferences</Link>
-                <Link to="/profile?tab=appearance" role="menuitem"><Moon size={15} />Appearance</Link>
+                <Link to="/profile#alerts" role="menuitem"><Bell size={15} />Alert preferences</Link>
+                <Link to="/profile#appearance" role="menuitem"><Moon size={15} />Appearance</Link>
                 <Link to="/signin" role="menuitem" onClick={signOut}><LogOut size={15} />Sign out</Link>
               </div>}
             </div>
