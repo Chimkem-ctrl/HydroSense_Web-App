@@ -54,12 +54,12 @@ export function useOpenAlerts(tankId?: string) {
   });
 }
 
-export function usePendingRequests() {
+export function usePendingRequests(allowManager = false) {
   const user = useAuth();
   return useQuery({
-    queryKey: ['pending-requests', user?.id],
+    queryKey: ['pending-requests', user?.id, user?.role],
     queryFn: () => authService.listPendingRequests(),
-    enabled: user?.role === 'admin',
+    enabled: user?.role === 'admin' || (allowManager && user?.role === 'manager' && Boolean(user.hatcheryId)),
     refetchInterval: tierConfig.refreshIntervalMs,
   });
 }

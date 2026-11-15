@@ -15,6 +15,7 @@ import { useTanks } from '../app/data/hooks';
 import { PageHeading } from '../components/common/PageHeading';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 import { activityLogCsv, manilaDate } from './activityLogs';
+import { downloadCsv } from '../services/downloadCsv';
 
 type FormKind = Extract<ActivityLogKind, 'OPERATION' | 'ENVIRONMENT'>;
 type ReadingField = 'dissolvedOxygen' | 'temperature' | 'ph' | 'salinity' | 'ammonia';
@@ -44,17 +45,6 @@ function parsedReadings(raw: RawReadings) {
   });
   if (raw.method.trim()) readings.method = raw.method.trim();
   return readings;
-}
-
-function downloadCsv(csv: string, fileName: string) {
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export default function ActivityLogsPage() {

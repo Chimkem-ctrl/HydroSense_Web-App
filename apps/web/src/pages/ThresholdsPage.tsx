@@ -19,7 +19,6 @@ export default function ThresholdsPage() {
   const [rules, setRules] = useState<AdvisoryRuleSettings>(DEFAULT_ADVISORY_RULES);
   const [confirm, setConfirm] = useState(false);
   const [issue, setIssue] = useState('');
-  const [changedAt, setChangedAt] = useState('');
   const mutation = useMutation({
     mutationFn: async () => {
       const [savedThresholds, savedRules] = await Promise.all([
@@ -31,7 +30,6 @@ export default function ThresholdsPage() {
     onSuccess: async ({ savedThresholds, savedRules }) => {
       setThresholds(savedThresholds);
       setRules(savedRules);
-      setChangedAt(new Date().toISOString());
       setConfirm(false);
       await queryClient.invalidateQueries({ queryKey: ['thresholds'] });
       await queryClient.invalidateQueries({ queryKey: ['advisory-rules'] });
@@ -74,6 +72,24 @@ export default function ThresholdsPage() {
   if (thresholdsQuery.isError) return <ErrorState error={thresholdsQuery.error} onRetry={() => void thresholdsQuery.refetch()} />;
   if (rulesQuery.isError) return <ErrorState error={rulesQuery.error} onRetry={() => void rulesQuery.refetch()} />;
 
+  const changes: Array<{ label: string; before: number | undefined; after: number | undefined }> = [];
+  for (const parameter of parameters) {
+    const before = thresholdsQuery.data?.find((item) => item.parameter === parameter);
+    const after = thresholds.find((item) => item.parameter === parameter);
+    for (const bound of ['min', 'max'] as const) {
+      if (before?.[bound] !== after?.[bound]) changes.push({ label: `${parameterNames[parameter]} ${bound === 'min' ? 'minimum' : 'maximum'}`, before: before?.[bound], after: after?.[bound] });
+    }
+  }
+  const ruleLabels: Record<keyof AdvisoryRuleSettings, string> = {
+    salinityWatchTemperatureC: 'Salinity watch temperature (°C)',
+    salinityHighTemperatureC: 'Salinity high temperature (°C)',
+    ammoniaWatchTemperatureC: 'Ammonia watch temperature (°C)',
+    ammoniaHighPh: 'Ammonia high pH',
+  };
+  for (const key of Object.keys(ruleLabels) as Array<keyof AdvisoryRuleSettings>) {
+    if (rulesQuery.data?.[key] !== rules[key]) changes.push({ label: ruleLabels[key], before: rulesQuery.data?.[key], after: rules[key] });
+  }
+
   return (
     <div className="stack">
       <PageHeading title="Thresholds & advisory rules" description="Set measurement limits and advisory rules. Changes affect labels and alerts only; they do not control devices." />
@@ -101,14 +117,14 @@ export default function ThresholdsPage() {
           <label className="field">Ammonia high pH<input type="number" value={rules.ammoniaHighPh} onChange={(event) => setRules((current) => ({ ...current, ammoniaHighPh: Number(event.target.value) }))} /></label>
         </div>
         <button type="button" className="button button-primary" onClick={save}>Review and save</button>
-        <p className="small muted">Last changed by {userName}{changedAt ? ` · ${new Date(changedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })} PHT` : ' · demo defaults'}.</p>
         {issue && <p className="state-error" role="alert">{issue}</p>}
         {mutation.isError && <ErrorState error={mutation.error} />}
       </section>
       {confirm && <div className="dialog-backdrop"><section className="dialog card stack" role="dialog" aria-modal="true" aria-labelledby="confirm-thresholds">
         <h2 id="confirm-thresholds" className="card-title">Confirm rule changes</h2>
         <p>These thresholds change how measured data is labeled and alerts are evaluated. No equipment will be controlled.</p>
-        <div className="inline"><button className="button" type="button" onClick={() => setConfirm(false)}>Cancel</button><button className="button button-primary" type="button" disabled={mutation.isPending} onClick={() => mutation.mutate()}>Confirm changes</button></div>
+        {changes.length ? <ul>{changes.map((change) => <li key={change.label}>{change.label}: {change.before ?? 'Not set'} → {change.after ?? 'Not set'}</li>)}</ul> : <p>No changes to confirm.</p>}
+        <div className="inline"><button className="button" type="button" onClick={() => setConfirm(false)}>Cancel</button><button className="button button-primary" type="button" disabled={mutation.isPending || !changes.length} onClick={() => mutation.mutate()}>Confirm changes</button></div>
       </section></div>}
     </div>
   );

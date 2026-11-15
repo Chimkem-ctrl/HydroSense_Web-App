@@ -257,7 +257,7 @@ describe('themed dashboard routes', () => {
   it('preserves role updates and account removal confirmation', async () => {
     const updateRole = vi.spyOn(api, 'updateUserRole').mockRejectedValue(new Error('Role update failed'));
     const remove = vi.spyOn(authService, 'removeAccount').mockRejectedValue(new Error('Removal failed'));
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true).mockReturnValue(false);
     window.history.replaceState({}, '', '/admin/users');
     render(<App />);
     const role = await screen.findByRole('combobox', { name: 'Role for Juan Dela Cruz' });

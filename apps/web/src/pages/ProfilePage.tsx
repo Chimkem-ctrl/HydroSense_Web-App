@@ -1,25 +1,17 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { formatManilaDateTime, formatSignupPhone, PHONE_COUNTRIES } from '@hydrosense/shared';
+import { formatManilaDateTime } from '@hydrosense/shared';
 import { useAuth, useRole } from '../app/auth/RoleContext';
 import { ROLE_LABELS } from '../app/config';
 import { useTanks } from '../app/data/hooks';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { SUBSCRIBED_HATCHERIES } from '../services/authService';
+import { isValidForSms } from '../services/phone';
 import { PageHeading } from '../components/common/PageHeading';
 import { EmptyState, ErrorState, LoadingState } from '../components/common/States';
 import { AppearancePanel } from '../components/settings/AppearancePanel';
 import ToggleSwitch from '../components/settings/ToggleSwitch';
 import '../styles/profile.css';
-
-function isValidForSms(phone: string | undefined) {
-  const value = phone?.trim() ?? '';
-  if (!value) return false;
-  if (!value.startsWith('+')) return Boolean(formatSignupPhone('PH', value));
-  return PHONE_COUNTRIES.some(({ code, callingCode }) =>
-    value.startsWith(callingCode) && formatSignupPhone(code, value.slice(callingCode.length)) === value,
-  );
-}
 
 function ComingSoonAction({ children, explanation }: { children: string; explanation: string }) {
   return (
