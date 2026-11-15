@@ -16,7 +16,6 @@ import {
   HistoryPage,
   ActivityLogsPage,
   ReportsPage,
-  ThresholdsPage,
   ValidationPage,
 } from '../pages/RecordPages';
 import { AdminLogsPage, AdminUsersPage } from '../pages/AdminPages';
@@ -47,7 +46,7 @@ export default function AppRoutes() {
         <Route path="calibration" element={<Guarded path="calibration"><CalibrationPage /></Guarded>} />
         <Route path="reports" element={<Guarded path="reports"><ReportsPage /></Guarded>} />
         <Route path="validation" element={<Guarded path="validation"><ValidationPage /></Guarded>} />
-        <Route path="settings/thresholds" element={<Guarded path="thresholds"><ThresholdsPage /></Guarded>} />
+        <Route path="settings/thresholds" element={<Navigate to="/calibration" replace />} />
         <Route path="settings" element={<Navigate to="/profile" replace />} />
         <Route path="admin/users" element={<Guarded path="users"><AdminUsersPage /></Guarded>} />
         <Route path="admin/logs" element={<Guarded path="logs"><AdminLogsPage /></Guarded>} />

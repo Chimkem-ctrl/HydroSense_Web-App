@@ -134,7 +134,10 @@ describe('threshold review', () => {
     const update = vi.spyOn(api, 'updateThresholds');
     window.history.replaceState({}, '', '/settings/thresholds');
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Review and save' }));
+    const saveButton = await screen.findByRole('button', { name: 'Review and save' });
+    await waitFor(() => expect(screen.getAllByLabelText('Minimum')[0]).toHaveValue(DEFAULT_THRESHOLDS.find((item) => item.parameter === 'temperature')?.min));
+    fireEvent.click(saveButton);
+    expect(window.location.pathname).toBe('/calibration');
     let dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Confirm changes' })).toBeDisabled();
     expect(screen.queryByText(/Last changed by/)).not.toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Alert, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,18 +9,22 @@ import * as Sharing from 'expo-sharing';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
+  ACTIVITY_EVENT_TYPES,
   ACTIVITY_OPERATION_TYPES,
+  DEFAULT_ADVISORY_RULES,
   formatManilaDateTime,
   formatParameter,
+  getManilaDateString,
   getParameterStatus,
   getReadingStatuses,
   getRaisingDay,
   toCsv,
   validateAcknowledgeNote,
   validateActivityLog,
+  validateAdvisoryRules,
   validateThresholds,
 } from '@hydrosense/shared';
-import type { ActivityLog, AlertItem, MeasuredParameter, Reading, Role, Threshold } from '@hydrosense/shared';
+import type { ActivityLog, ActivityLogKind, AdvisoryRuleSettings, AlertItem, CalibrationLog, MeasuredParameter, Reading, Role, Threshold } from '@hydrosense/shared';
 import type { MainTabParamList, RootStackParamList } from './navigation';
 import { DATA_MODE, api, listPendingAccounts, reviewPendingAccount } from './services/client';
 import { canAccess } from './access';
@@ -222,23 +226,6 @@ export function TrendsScreen() {
   </Page>;
 }
 
-export function HistoryScreen() {
-  const { colors } = useTheme();
-  const { tankId } = useTankSelection();
-  const readings = useQuery({ queryKey: ['mobile-history', tankId], queryFn: () => api.listReadings({ tankId }), enabled: Boolean(tankId) });
-  const rows = [...(readings.data ?? [])].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 100);
-  return <Page>
-    <Title detail="Recent readings · Asia/Manila time">Reading history</Title>
-    <TankPicker />
-    <Card title="Latest readings">
-      {readings.isLoading ? <StateMessage message="Loading history…" loading /> : readings.isError ? <StateMessage message="Could not load reading history." /> : rows.length === 0 ? <StateMessage message="No history is available." /> : rows.map((reading) => <View key={reading.id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 3 }}>
-        <Text style={{ color: colors.ink, fontWeight: '800' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text>
-        <Text style={{ color: colors.muted }}>{reading.temperature.toFixed(1)} °C · {reading.doMgL.toFixed(1)} mg/L DO · pH {reading.ph.toFixed(2)}</Text>
-      </View>)}
-    </Card>
-  </Page>;
-}
-
 export function StatusScreen() {
   const { tankId, tanks } = useTankSelection();
   const statuses = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses() });
@@ -332,65 +319,14 @@ export function AdminReviewScreen({ navigation }: Props<'Review'>) {
 
 export function SettingsScreen({ navigation }: Props<'Settings'>) {
   const { colors } = useTheme();
-  const ui = createFormStyles(colors);
   const { user, signOut } = useSession();
   const { tankId } = useTankSelection();
-  const thresholdsQuery = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
-  const thresholds = thresholdsQuery.data ?? [];
-  const queryClient = useQueryClient();
-  const [drafts, setDrafts] = useState<Threshold[]>([]);
-  const canEdit = canAccess(user?.role ?? null, 'thresholds');
-  const mutation = useMutation({
-    mutationFn: () => {
-      const values: Record<MeasuredParameter, { min?: number; max?: number }> = {
-        temperature: {},
-        do: {},
-        ph: {},
-      };
-      drafts.forEach((item) => { values[item.parameter] = { min: item.min, max: item.max }; });
-      const issues = validateThresholds(values);
-      if (issues.length) throw new Error(issues[0].message);
-      return api.updateThresholds(drafts, user?.name ?? 'Mobile manager');
-    },
-    onSuccess: async () => {
-      setDrafts([]);
-      await queryClient.invalidateQueries({ queryKey: ['thresholds'] });
-      Alert.alert('Saved', 'Threshold updates are now active.');
-    },
-  });
-  function updateThreshold(parameter: MeasuredParameter, key: 'min' | 'max', value: string) {
-    setDrafts((current) => {
-      const source = current.length ? current : thresholds;
-      return source.map((item) => item.parameter === parameter ? { ...item, [key]: value === '' ? undefined : Number(value) } : item);
-    });
-  }
   return <Page>
     <Title detail={`${user?.name ?? 'User'} · ${user?.role ?? ''}`}>Settings</Title>
     <TankPicker />
     <Card title="Appearance">
       <Button label="Choose theme" secondary onPress={() => navigation.getParent()?.navigate('Appearance')} />
     </Card>
-    <Card title="Field tools">
-      <Button label="Calibration helper" secondary onPress={() => navigation.getParent()?.navigate('Calibration')} />
-      <Button label="Manual salinity / ammonia entry" secondary onPress={() => navigation.getParent()?.navigate('FieldEntry')} />
-      <Button label="Export report" secondary onPress={() => navigation.getParent()?.navigate('Export')} />
-    </Card>
-    {canEdit && <Card title="Thresholds">
-      {thresholdsQuery.isLoading ? <StateMessage message="Loading thresholds…" loading /> : thresholdsQuery.isError ? <><StateMessage message={`Could not load thresholds: ${thresholdsQuery.error.message}`} /><Button label="Retry thresholds" secondary onPress={() => void thresholdsQuery.refetch()} /></> : <>
-      {(['temperature', 'do', 'ph'] as const).map((parameter) => {
-        const row = (drafts.length ? drafts : thresholds).find((item) => item.parameter === parameter);
-        return <View key={parameter} style={{ gap: 6, marginBottom: 8 }}>
-          <Text style={ui.label}>{parameter === 'do' ? 'Dissolved oxygen' : parameter}</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TextInput style={[ui.input, { flex: 1 }]} keyboardType="numeric" placeholder="Minimum" placeholderTextColor={colors.muted} value={row?.min === undefined ? '' : String(row.min)} onChangeText={(value) => updateThreshold(parameter, 'min', value)} />
-            <TextInput style={[ui.input, { flex: 1 }]} keyboardType="numeric" placeholder="Maximum" placeholderTextColor={colors.muted} value={row?.max === undefined ? '' : String(row.max)} onChangeText={(value) => updateThreshold(parameter, 'max', value)} />
-          </View>
-        </View>;
-      })}
-      <Button label="Save thresholds" disabled={mutation.isPending || !drafts.length} onPress={() => mutation.mutate()} />
-      {mutation.isError && <Text style={{ color: colors.critical }}>{mutation.error.message}</Text>}
-      </>}
-    </Card>}
     <Button label="Sign out" secondary onPress={() => void signOut().catch((error: unknown) => Alert.alert('Sign-out cleanup issue', error instanceof Error ? error.message : 'Some local data could not be cleared.'))} />
     <Text style={{ color: colors.muted, fontSize: 12 }}>Mode: {DATA_MODE} · Tank: {tankId}</Text>
   </Page>;
@@ -419,40 +355,265 @@ export function AppearanceScreen() {
   </Page>;
 }
 
-export function CalibrationScreen() {
+export function ActivityLogsScreen() {
   const { colors } = useTheme();
   const { tankId } = useTankSelection();
   const { user } = useSession();
   const queryClient = useQueryClient();
-  const [parameter, setParameter] = useState<'ph' | 'do'>('ph');
-  const [standard, setStandard] = useState('');
-  const [before, setBefore] = useState('');
-  const [after, setAfter] = useState('');
-  const mutation = useMutation({
-    mutationFn: async () => {
-      if (!tankId || !standard.trim() || !before.trim() || !after.trim() || !Number.isFinite(Number(before)) || !Number.isFinite(Number(after))) throw new Error('Choose a tank and enter a standard plus before/after readings.');
-      const date = new Date();
-      const nextDue = new Date(date.getTime() + 30 * 86_400_000);
-      return api.createCalibrationLog({ tankId, parameter, standard: standard.trim(), before: Number(before), after: Number(after), date: date.toISOString(), user: user?.name ?? 'Mobile operator', nextDue: nextDue.toISOString() });
-    },
+  const tanks = useTankSelection();
+  const canExport = canAccess(user?.role ?? null, 'canExport');
+  const logs = useQuery({ queryKey: ['activity-logs'], queryFn: () => api.listActivityLogs() });
+  const [modalKind, setModalKind] = useState<'OPERATION' | 'ENVIRONMENT' | null>(null);
+  const [scope, setScope] = useState(tankId);
+  const [activityType, setActivityType] = useState<string>(ACTIVITY_OPERATION_TYPES[0]);
+  const [notes, setNotes] = useState('');
+  const [waterChangePercent, setWaterChangePercent] = useState('');
+  const [waterSource, setWaterSource] = useState('');
+  const [impact, setImpact] = useState('Moderate');
+  const [kindFilter, setKindFilter] = useState<ActivityLogKind | 'all'>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [formError, setFormError] = useState('');
+  const createLog = useMutation({
+    mutationFn: (entry: Omit<ActivityLog, 'id' | 'occurredAt'>) => api.createActivityLog(entry),
     onSuccess: async () => {
-      setStandard(''); setBefore(''); setAfter('');
-      await queryClient.invalidateQueries({ queryKey: ['calibrations'] });
-      Alert.alert('Calibration saved', 'The calibration record was recorded.');
+      setModalKind(null);
+      setNotes('');
+      setWaterChangePercent('');
+      setWaterSource('');
+      setImpact('Moderate');
+      setFormError('');
+      await queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
+      if (scope !== 'hatchery') {
+        await queryClient.invalidateQueries({ queryKey: ['advisories', scope] });
+      } else {
+        await queryClient.invalidateQueries({ queryKey: ['advisories'] });
+      }
     },
   });
+  const filteredLogs = (logs.data ?? [])
+    .filter((log) => kindFilter === 'all' || log.kind === kindFilter)
+    .filter((log) => {
+      const date = log.occurredAt.substring(0, 10);
+      return (!dateFrom || date >= dateFrom) && (!dateTo || date <= dateTo);
+    })
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+  const tankNames = new Map((tanks.tanks ?? []).map((tank) => [tank.id, tank.name]));
+  function openLog(kind: 'OPERATION' | 'ENVIRONMENT') {
+    setModalKind(kind);
+    setScope(kind === 'ENVIRONMENT' ? 'hatchery' : tankId);
+    setActivityType(kind === 'OPERATION' ? ACTIVITY_OPERATION_TYPES[0] : ACTIVITY_EVENT_TYPES[0]);
+    setNotes('');
+    setWaterChangePercent('');
+    setWaterSource('');
+    setImpact('Moderate');
+    setFormError('');
+  }
+  function submitLog() {
+    if (!modalKind) return;
+    const rawPercent = waterChangePercent.trim();
+    const parsedPercent = rawPercent ? Number(rawPercent) : undefined;
+    const entry: Omit<ActivityLog, 'id' | 'occurredAt'> = {
+      tankId: scope,
+      kind: modalKind,
+      type: activityType,
+      operator: user?.name ?? 'Mobile user',
+      notes: notes.trim(),
+      ...(modalKind === 'OPERATION' && activityType === 'Water change / exchange' ? {
+        waterChangePercent: parsedPercent ?? Number.NaN,
+        ...(waterSource.trim() ? { waterSource: waterSource.trim() } : {}),
+      } : {}),
+      ...(modalKind === 'ENVIRONMENT' ? { impact } : {}),
+    };
+    const issues = validateActivityLog(entry);
+    if (issues.length) {
+      setFormError(issues[0].message);
+      return;
+    }
+    setFormError('');
+    createLog.mutate(entry);
+  }
   return <Page>
-    <Title detail="Log pH and dissolved-oxygen checks">Calibration helper</Title>
+    <Title detail="Log operations and environmental events">Activity logs</Title>
     <TankPicker />
-    <Card title="Calibration record">
-      <View style={{ flexDirection: 'row', gap: 8 }}><Button label="pH" secondary={parameter !== 'ph'} onPress={() => setParameter('ph')} /><Button label="Dissolved oxygen" secondary={parameter !== 'do'} onPress={() => setParameter('do')} /></View>
-      <Field label="Calibration standard" value={standard} onChangeText={setStandard} placeholder={parameter === 'ph' ? 'pH 7.00 buffer' : 'Zero oxygen / air-saturated standard'} />
-      <Field label="Before calibration" value={before} onChangeText={setBefore} keyboardType="numeric" placeholder="Reading before adjustment" />
-      <Field label="After calibration" value={after} onChangeText={setAfter} keyboardType="numeric" placeholder="Reading after adjustment" />
-      <Button label="Save calibration log" disabled={mutation.isPending} onPress={() => mutation.mutate()} />
-      {mutation.isError && <Text style={{ color: colors.critical }}>{mutation.error.message}</Text>}
+    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+      <Button label="Log operation" onPress={() => openLog('OPERATION')} />
+      <Button label="Log weather / event" onPress={() => openLog('ENVIRONMENT')} />
+    </View>
+    <Card title="Activity records">
+      <View style={{ gap: 8, marginBottom: 12 }}>
+        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>Kind</Text><Text style={{ color: colors.ink }}>{kindFilter === 'all' ? 'All kinds' : kindFilter}</Text></View>
+        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>From date (PHT)</Text><Text style={{ color: colors.ink }}>{dateFrom || 'Any'}</Text></View>
+        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>To date (PHT)</Text><Text style={{ color: colors.ink }}>{dateTo || 'Any'}</Text></View>
+      </View>
+      {logs.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message="Could not load activity logs." /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." /> : filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={{ gap: 4, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(log.occurredAt)} PHT</Text>
+        <Text style={{ color: colors.muted }}>{log.kind} · {log.type}</Text>
+        <Text style={{ color: colors.muted }}>{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId}</Text>
+        <Text style={{ color: colors.ink }}>{log.notes}</Text>
+      </View>)}
     </Card>
-    <ManualEntryCard />
+    {modalKind && (
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+        <View style={{ width: '90%', maxHeight: '80%' }}>
+          <Card>
+            <Text style={{ color: colors.ink, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>{modalKind === 'OPERATION' ? 'Log operation' : 'Log weather / event'}</Text>
+            <TextInput placeholder="Tank or scope" style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8, marginBottom: 8 }} placeholderTextColor={colors.muted} value={scope} onChangeText={setScope} />
+            <TextInput placeholder="Type" style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8, marginBottom: 8 }} placeholderTextColor={colors.muted} value={activityType} onChangeText={setActivityType} />
+            <TextInput placeholder="Notes" style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8, marginBottom: 8, minHeight: 60 }} placeholderTextColor={colors.muted} value={notes} onChangeText={setNotes} multiline />
+            {formError && <Text style={{ color: colors.critical, marginBottom: 8 }}>{formError}</Text>}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Button label="Cancel" secondary onPress={() => setModalKind(null)} />
+              <Button label="Submit" disabled={createLog.isPending} onPress={submitLog} />
+            </View>
+          </Card>
+        </View>
+      </View>
+    )}
+  </Page>;
+}
+
+export function CalibrationAndMaintenanceScreen() {
+  const { colors } = useTheme();
+  const { tankId } = useTankSelection();
+  const { user } = useSession();
+  const queryClient = useQueryClient();
+  const canCalibrate = canAccess(user?.role ?? null, 'canCalibrate');
+  const canEditThresholds = canAccess(user?.role ?? null, 'canEditThresholds');
+  const [parameter, setParameter] = useState<CalibrationLog['parameter']>('ph');
+  const [standard, setStandard] = useState('pH 7.00 buffer');
+  const [before, setBefore] = useState('');
+  const [after, setAfter] = useState('');
+  const [date, setDate] = useState(getManilaDateString());
+  const [nextDue, setNextDue] = useState(getManilaDateString(new Date(Date.now() + 30 * 86_400_000)));
+  const [thresholds, setThresholds] = useState<Threshold[]>([]);
+  const [rules, setRules] = useState<AdvisoryRuleSettings>(DEFAULT_ADVISORY_RULES);
+  const [confirm, setConfirm] = useState(false);
+  const [error, setError] = useState('');
+  const calibrationQuery = useQuery({ queryKey: ['calibrations', tankId], queryFn: () => api.listCalibrationLogs(tankId), enabled: Boolean(tankId) && canCalibrate });
+  const thresholdsQuery = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
+  const rulesQuery = useQuery({ queryKey: ['advisory-rules'], queryFn: () => api.getAdvisorySettings() });
+  useEffect(() => { if (thresholdsQuery.data) setThresholds(thresholdsQuery.data); }, [thresholdsQuery.data]);
+  useEffect(() => { if (rulesQuery.data) setRules(rulesQuery.data); }, [rulesQuery.data]);
+  const calibrationMutation = useMutation({
+    mutationFn: () => api.createCalibrationLog({
+      tankId,
+      parameter,
+      standard: standard.trim(),
+      before: Number(before),
+      after: Number(after),
+      date: new Date(`${date}T12:00:00+08:00`).toISOString(),
+      user: user?.name ?? 'Mobile user',
+      nextDue: new Date(`${nextDue}T12:00:00+08:00`).toISOString(),
+    }),
+    onSuccess: async () => {
+      setBefore('');
+      setAfter('');
+      setError('');
+      await queryClient.invalidateQueries({ queryKey: ['calibrations'] });
+    },
+  });
+  const thresholdMutation = useMutation({
+    mutationFn: async () => {
+      const mapped = Object.fromEntries(['temperature', 'do', 'ph'].map((parameter) => {
+        const item = thresholds.find((threshold) => threshold.parameter === parameter as MeasuredParameter);
+        return [parameter, { min: item?.min, max: item?.max }];
+      })) as Record<MeasuredParameter, { min?: number; max?: number }>;
+      const errors = [...validateThresholds(mapped), ...validateAdvisoryRules(rules)];
+      if (errors.length) throw new Error(errors[0].message);
+      const [savedThresholds, savedRules] = await Promise.all([
+        api.updateThresholds(thresholds, user?.name ?? 'Mobile user'),
+        api.updateAdvisorySettings(rules, user?.name ?? 'Mobile user'),
+      ]);
+      return { savedThresholds, savedRules };
+    },
+    onSuccess: async () => {
+      setConfirm(false);
+      await queryClient.invalidateQueries({ queryKey: ['thresholds'] });
+      await queryClient.invalidateQueries({ queryKey: ['advisory-rules'] });
+    },
+  });
+  function submitCalibration() {
+    if (!tankId || !standard.trim() || !Number.isFinite(Number(before)) || !Number.isFinite(Number(after)) ||
+        !before || !after || !date || !nextDue || new Date(`${nextDue}T00:00:00`) <= new Date(`${date}T00:00:00`)) {
+      setError('Enter a calibration standard, valid before/after readings, and a due date after the calibration date.');
+      return;
+    }
+    setError('');
+    calibrationMutation.mutate();
+  }
+  function updateThreshold(parameter: MeasuredParameter, key: 'min' | 'max', value: string) {
+    if (canEditThresholds) {
+      setThresholds((current) => {
+        const existing = current.find((item) => item.parameter === parameter) ?? { parameter };
+        const number = value === '' ? undefined : Number(value);
+        const updated = { ...existing, [key]: number };
+        return [...current.filter((item) => item.parameter !== parameter), updated];
+      });
+    }
+  }
+  return <Page>
+    <Title detail="Calibration logs and measurement thresholds">Calibration & maintenance</Title>
+    <TankPicker />
+    {canCalibrate && (
+      <Card title="Log calibration">
+        <View style={{ flexDirection: 'row', gap: 8 }}><Button label="pH" secondary={parameter !== 'ph'} onPress={() => setParameter('ph')} /><Button label="Dissolved oxygen" secondary={parameter !== 'do'} onPress={() => setParameter('do')} /></View>
+        <Field label="Calibration standard" value={standard} onChangeText={setStandard} />
+        <Field label="Before" value={before} onChangeText={setBefore} keyboardType="numeric" />
+        <Field label="After" value={after} onChangeText={setAfter} keyboardType="numeric" />
+        <Field label="Calibration date" value={date} onChangeText={setDate} />
+        <Field label="Next due" value={nextDue} onChangeText={setNextDue} />
+        {error && <Text style={{ color: colors.critical }}>{error}</Text>}
+        <Button label="Save calibration log" disabled={calibrationMutation.isPending} onPress={submitCalibration} />
+        {calibrationMutation.isError && <Text style={{ color: colors.critical }}>{calibrationMutation.error.message}</Text>}
+      </Card>
+    )}
+    {canCalibrate && (
+      <Card title="Calibration due dates">
+        {calibrationQuery.isLoading ? <StateMessage message="Loading calibrations…" loading /> : calibrationQuery.isError ? <><StateMessage message="Could not load calibrations." /><Button label="Retry" secondary onPress={() => void calibrationQuery.refetch()} /></> : !calibrationQuery.data?.length ? <StateMessage message="No calibration records." /> : calibrationQuery.data.map((log) => {
+          const overdue = new Date(log.nextDue) < new Date();
+          return <View key={log.id} style={{ gap: 4, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ color: overdue ? colors.critical : colors.ink, fontWeight: '700' }}>{log.parameter.toUpperCase()} · {formatManilaDateTime(log.nextDue)} {overdue ? '· OVERDUE' : ''}</Text>
+            <Text style={{ color: colors.muted }}>{log.standard} · Before: {log.before}, After: {log.after}</Text>
+          </View>;
+        })}
+      </Card>
+    )}
+    <Card title="Measurement thresholds">
+      {thresholdsQuery.isLoading ? <StateMessage message="Loading thresholds…" loading /> : thresholdsQuery.isError ? <><StateMessage message="Could not load thresholds." /><Button label="Retry" secondary onPress={() => void thresholdsQuery.refetch()} /></> : (['temperature', 'do', 'ph'] as const).map((param) => {
+        const item = thresholds.find((threshold) => threshold.parameter === param);
+        return <View key={param} style={{ gap: 8, marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ color: colors.muted, fontWeight: '700' }}>{param === 'do' ? 'Dissolved oxygen (mg/L)' : param === 'temperature' ? 'Temperature (°C)' : 'pH'}</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}><Text style={{ color: colors.muted, fontSize: 12 }}>Minimum</Text><Text style={{ color: colors.ink }}>{item?.min ?? 'Not set'}</Text></View>
+            <View style={{ flex: 1 }}><Text style={{ color: colors.muted, fontSize: 12 }}>Maximum</Text><Text style={{ color: colors.ink }}>{item?.max ?? 'Not set'}</Text></View>
+          </View>
+          {canEditThresholds && (
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput placeholder="Min" keyboardType="numeric" value={item?.min === undefined ? '' : String(item.min)} onChangeText={(value) => updateThreshold(param, 'min', value)} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8, color: colors.ink }} placeholderTextColor={colors.muted} />
+              <TextInput placeholder="Max" keyboardType="numeric" value={item?.max === undefined ? '' : String(item.max)} onChangeText={(value) => updateThreshold(param, 'max', value)} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8, color: colors.ink }} placeholderTextColor={colors.muted} />
+            </View>
+          )}
+        </View>;
+      })}
+    </Card>
+    {canEditThresholds && (
+      <Button label="Review and save thresholds" onPress={() => setConfirm(true)} />
+    )}
+    {confirm && (
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+        <View style={{ width: '90%' }}>
+          <Card>
+            <Text style={{ color: colors.ink, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Confirm rule changes</Text>
+            <Text style={{ color: colors.muted, marginBottom: 16 }}>These thresholds change how measured data is labeled and alerts are evaluated. No equipment will be controlled.</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Button label="Cancel" secondary onPress={() => setConfirm(false)} />
+              <Button label="Confirm changes" disabled={thresholdMutation.isPending} onPress={() => thresholdMutation.mutate()} />
+            </View>
+          </Card>
+        </View>
+      </View>
+    )}
   </Page>;
 }
 
@@ -503,17 +664,54 @@ function ManualEntryCard() {
   </Card>;
 }
 
-export function FieldEntryScreen() {
-  return <Page><Title detail="Record manual advisory inputs">Field entry</Title><TankPicker /><ManualEntryCard /></Page>;
+export function HistoryScreen() {
+  const { colors } = useTheme();
+  const { tankId } = useTankSelection();
+  const [parameter, setParameter] = useState<'all' | 'temperature' | 'do' | 'ph'>('all');
+  const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - 7 * 86_400_000)));
+  const [to, setTo] = useState(() => getManilaDateString());
+  const query = useQuery({
+    queryKey: ['history', tankId, from, to, parameter],
+    queryFn: () => api.listReadings({
+      tankId,
+      from: `${from}T00:00:00+08:00`,
+      to: `${to}T23:59:59+08:00`,
+      ...(parameter !== 'all' && { parameter }),
+    }),
+    enabled: Boolean(tankId),
+  });
+  const parameterValue = (reading: Reading, param: 'do' | 'temperature' | 'ph') => param === 'do' ? reading.doMgL : reading[param];
+  const rows = (query.data ?? []).filter((row) => parameter === 'all' || Number.isFinite(parameterValue(row, parameter)));
+  return <Page>
+    <Title detail="View readings in date range">History</Title>
+    <TankPicker />
+    <Card title="Filters">
+      <View style={{ gap: 8 }}>
+        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>From date (PHT)</Text><TextInput style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8 }} placeholder={from} value={from} onChangeText={setFrom} placeholderTextColor={colors.muted} /></View>
+        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>To date (PHT)</Text><TextInput style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8 }} placeholder={to} value={to} onChangeText={setTo} placeholderTextColor={colors.muted} /></View>
+        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>Parameter</Text><Text style={{ color: colors.ink }}>{parameter === 'all' ? 'All measured' : parameter === 'do' ? 'Dissolved oxygen' : parameter}</Text></View>
+      </View>
+    </Card>
+    <Card title="Readings">
+      {query.isLoading ? <StateMessage message="Loading readings…" loading /> : query.isError ? <><StateMessage message="Could not load readings." /><Button label="Retry" secondary onPress={() => void query.refetch()} /></> : rows.length === 0 ? <StateMessage message="No readings match the selected filters." /> : rows.slice(0, 50).map((row) => <View key={row.id} style={{ gap: 4, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(row.timestamp)} PHT</Text>
+        <Text style={{ color: colors.muted }}>{row.tankId} · Temperature {row.temperature.toFixed(2)}°C · DO {row.doMgL.toFixed(2)} mg/L · pH {row.ph.toFixed(2)}</Text>
+      </View>)}
+    </Card>
+  </Page>;
 }
 
-export function ExportScreen() {
+export function ReportsScreen() {
   const { colors } = useTheme();
   const { tankId } = useTankSelection();
   const { user } = useSession();
-  const readings = useQuery({ queryKey: ['mobile-export-readings', tankId], queryFn: () => api.listReadings({ tankId }), enabled: Boolean(tankId) });
-  const alerts = useQuery({ queryKey: ['mobile-export-alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
+  const canExport = canAccess(user?.role ?? null, 'canExport');
+  const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - 7 * 86_400_000)));
+  const [to, setTo] = useState(() => getManilaDateString());
+  const [preview, setPreview] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const readings = useQuery({ queryKey: ['report-data-readings', tankId], queryFn: () => api.listReadings({ tankId, from: `${from}T00:00:00+08:00`, to: `${to}T23:59:59+08:00` }), enabled: Boolean(tankId) });
+  const alerts = useQuery({ queryKey: ['report-data-alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
   const csv = useMemo(() => {
     const header = ['Timestamp (ISO)', 'Tank', 'Temperature °C', 'DO mg/L', 'pH'];
     const rows = (readings.data ?? []).map((row) => [row.timestamp, row.tankId, row.temperature, row.doMgL, row.ph]);
@@ -522,29 +720,36 @@ export function ExportScreen() {
   async function shareCsv() {
     setSharing(true);
     try {
-      if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
-      const fileUri = `${FileSystem.documentDirectory}hydrosense-readings-${new Date().toISOString().slice(0, 10)}.csv`;
+      if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available.');
+      const fileUri = `${FileSystem.documentDirectory}hydrosense-report-${from}-${to}.csv`;
       await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: FileSystem.EncodingType.UTF8 });
-      await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Share HydroSense readings CSV' });
+      await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Share Report' });
     } catch (error) {
-      Alert.alert('Export failed', error instanceof Error ? error.message : 'The share sheet could not be opened.');
+      Alert.alert('Export failed', error instanceof Error ? error.message : 'Could not share file.');
     } finally {
       setSharing(false);
     }
   }
   return <Page>
-    <Title detail="Export readings for hatchery records">Export</Title>
+    <Title detail="Build and preview reports">Reports</Title>
     <TankPicker />
-    <Card title="CSV export">
-      {readings.isLoading || alerts.isLoading ? <StateMessage message="Preparing export…" loading /> : readings.isError ? <StateMessage message="Could not load readings." /> : <>
-        <DataRow label="Tank" value={tankId} />
-        <DataRow label="Readings" value={`${readings.data?.length ?? 0}`} />
-        <DataRow label="Alerts" value={`${alerts.data?.length ?? 0}`} />
-        <Text style={{ color: colors.muted }}>The shared export includes formula-injection protection and preserves ISO timestamps.</Text>
-        <Button label={sharing ? 'Opening share sheet…' : 'Share readings CSV'} disabled={sharing || !readings.data?.length} onPress={() => void shareCsv()} />
-      </>}
+    <Card title="Report options">
+      <View style={{ gap: 8 }}>
+        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>From date (PHT)</Text><TextInput style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8 }} placeholder={from} value={from} onChangeText={setFrom} placeholderTextColor={colors.muted} /></View>
+        <View><Text style={{ color: colors.muted, fontWeight: '700', fontSize: 12 }}>To date (PHT)</Text><TextInput style={{ color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8 }} placeholder={to} value={to} onChangeText={setTo} placeholderTextColor={colors.muted} /></View>
+      </View>
     </Card>
-    <Text style={{ color: colors.muted, fontSize: 12 }}>Prepared by {user?.name ?? 'user'}. PDF/XLSX file generation is not yet available in the mobile app.</Text>
+    <Card title="Report preview">
+      {readings.isLoading || alerts.isLoading ? <StateMessage message="Preparing report…" loading /> : readings.isError || alerts.isError ? <StateMessage message="Could not load report data." /> : (
+        <>
+          <DataRow label="Tank" value={tankId} />
+          <DataRow label="Date range" value={`${from} to ${to}`} />
+          <DataRow label="Readings" value={`${readings.data?.length ?? 0}`} />
+          <DataRow label="Alerts" value={`${alerts.data?.length ?? 0}`} />
+          {canExport && <Button label={sharing ? 'Preparing export…' : 'Share readings CSV'} disabled={sharing || !readings.data?.length} onPress={() => void shareCsv()} />}
+        </>
+      )}
+    </Card>
   </Page>;
 }
 

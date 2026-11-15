@@ -12,8 +12,16 @@ Metro tools can resolve the mobile workspace's Expo installation. Use
 an Android bundle with the same configuration.
 For a browser preview, open `http://localhost:8081` after starting Expo.
 The mobile interface adapts the web app's glass palette, gradients,
-branding, and reading cards to touch-friendly phone and tablet layouts. Native
-surfaces use translucent fills rather than relying on backdrop blur. The
+branding, and reading cards to touch-friendly phone and tablet layouts. Cards
+and signup dialogs use native blur with a solid reduced-transparency fallback;
+authentication cards blur the page gradient. iOS system materials can look
+different from CSS blur. The native navigation menus and critical alert retain
+solid surfaces because Android modal windows cannot blur the underlying screen.
+The
+authenticated background covers the window behind the header and navigation,
+and changes with the account role and appearance. The native system background
+uses the appearance's canvas color while the image is loading. Rebuild native
+development builds after adding the system UI module.
 Appearance is available in Settings and the header account menu. Choose System,
 Light or Dark; the preference is saved on the device and System follows its
 current color scheme. The preference remains after signing out.

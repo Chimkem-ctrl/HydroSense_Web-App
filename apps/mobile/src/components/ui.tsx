@@ -1,23 +1,51 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import { createContext, useContext, useRef } from 'react';
+import type { ComponentProps, ComponentRef, PropsWithChildren, ReactNode, RefObject } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { BlurTargetView, BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Dialog, Portal } from 'react-native-paper';
 import { uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
+
+export const BlurTargetContext = createContext<RefObject<ComponentRef<typeof View> | null> | null>(null);
+const CardContext = createContext(false);
+// Android's default tint is 44% of intensity; 9 / 0.45 preserves a 20px blur with about 4% tint.
+const androidBlurIntensity = 9;
+const androidBlurReduction = 0.45;
+const webCardBlur = {
+  backgroundColor: 'transparent',
+  backdropFilter: 'blur(20px) saturate(120%)',
+  WebkitBackdropFilter: 'blur(20px) saturate(120%)',
+};
+const needsSolidFallback = (reduceTransparency: boolean) => reduceTransparency || (Platform.OS === 'web' && (typeof CSS === 'undefined' || !(CSS.supports('backdrop-filter', 'blur(1px)') || CSS.supports('-webkit-backdrop-filter', 'blur(1px)'))));
+
+function glassBlur(blurTarget: RefObject<ComponentRef<typeof View> | null> | null, styles: ReturnType<typeof createStyles>) {
+  return Platform.OS === 'web'
+    ? <View style={[StyleSheet.absoluteFill, styles.cardBlur, webCardBlur]} pointerEvents="none" />
+    : <BlurView blurTarget={blurTarget ?? undefined} blurMethod="dimezisBlurView" tint={Platform.OS === 'ios' ? 'systemUltraThinMaterial' : 'default'} intensity={Platform.OS === 'android' ? androidBlurIntensity : 25} blurReductionFactor={androidBlurReduction} style={[StyleSheet.absoluteFill, styles.cardBlur]} pointerEvents="none" />;
+}
 
 export function Page({ children, auth = false }: PropsWithChildren<{ auth?: boolean }>) {
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
+  const authBlurTarget = useRef<ComponentRef<typeof View> | null>(null);
   const styles = createStyles(colors);
-  return <LinearGradient colors={[colors.canvas, colors.backgroundVia, colors.backgroundTo]} style={styles.background}>
-    <KeyboardAvoidingView style={styles.background} behavior={auth && Platform.OS === 'ios' ? 'padding' : undefined}>
+  const content = <KeyboardAvoidingView style={styles.background} behavior={auth && Platform.OS === 'ios' ? 'padding' : undefined}>
       <SafeAreaView style={styles.safe} edges={auth ? ['top', 'left', 'right', 'bottom'] : ['left', 'right', 'bottom']}>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, auth && styles.authScroll]}>
+        <ScrollView style={styles.background} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, auth && styles.authScroll]}>
           <View style={[styles.page, { paddingHorizontal: width >= 600 ? uiScale.spacing[6] : uiScale.spacing[4] }, auth && styles.authPage]}>{children}</View>
         </ScrollView>
       </SafeAreaView>
-    </KeyboardAvoidingView>
-  </LinearGradient>;
+    </KeyboardAvoidingView>;
+  return auth
+    ? <View style={styles.background}>
+      <BlurTargetView ref={authBlurTarget} style={StyleSheet.absoluteFill} pointerEvents="none">
+        <LinearGradient colors={[colors.canvas, colors.backgroundVia, colors.backgroundTo]} style={styles.background} />
+      </BlurTargetView>
+      <BlurTargetContext.Provider value={authBlurTarget}>{content}</BlurTargetContext.Provider>
+    </View>
+    : <View style={styles.background}>{content}</View>;
 }
 
 export function Brand({ compact = false }: { compact?: boolean }) {
@@ -40,8 +68,37 @@ export function Title({ children, detail, centered = false }: { children: string
 
 export function Card({ children, title, action }: { children: ReactNode; title?: string; action?: ReactNode }) {
   const { colors, reduceTransparency } = useTheme();
+  const blurTarget = useContext(BlurTargetContext);
+  const nested = useContext(CardContext);
   const styles = createStyles(colors);
-  return <View style={[styles.card, reduceTransparency && { backgroundColor: colors.surface }]}>{(title || action) && <View style={styles.cardHeading}>{title ? <Text style={styles.cardTitle}>{title}</Text> : <View />}{action}</View>}{children}</View>;
+  const solidFallback = needsSolidFallback(reduceTransparency);
+  if (Platform.OS === 'android' && !blurTarget && !nested && !solidFallback) throw new Error('Card requires a blur target.');
+  return <CardContext.Provider value>
+    <View style={[styles.card, nested && styles.nestedCard, solidFallback && !nested && { backgroundColor: colors.surface }]}>
+      {!nested && !solidFallback && glassBlur(blurTarget, styles)}
+      {(title || action) && <View style={styles.cardHeading}>{title ? <Text style={styles.cardTitle}>{title}</Text> : <View />}{action}</View>}{children}
+    </View>
+  </CardContext.Provider>;
+}
+
+export function GlassDialog({ children, visible, onDismiss }: { children: ComponentProps<typeof Dialog>['children']; visible: boolean; onDismiss: () => void }) {
+  const { colors, reduceTransparency } = useTheme();
+  const blurTarget = useContext(BlurTargetContext);
+  const styles = createStyles(colors);
+  const solidFallback = needsSolidFallback(reduceTransparency);
+  if (Platform.OS === 'android' && !blurTarget && !solidFallback) throw new Error('GlassDialog requires a blur target.');
+  return <Portal>
+    <Dialog visible={visible} onDismiss={onDismiss} style={[styles.dialog, solidFallback && { backgroundColor: colors.surface }]}>
+      {!solidFallback && <DialogBlur blurTarget={blurTarget} />}
+      {children}
+    </Dialog>
+  </Portal>;
+}
+
+function DialogBlur({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof View> | null> | null }) {
+  const { colors } = useTheme();
+  // Paper adds a first-child margin; the absolute backdrop must not inherit it.
+  return glassBlur(blurTarget, createStyles(colors));
 }
 
 export function Button({ label, onPress, disabled, secondary }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
@@ -72,12 +129,12 @@ export const createFormStyles = (colors: Palette) => StyleSheet.create({
 });
 
 const createStyles = (colors: Palette) => StyleSheet.create({
-  background: { flex: 1 },
-  safe: { flex: 1 },
-  scroll: { flexGrow: 1 },
+  background: { flex: 1, backgroundColor: 'transparent' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
+  scroll: { flexGrow: 1, backgroundColor: 'transparent' },
   authScroll: { justifyContent: 'center' },
-  page: { width: '100%', maxWidth: 1100, alignSelf: 'center', paddingTop: uiScale.spacing[5], paddingBottom: uiScale.spacing[6], gap: uiScale.spacing[3], backgroundColor: colors.canvas },
-  authPage: { maxWidth: 480, paddingTop: uiScale.spacing[6], paddingBottom: uiScale.spacing[6] },
+  page: { width: '100%', maxWidth: 1100, alignSelf: 'center', paddingTop: uiScale.spacing[5], paddingBottom: uiScale.spacing[6], gap: uiScale.spacing[3], backgroundColor: 'transparent' },
+  authPage: { maxWidth: 480, paddingTop: uiScale.spacing[6], paddingBottom: uiScale.spacing[6], backgroundColor: 'transparent' },
   brand: { alignItems: 'center', gap: uiScale.spacing[2], marginBottom: uiScale.spacing[2] },
   brandCompact: { flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2], minWidth: 0 },
   brandTextCompact: { flexShrink: 1, minWidth: 0 },
@@ -92,7 +149,10 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   centerText: { textAlign: 'center' },
   title: { color: colors.ink, fontSize: uiScale.type.title, lineHeight: 34, fontWeight: '700', letterSpacing: -0.4 },
   muted: { color: colors.muted, fontSize: uiScale.type.body, lineHeight: 24 },
-  card: { backgroundColor: colors.card, borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: colors.cardBorder, padding: uiScale.spacing[4], gap: uiScale.spacing[3], shadowColor: '#1e40af', shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  card: { backgroundColor: Platform.OS === 'android' ? 'transparent' : 'rgba(255,255,255,0.04)', borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: uiScale.spacing[4], gap: uiScale.spacing[3], boxShadow: '0px 8px 32px rgba(0,0,0,0.25)' },
+  dialog: { backgroundColor: Platform.OS === 'android' ? 'transparent' : 'rgba(255,255,255,0.04)', borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', elevation: 0, boxShadow: '0px 8px 32px rgba(0,0,0,0.25)' },
+  cardBlur: { borderRadius: uiScale.radius.card, overflow: 'hidden' },
+  nestedCard: { backgroundColor: 'transparent', boxShadow: 'none' },
   cardHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   cardTitle: { color: colors.ink, fontSize: uiScale.type.section, fontWeight: '700', flexShrink: 1 },
   button: { minHeight: 48, borderRadius: uiScale.radius.pill, overflow: 'hidden', justifyContent: 'center' },

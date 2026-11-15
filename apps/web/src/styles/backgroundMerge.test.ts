@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -15,9 +15,8 @@ describe('merged dashboard backgrounds', () => {
   it.each(['admin', 'manager', 'operator'] as const)(
     'keeps the %s role image visible through the page canvas in both themes',
     (role) => {
-      expect(shellStyles).toContain(`/assets/images/${role}%20bg.png`);
-
-      for (const css of [shellStyles.replace('var(--role-background-image)', `url("/assets/images/${role}%20bg.png")`), themeStyles]) {
+      expect(shellStyles).toContain('var(--role-background-image)');
+      for (const css of [shellStyles, themeStyles]) {
         const style = document.createElement('style');
         style.dataset.backgroundTest = '';
         style.textContent = css;
@@ -30,12 +29,43 @@ describe('merged dashboard backgrounds', () => {
 
       for (const theme of ['light', 'dark']) {
         document.documentElement.dataset.theme = theme;
-        expect(getComputedStyle(shell).backgroundImage).toContain(`${role}%20bg.png`);
+        const image = theme === 'light' ? `${role}%20bg%20light%20web.png` : `${role}%20bg.png`;
+        expect(getComputedStyle(shell).getPropertyValue('--role-background-image')).toContain(image);
+        expect(existsSync(resolve('public/assets/images', decodeURIComponent(image)))).toBe(true);
         expect(getComputedStyle(main).backgroundColor).toBe('rgba(0, 0, 0, 0)');
-        for (const selector of ['.sidebar', '.page-controls', '.card']) {
+        for (const selector of ['.sidebar', '.page-controls']) {
           expect(getComputedStyle(document.querySelector<HTMLElement>(selector)!).backgroundColor).toBe('rgba(0, 0, 0, 0.45)');
         }
+        expect(getComputedStyle(document.querySelector<HTMLElement>('.card')!).backgroundColor).toBe('rgba(255, 255, 255, 0.04)');
       }
     },
   );
+
+  it('uses neutral frosted surfaces for cards and transparent nested cards', () => {
+    for (const css of [shellStyles, themeStyles]) {
+      const style = document.createElement('style');
+      style.dataset.backgroundTest = '';
+      style.textContent = css;
+      document.head.append(style);
+    }
+
+    const classes = ['card', 'glass-panel', 'dashboard-card', 'alert-card', 'advisory-card',
+      'summary-card', 'parameter-card', 'trend-card', 'notification-panel', 'dashboard-modal',
+      'tank-management-card', 'state-box', 'device-card'];
+    document.body.innerHTML = `<div class="glass-shell"><main class="glass-screen">${classes.map((name) => `<div class="${name}"></div>`).join('')}<div class="state-box state-error"></div><div class="state-box state-stale"></div><div class="dialog card"></div><div class="card outer"><div class="card inner"></div><div class="popover inner-popover"></div></div><div class="card live-panel"><div class="glass-advisories"><div class="card inner-live"></div></div></div></main></div>`;
+
+    for (const name of [...classes, 'state-error', 'state-stale']) {
+      const style = getComputedStyle(document.querySelector<HTMLElement>(`.${name}`)!);
+      expect(style.backgroundColor, name).toBe('rgba(255, 255, 255, 0.04)');
+      expect(style.borderTopColor, name).toBe('rgba(255, 255, 255, 0.15)');
+      expect(style.boxShadow, name).toBe('0 8px 32px rgba(0, 0, 0, 0.25)');
+    }
+    expect(getComputedStyle(document.querySelector<HTMLElement>('.dialog.card')!).backgroundColor).toBe('rgba(255, 255, 255, 0.04)');
+    for (const name of ['inner', 'inner-popover', 'inner-live']) {
+      const style = getComputedStyle(document.querySelector<HTMLElement>(`.${name}`)!);
+      expect(style.backgroundColor, name).toBe('rgba(0, 0, 0, 0)');
+      expect(style.boxShadow, name).toBe('none');
+    }
+    expect(themeStyles).toContain('backdrop-filter: blur(20px) saturate(120%)');
+  });
 });

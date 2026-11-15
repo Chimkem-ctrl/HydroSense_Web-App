@@ -20,6 +20,68 @@
 }
 .glass-shell .readings-grid > .card { height: 100%; }
 
+.card, .glass-panel, .dashboard-card, .alert-card, .advisory-card, .summary-card,
+.parameter-card, .trend-card, .notification-panel, .dashboard-modal,
+.tank-management-card, .state-box, .device-card,
+:is(.glass-shell, .auth-background) :is(.card, .glass-panel, .dashboard-card, .alert-card, .advisory-card, .summary-card, .parameter-card, .trend-card, .notification-panel, .dashboard-modal, .tank-management-card, .state-box, .device-card),
+.glass-shell .glass-screen .state-box.state-error,
+.glass-shell .glass-screen .state-box.state-stale,
+.glass-shell .state-box:not(.state-error):not(.state-stale),
+.glass-shell .dialog.card,
+.glass-shell .live-panel > .glass-advisories .card,
+.glass-shell .live-panel .card {
+  background: rgba(255, 255, 255, 0.04);
+  -webkit-backdrop-filter: blur(20px) saturate(120%);
+  backdrop-filter: blur(20px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+.card .card, .card .popover,
+.glass-shell .card .card, .glass-shell .card .popover,
+.glass-shell .card.live-panel .card, .glass-shell .card.live-panel .popover,
+.glass-shell .card.live-panel > .glass-advisories .card,
+.glass-shell .live-panel .card .card, .glass-shell .live-panel .card .popover,
+.glass-shell .live-panel > .glass-advisories .card .card,
+.glass-shell .live-panel > .glass-advisories .card .popover {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .card, .glass-panel, .dashboard-card, .alert-card, .advisory-card, .summary-card,
+  .parameter-card, .trend-card, .notification-panel, .dashboard-modal,
+  .tank-management-card, .state-box, .device-card,
+  :is(.glass-shell, .auth-background) :is(.card, .glass-panel, .dashboard-card, .alert-card, .advisory-card, .summary-card, .parameter-card, .trend-card, .notification-panel, .dashboard-modal, .tank-management-card, .state-box, .device-card),
+  .glass-shell .glass-screen .state-box.state-error,
+  .glass-shell .glass-screen .state-box.state-stale,
+  .glass-shell .state-box:not(.state-error):not(.state-stale),
+  .glass-shell .dialog.card,
+  .glass-shell .live-panel > .glass-advisories .card,
+  .glass-shell .live-panel .card { background: rgb(22, 22, 22); }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .card, .glass-panel, .dashboard-card, .alert-card, .advisory-card, .summary-card,
+  .parameter-card, .trend-card, .notification-panel, .dashboard-modal,
+  .tank-management-card, .state-box, .device-card,
+  :is(.glass-shell, .auth-background) :is(.card, .glass-panel, .dashboard-card, .alert-card, .advisory-card, .summary-card, .parameter-card, .trend-card, .notification-panel, .dashboard-modal, .tank-management-card, .state-box, .device-card),
+  .glass-shell .glass-screen .state-box.state-error,
+  .glass-shell .glass-screen .state-box.state-stale,
+  .glass-shell .state-box:not(.state-error):not(.state-stale),
+  .glass-shell .dialog.card,
+  .glass-shell .live-panel > .glass-advisories .card,
+  .glass-shell .live-panel .card,
+  .auth-background .glass-panel:not(.terms-modal) {
+    background: rgb(22, 22, 22);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 /* Compact navigation and a full-width dashboard canvas */
 @media (min-width: 1101px) {
   .glass-shell .sidebar { width: 220px; }

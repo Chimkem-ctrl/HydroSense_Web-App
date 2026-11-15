@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import type { ComponentRef } from 'react';
+import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationLightTheme, NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import type { LinkingOptions } from '@react-navigation/native';
@@ -9,24 +10,26 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onlineManager } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import * as Notifications from 'expo-notifications';
+import * as SystemUI from 'expo-system-ui';
 import { StatusBar } from 'expo-status-bar';
+import { BlurTargetView } from 'expo-blur';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
-import { Activity, AlertTriangle, Database, LayoutDashboard, Wifi } from 'lucide-react-native';
+import { Activity, AlertTriangle, LayoutDashboard, Wifi } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isBottomBarRoute } from './navigation';
 import type { BottomBarRoute, MainTabParamList, RootStackParamList } from './navigation';
 import {
+  ActivityLogsScreen,
   AlertDetailScreen,
   AlertsScreen,
   AppearanceScreen,
-  CalibrationScreen,
+  CalibrationAndMaintenanceScreen,
   ConnectionNotice,
-  ExportScreen,
-  FieldEntryScreen,
   HistoryScreen,
   HomeScreen,
   AdminReviewScreen,
   ManagerReviewScreen,
+  ReportsScreen,
   SettingsScreen,
   StatusScreen,
   TrendsScreen,
@@ -36,13 +39,30 @@ import { useSession, SessionProvider, TankProvider } from './state';
 import { ThemeProvider, uiScale, useTheme } from './theme';
 import { HeaderToolbar } from './components/HeaderToolbar';
 import { CriticalAlertModal } from './components/CriticalAlertModal';
+import { BlurTargetContext } from './components/ui';
 import { api, liveClient } from './services/client';
 import { queryClient, queryPersister } from './services/queryClient';
 import { canAccess } from './access';
+import type { Role } from '@hydrosense/shared';
+import type { ThemeMode } from './themePreference';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
+const roleBackgrounds: Record<Role, Record<ThemeMode, number>> = {
+  admin: {
+    light: require('../../web/public/assets/images/admin bg light app.png'),
+    dark: require('../../web/public/assets/images/admin bg app (1).png'),
+  },
+  manager: {
+    light: require('../../web/public/assets/images/manager bg light app (1).png'),
+    dark: require('../../web/public/assets/images/manager bg app.png'),
+  },
+  operator: {
+    light: require('../../web/public/assets/images/operator bg light app.png'),
+    dark: require('../../web/public/assets/images/operator bg app.png'),
+  },
+};
 onlineManager.setEventListener((setOnline) => NetInfo.addEventListener((state) => {
   setOnline(Boolean(state.isConnected));
 }));
@@ -64,12 +84,15 @@ const linking: LinkingOptions<RootStackParamList> = {
 
 function MainTabs() {
   const { user } = useSession();
-  return <Tabs.Navigator tabBar={(props) => <MobileTabBar {...props} />} screenOptions={{ header: (props) => <HeaderToolbar {...props} /> }}>
+  return <Tabs.Navigator tabBar={(props) => <MobileTabBar {...props} />} screenOptions={{ sceneStyle: { backgroundColor: 'transparent' }, header: (props) => <HeaderToolbar {...props} /> }}>
     <Tabs.Screen name="Home" component={HomeScreen} />
     <Tabs.Screen name="Alerts" component={AlertsScreen} />
     <Tabs.Screen name="Trends" component={TrendsScreen} />
-    {canAccess(user?.role ?? null, 'history') && <Tabs.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />}
+    <Tabs.Screen name="Activity" component={ActivityLogsScreen} />
+    <Tabs.Screen name="Calibration" component={CalibrationAndMaintenanceScreen} />
+    <Tabs.Screen name="Reports" component={ReportsScreen} />
     <Tabs.Screen name="Status" component={StatusScreen} />
+    {canAccess(user?.role ?? null, 'history') && <Tabs.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />}
     {user?.role === 'manager' && <Tabs.Screen name="Review" component={ManagerReviewScreen} options={{ title: 'Review' }} />}
     {user?.role === 'admin' && <Tabs.Screen name="Review" component={AdminReviewScreen} options={{ title: 'Admin' }} />}
     <Tabs.Screen name="Settings" component={SettingsScreen} />
@@ -80,14 +103,13 @@ const tabIcons = {
   Home: LayoutDashboard,
   Alerts: AlertTriangle,
   Trends: Activity,
-  History: Database,
   Status: Wifi,
 } satisfies Record<BottomBarRoute, typeof Activity>;
 
 function MobileTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  return <View style={{ backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }}>
+  return <View style={{ backgroundColor: 'transparent', borderTopWidth: 1, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }}>
     <View style={{ flexDirection: 'row', paddingHorizontal: 8, paddingTop: 6, gap: 2 }}>
       {state.routes.map((route, index) => {
         if (!isBottomBarRoute(route.name)) return null;
@@ -161,6 +183,7 @@ function NotificationNavigation() {
 function AppNavigation() {
   const { colors, mode } = useTheme();
   const { user, ready } = useSession();
+  const blurTarget = useRef<ComponentRef<typeof View> | null>(null);
   const [online, setOnline] = useState(true);
   useEffect(() => NetInfo.addEventListener((state) => setOnline(Boolean(state.isConnected))), []);
   useEffect(() => {
@@ -170,12 +193,16 @@ function AppNavigation() {
     });
   }, [user]);
   if (!ready) return <View style={{ flex: 1, backgroundColor: colors.canvas, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.teal} /></View>;
-  return <>
-    <NavigationContainer ref={navigationRef} linking={linking} theme={{ ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme), colors: { ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme).colors, primary: colors.teal, background: colors.canvas, card: colors.surface, text: colors.ink, border: colors.border } }}>
+  return <View style={{ flex: 1, width: '100%', height: '100%', backgroundColor: colors.canvas }}>
+    <BlurTargetView ref={blurTarget} style={[StyleSheet.absoluteFill, { backgroundColor: colors.canvas }]} pointerEvents="none">
+      {user && <Image source={roleBackgrounds[user.role][mode]} resizeMode="cover" style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.15 }] }]} accessible={false} />}
+    </BlurTargetView>
+    <BlurTargetContext.Provider value={blurTarget}>
+    <NavigationContainer ref={navigationRef} linking={linking} theme={{ ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme), colors: { ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme).colors, primary: colors.teal, background: user ? 'transparent' : colors.canvas, card: colors.surface, text: colors.ink, border: colors.border } }}>
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <LiveSync />
       <NotificationNavigation />
-      <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: colors.canvas }, headerTintColor: colors.ink, headerShadowVisible: false, headerTitleStyle: { fontWeight: '700' } }}>
+      <Stack.Navigator screenOptions={{ contentStyle: { backgroundColor: user ? 'transparent' : colors.canvas }, headerStyle: { backgroundColor: user ? 'transparent' : colors.canvas }, headerTintColor: colors.ink, headerShadowVisible: false, headerTitleStyle: { fontWeight: '700' } }}>
         {!user ? <>
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
           <Stack.Screen name="SignUp" component={SignUpScreen} options={{ title: 'Request an account' }} />
@@ -185,16 +212,14 @@ function AppNavigation() {
           <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
           <Stack.Screen name="Appearance" component={AppearanceScreen} options={{ title: 'Appearance' }} />
           <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert detail' }} />
-          <Stack.Screen name="Calibration" component={CalibrationScreen} options={{ title: 'Calibration' }} />
-          <Stack.Screen name="FieldEntry" component={FieldEntryScreen} options={{ title: 'Field entry' }} />
-          <Stack.Screen name="Export" component={ExportScreen} options={{ title: 'Export' }} />
           {canAccess(user.role, 'validation') && <Stack.Screen name="ValidationReview" component={ManagerReviewScreen} options={{ title: 'Validation review' }} />}
         </>}
       </Stack.Navigator>
     </NavigationContainer>
     <ConnectionNotice online={online} />
     {user && <CriticalAlertModal />}
-  </>;
+    </BlurTargetContext.Provider>
+  </View>;
 }
 
 export default function App() {
@@ -203,6 +228,12 @@ export default function App() {
 
 function ThemedApp() {
   const { colors, mode } = useTheme();
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    void SystemUI.setBackgroundColorAsync(colors.canvas).catch((error: unknown) => {
+      console.error('Could not update the system background color.', error);
+    });
+  }, [colors.canvas]);
   const paperTheme = mode === 'dark' ? MD3DarkTheme : MD3LightTheme;
   return <PaperProvider theme={{ ...paperTheme, colors: { ...paperTheme.colors, primary: colors.teal, background: colors.canvas, surface: colors.surface, onSurface: colors.ink, onSurfaceVariant: colors.muted } }}><PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1000 }}>
     <SessionProvider>

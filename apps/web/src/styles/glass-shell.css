@@ -54,9 +54,12 @@ html, .glass-shell .side-nav, .glass-shell .table-wrap, .glass-shell .popover, .
   background-size: cover;
   background-repeat: no-repeat;
 }
-.glass-shell[data-role='manager'] { --role-background-image: url('/assets/images/manager%20bg.png'); }
-.glass-shell[data-role='admin'] { --role-background-image: url('/assets/images/admin%20bg.png'); }
-.glass-shell[data-role='operator'] { --role-background-image: url('/assets/images/operator%20bg.png'); }
+.glass-shell[data-role='manager'] { --role-background-image: url('/assets/images/manager%20bg%20light%20web.png'); }
+.glass-shell[data-role='admin'] { --role-background-image: url('/assets/images/admin%20bg%20light%20web.png'); }
+.glass-shell[data-role='operator'] { --role-background-image: url('/assets/images/operator%20bg%20light%20web.png'); }
+[data-theme='dark'] .glass-shell[data-role='manager'] { --role-background-image: url('/assets/images/manager%20bg.png'); }
+[data-theme='dark'] .glass-shell[data-role='admin'] { --role-background-image: url('/assets/images/admin%20bg.png'); }
+[data-theme='dark'] .glass-shell[data-role='operator'] { --role-background-image: url('/assets/images/operator%20bg.png'); }
 [data-theme='dark'] .glass-shell { --status-surface: rgba(22, 22, 22, 0.8); }
 .glass-shell, .glass-shell *, .auth-background, .auth-background * { transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease; }
 .glass-shell .sidebar { inset: 16px auto 16px 16px; width: 244px; border: 1px solid var(--glass-border); border-radius: var(--radius-lg); background: var(--glass-bg-strong); box-shadow: var(--glass-shadow); padding: 18px 12px 12px; }

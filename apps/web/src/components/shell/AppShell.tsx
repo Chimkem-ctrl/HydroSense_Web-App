@@ -44,6 +44,7 @@ const icons: Record<string, LucideIcon> = {
   '/reports': FileDown,
   '/validation': Gauge,
   '/settings/thresholds': Settings,
+  '/settings': Settings,
   '/admin/users': Users,
   '/admin/logs': ClipboardList,
   '/profile': UserRound,

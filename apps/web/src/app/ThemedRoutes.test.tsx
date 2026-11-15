@@ -13,10 +13,9 @@ const routes = [
   ['/history', 'Historical logs'],
   ['/alerts', 'Alerts center'],
   ['/entries', 'Activity logs'],
-  ['/reports', 'Export reports'],
+  ['/reports', 'Reports'],
   ['/calibration', 'Calibration & maintenance'],
   ['/validation', 'Validation view'],
-  ['/settings/thresholds', 'Thresholds & advisory rules'],
   ['/admin/users', 'Users & roles'],
   ['/admin/logs', 'Audit & system logs'],
   ['/profile', 'My profile'],
@@ -209,6 +208,14 @@ describe('themed dashboard routes', () => {
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Calibration & maintenance', level: 1 })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Calibration' })).toBeInTheDocument();
+  });
+
+  it('guards the legacy thresholds route from operators', async () => {
+    signInAs('operator');
+    window.history.replaceState({}, '', '/settings/thresholds');
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Live monitor', level: 1 });
+    expect(window.location.pathname).toBe('/');
   });
 
   it('scrolls to profile hash targets on load and account-menu navigation', async () => {
