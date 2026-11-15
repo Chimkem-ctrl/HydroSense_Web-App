@@ -72,6 +72,8 @@ In mock mode, account records and a session containing only the user ID are stor
 
 These accounts exist only in the current browser and do not authenticate with the API. They are for testing only; never use their passwords for real accounts. New signup requests remain pending until an administrator assigns a role and approves them. API mode uses the configured backend; identity, approval and authorization must be enforced there.
 
+For administrators, pending account requests appear in the web alert count and the open Alerts center, independently of the selected tank. The list refreshes at the configured tier interval and links to Users & roles for review; approving or rejecting a request removes it from these alerts. This is an in-app notification, not an email or push notification.
+
 The mobile app defaults to the shared backend for sign-in and account requests; mock sign-in is explicitly demo-only and offers all three roles. API mode signs in through `/v1/auth/signin` relative to the configured API root and stores the backend's bearer token with Expo SecureStore on native devices. Mobile query data is cached for up to 24 hours for offline viewing, and is cleared on sign-out or account changes. Tank API requests run only after session restoration and authentication; tank-loading errors are surfaced in the tank selector. Alert notification taps use the `hydrosense://alerts/{alertId}` deep link. Local notification handling and permission requests are wired; delivery/push-token registration must be connected by the production backend. See [mobile setup and limitations](apps/mobile/README.md).
 
 ## Data and live updates
