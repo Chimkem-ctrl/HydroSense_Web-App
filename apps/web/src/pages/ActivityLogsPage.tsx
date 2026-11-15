@@ -59,10 +59,11 @@ function downloadCsv(csv: string, fileName: string) {
 
 export default function ActivityLogsPage() {
   const { tankId } = useSelectedTank();
-  const { userName } = useRole();
+  const { userName, role } = useRole();
   const queryClient = useQueryClient();
   const tanks = useTanks();
   const logs = useQuery({ queryKey: ['activity-logs'], queryFn: () => api.listActivityLogs() });
+  const canExport = role === 'manager' || role === 'admin';
   const [modalKind, setModalKind] = useState<FormKind | null>(null);
   const [scope, setScope] = useState(tankId);
   const [activityType, setActivityType] = useState<string>(ACTIVITY_OPERATION_TYPES[0]);
@@ -179,9 +180,9 @@ export default function ActivityLogsPage() {
         description="Log operations, water-quality checks, and environmental events for shift handover."
       />
       <div className="inline">
-        <button type="button" className="button button-primary" onClick={() => openLog('OPERATION')}>Log operation</button>
+        <button type="button" className="button" onClick={() => openLog('OPERATION')}>Log operation</button>
         <button type="button" className="button" onClick={() => openLog('ENVIRONMENT')}>Log weather / event</button>
-        <button type="button" className="button" disabled={!filteredLogs.length} onClick={exportLogs}>Export CSV</button>
+        {canExport && <button type="button" className="button" disabled={!filteredLogs.length} onClick={exportLogs}>Export CSV</button>}
       </div>
       {statusMessage && <p className="small muted" role="status">{statusMessage}</p>}
       <StaleQueryState updatedAt={logs.dataUpdatedAt} />

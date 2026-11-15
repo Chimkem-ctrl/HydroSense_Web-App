@@ -4,13 +4,16 @@ import type { AdvisoryRuleSettings, MeasuredParameter, Threshold } from '@hydros
 import { DEFAULT_ADVISORY_RULES, validateAdvisoryRules, validateThresholds } from '@hydrosense/shared';
 import { api } from '../app/api';
 import { useRole } from '../app/auth/RoleContext';
-import { PageHeading } from '../components/common/PageHeading';
-import { ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
+import { ErrorState } from '../components/common/States';
 
 const parameterNames: Record<MeasuredParameter, string> = { temperature: 'Temperature (°C)', do: 'Dissolved oxygen (mg/L)', ph: 'pH' };
 const parameters: MeasuredParameter[] = ['temperature', 'do', 'ph'];
 
-export default function ThresholdsPage() {
+interface ThresholdsPanelProps {
+  readOnly?: boolean;
+}
+
+export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
   const { userName } = useRole();
   const queryClient = useQueryClient();
   const thresholdsQuery = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
@@ -51,6 +54,7 @@ export default function ThresholdsPage() {
   }, [confirm]);
 
   function updateThreshold(parameter: MeasuredParameter, bound: 'min' | 'max', value: string) {
+    if (readOnly) return;
     setThresholds((current) => {
       const existing = current.find((item) => item.parameter === parameter) ?? { parameter };
       const number = value === '' ? undefined : Number(value);
@@ -60,6 +64,7 @@ export default function ThresholdsPage() {
   }
 
   function save() {
+    if (readOnly) return;
     const mapped = Object.fromEntries(parameters.map((parameter) => {
       const item = thresholds.find((threshold) => threshold.parameter === parameter);
       return [parameter, { min: item?.min, max: item?.max }];
@@ -70,15 +75,11 @@ export default function ThresholdsPage() {
     setConfirm(true);
   }
 
-  if (thresholdsQuery.isLoading || rulesQuery.isLoading) return <LoadingState />;
   if (thresholdsQuery.isError) return <ErrorState error={thresholdsQuery.error} onRetry={() => void thresholdsQuery.refetch()} />;
   if (rulesQuery.isError) return <ErrorState error={rulesQuery.error} onRetry={() => void rulesQuery.refetch()} />;
 
   return (
-    <div className="stack">
-      <PageHeading title="Thresholds & advisory rules" description="Set measurement limits and advisory rules. Changes affect labels and alerts only; they do not control devices." />
-      <StaleQueryState updatedAt={thresholdsQuery.dataUpdatedAt} />
-      <StaleQueryState updatedAt={rulesQuery.dataUpdatedAt} />
+    <>
       <section className="card stack">
         <h2 className="card-title">Measured parameter thresholds</h2>
         {parameters.map((parameter) => {
@@ -86,13 +87,13 @@ export default function ThresholdsPage() {
           return (
             <div className="threshold-editor" key={parameter}>
               <strong>{parameterNames[parameter]}</strong>
-              <label className="field">Minimum<input type="number" step="0.1" value={item?.min ?? ''} onChange={(event) => updateThreshold(parameter, 'min', event.target.value)} /></label>
-              <label className="field">Maximum<input type="number" step="0.1" value={item?.max ?? ''} onChange={(event) => updateThreshold(parameter, 'max', event.target.value)} /></label>
+              <label className="field">Minimum<input type="number" step="0.1" disabled={readOnly} value={item?.min ?? ''} onChange={(event) => updateThreshold(parameter, 'min', event.target.value)} /></label>
+              <label className="field">Maximum<input type="number" step="0.1" disabled={readOnly} value={item?.max ?? ''} onChange={(event) => updateThreshold(parameter, 'max', event.target.value)} /></label>
             </div>
           );
         })}
       </section>
-      <section className="card stack">
+      {!readOnly && <section className="card stack">
         <h2 className="card-title">Rule-based advisories (not sensor readings)</h2>
         <div className="form-grid">
           <label className="field">Salinity watch temperature (°C)<input type="number" value={rules.salinityWatchTemperatureC} onChange={(event) => setRules((current) => ({ ...current, salinityWatchTemperatureC: Number(event.target.value) }))} /></label>
@@ -104,12 +105,12 @@ export default function ThresholdsPage() {
         <p className="small muted">Last changed by {userName}{changedAt ? ` · ${new Date(changedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })} PHT` : ' · demo defaults'}.</p>
         {issue && <p className="state-error" role="alert">{issue}</p>}
         {mutation.isError && <ErrorState error={mutation.error} />}
-      </section>
+      </section>}
       {confirm && <div className="dialog-backdrop"><section className="dialog card stack" role="dialog" aria-modal="true" aria-labelledby="confirm-thresholds">
         <h2 id="confirm-thresholds" className="card-title">Confirm rule changes</h2>
         <p>These thresholds change how measured data is labeled and alerts are evaluated. No equipment will be controlled.</p>
         <div className="inline"><button className="button" type="button" onClick={() => setConfirm(false)}>Cancel</button><button className="button button-primary" type="button" disabled={mutation.isPending} onClick={() => mutation.mutate()}>Confirm changes</button></div>
       </section></div>}
-    </div>
+    </>
   );
 }

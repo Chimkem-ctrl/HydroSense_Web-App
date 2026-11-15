@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { FlatList, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Dialog, Portal } from 'react-native-paper';
+import { Dialog } from 'react-native-paper';
 import { ChevronDown, Eye, EyeOff } from 'lucide-react-native';
 import { ADDRESS_PROVINCES, EMPTY_SIGNUP_ADDRESS, addressBarangays, addressCities, formatSignupPhone } from '@hydrosense/shared';
 import type { PhoneCountryCode } from '@hydrosense/shared';
 import type { RootStackParamList } from './navigation';
-import { Brand, Button, Card, createFormStyles, Page, Title } from './components/ui';
+import { Brand, Button, Card, createFormStyles, GlassDialog, Page, Title } from './components/ui';
 import { PhoneField } from './components/PhoneField';
 import { uiScale, useTheme } from './theme';
 import { useSession } from './state';
@@ -58,13 +58,13 @@ function AddressPicker({ label, value, options, disabled, onChange }: { label: s
       onPress={() => { setSearch(''); setOpen(true); }} style={[ui.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: disabled ? 0.5 : 1 }]}>
       <Text style={{ color: selected ? colors.ink : colors.muted, flex: 1 }}>{selected?.name ?? `Select ${label.toLowerCase()}`}</Text><ChevronDown size={20} color={colors.muted} />
     </Pressable>
-    <Portal><Dialog visible={open} onDismiss={() => setOpen(false)}>
-      <Dialog.Title>{label}</Dialog.Title><Dialog.Content>
+    <GlassDialog visible={open} onDismiss={() => setOpen(false)}>
+      <Dialog.Title style={{ marginTop: 24 }}>{label}</Dialog.Title><Dialog.Content>
         <TextInput accessibilityLabel={`Search ${label}`} style={ui.input} value={search} onChangeText={setSearch} placeholder="Search" placeholderTextColor={colors.muted} />
         <FlatList style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled" data={options.filter((option) => option.name.toLowerCase().includes(search.toLowerCase()))}
           keyExtractor={(item) => item.id} renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => { onChange(item.id); setOpen(false); }} style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: uiScale.spacing[4] }}><Text style={{ color: colors.ink, fontSize: uiScale.type.body }}>{item.name}</Text></Pressable>} />
       </Dialog.Content><Dialog.Actions><Button label="Cancel" secondary onPress={() => setOpen(false)} /></Dialog.Actions>
-    </Dialog></Portal>
+    </GlassDialog>
   </View>;
 }
 
@@ -189,14 +189,14 @@ export function SignUpScreen({ navigation }: Props<'SignUp'>) {
           </Text>
           <ChevronDown size={20} color={colors.muted} />
         </Pressable>
-        {hatcheryOpen && <View accessibilityRole="radiogroup" accessibilityLabel="Subscribed hatchery options" style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, overflow: 'hidden' }}>
+        {hatcheryOpen && <View accessibilityRole="radiogroup" accessibilityLabel="Subscribed hatchery options" style={{ backgroundColor: 'transparent', borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderRadius: 12, overflow: 'hidden' }}>
           {[{ id: '', name: 'Select a subscribed hatchery' }, HATCHERY].map((hatchery) => <Pressable
             key={hatchery.id}
             accessibilityRole="radio"
             accessibilityState={{ checked: values.hatcheryId === hatchery.id }}
             aria-checked={values.hatcheryId === hatchery.id}
             onPress={() => { setField('hatcheryId', hatchery.id); setHatcheryOpen(false); }}
-            style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: values.hatcheryId === hatchery.id ? colors.selected : colors.surface }}
+            style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: values.hatcheryId === hatchery.id ? colors.selected : 'transparent' }}
           >
             <Text style={{ color: values.hatcheryId === hatchery.id ? colors.teal : colors.ink, fontSize: 15 }}>{hatchery.name}</Text>
           </Pressable>)}
@@ -221,15 +221,15 @@ export function SignUpScreen({ navigation }: Props<'SignUp'>) {
       <Button label={busy ? 'Submitting…' : 'Submit Request'} disabled={busy} onPress={() => void submit()} />
       <Button label="Already registered? Sign In" secondary disabled={busy} onPress={() => navigation.navigate('Login')} />
     </Card>
-    <Portal><Dialog visible={showTerms} onDismiss={() => setShowTerms(false)}>
-      <Dialog.Title>Terms and Conditions</Dialog.Title>
+    <GlassDialog visible={showTerms} onDismiss={() => setShowTerms(false)}>
+      <Dialog.Title style={{ marginTop: 24 }}>Terms and Conditions</Dialog.Title>
       <Dialog.Content>
         <Text>The web app currently provides the following demo terms:</Text>
         <Text style={{ marginTop: 10 }}>This is a demonstration application. Account details and password hashes are saved in this browser only. There is no server-side authentication or account recovery. Do not enter real passwords or sensitive personal information.</Text>
         <Text style={{ marginTop: 10, color: colors.critical }}>These demo terms do not describe this mobile form: it sends account details to the configured backend. Production terms have not been provided.</Text>
       </Dialog.Content>
       <Dialog.Actions><Button label="Close" secondary onPress={() => setShowTerms(false)} /></Dialog.Actions>
-    </Dialog></Portal>
+    </GlassDialog>
   </Page>;
 }
 

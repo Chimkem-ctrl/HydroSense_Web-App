@@ -3,7 +3,7 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 import NetInfo from '@react-native-community/netinfo';
 import { useQuery } from '@tanstack/react-query';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
-import { Activity, AlertTriangle, Bell, ChevronDown, ClipboardList, Database, LayoutDashboard, LogOut, Menu, Palette as PaletteIcon, Settings, Waves, Wifi, WifiOff, X } from 'lucide-react-native';
+import { Activity, AlertTriangle, Bell, ChevronDown, ClipboardList, Database, FileText, LayoutDashboard, LogOut, Menu, Palette as PaletteIcon, Settings, Sliders, Waves, Wifi, WifiOff, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MainTabParamList } from '../navigation';
 import { canAccess } from '../access';
@@ -45,6 +45,9 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
     { name: 'Trends', label: 'Trends', icon: Activity, group: 'Monitor' },
     { name: 'Alerts', label: 'Alerts center', icon: AlertTriangle, group: 'Monitor' },
     ...(canAccess(user?.role ?? null, 'history') ? [{ name: 'History', label: 'Historical logs', icon: Database, group: 'Records' } satisfies Destination] : []),
+    { name: 'Activity', label: 'Activity logs', icon: ClipboardList, group: 'Records' },
+    { name: 'Calibration', label: 'Calibration', icon: Sliders, group: 'Records' },
+    { name: 'Reports', label: 'Reports', icon: FileText, group: 'Records' },
     ...(user?.role === 'manager' || user?.role === 'admin' ? [{ name: 'Review', label: user.role === 'admin' ? 'Admin overview' : 'Validation review', icon: ClipboardList, group: 'Manage' } satisfies Destination] : []),
     { name: 'Settings', label: 'Settings', icon: Settings, group: 'Manage' },
   ];
@@ -122,7 +125,7 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
 }
 
 const createStyles = (colors: Palette) => StyleSheet.create({
-  safe: { backgroundColor: colors.canvas },
+  safe: { backgroundColor: 'transparent' },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   brandSlot: { flex: 1, minWidth: 0, overflow: 'hidden' },

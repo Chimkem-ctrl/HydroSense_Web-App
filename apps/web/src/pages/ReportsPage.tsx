@@ -124,11 +124,11 @@ export default function ReportsPage() {
 
   return (
     <div className="stack">
-      <PageHeading title="Export reports" description="Build and preview reports, print to PDF, or export datasets as CSV." />
+      <PageHeading title="Reports" description="Build and preview reports, print to PDF, or export datasets as CSV." />
       <StaleQueryState updatedAt={dataQuery.dataUpdatedAt} />
       <section className="card stack">
         <div className="form-grid">
-          <label className="field">CSV dataset<select value={type} onChange={(event) => setType(event.target.value as ExportType)}><option value="readings">Raw readings</option><option value="alerts">Alerts</option><option value="activity">Activity logs</option><option value="calibration">Calibration log</option><option value="validation">Validation</option></select></label>
+          {canExport && <label className="field">CSV dataset<select value={type} onChange={(event) => setType(event.target.value as ExportType)}><option value="readings">Raw readings</option><option value="alerts">Alerts</option><option value="activity">Activity logs</option><option value="calibration">Calibration log</option><option value="validation">Validation</option></select></label>}
           <label className="field">From<input type="date" value={from} min={minimumDate} max={to} onChange={(event) => setFrom(event.target.value)} /></label>
           <label className="field">To<input type="date" value={to} min={from} max={maximumDate} onChange={(event) => setTo(event.target.value)} /></label>
         </div>
