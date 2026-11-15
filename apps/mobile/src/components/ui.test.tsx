@@ -31,7 +31,7 @@ vi.mock('../theme', () => ({
 
 import { BlurTargetContext, Card, GlassDialog, Page } from './ui';
 
-type ElementProps = { children?: ReactNode; style?: unknown; contentContainerStyle?: unknown; intensity?: number; blurReductionFactor?: number; tint?: string; ref?: unknown };
+type ElementProps = { children?: ReactNode; style?: unknown; contentContainerStyle?: unknown; intensity?: number; blurReductionFactor?: number; tint?: string; ref?: unknown; edges?: string[] };
 
 function findElement(node: ReactNode, type: string): ReactElement<ElementProps> | undefined {
   if (!isValidElement<ElementProps>(node)) return undefined;
@@ -49,6 +49,14 @@ function flattenStyle(style: unknown): Record<string, unknown> {
 }
 
 describe('page background layers', () => {
+  it('lets the tab bar own the bottom inset while keeping it for stack and auth screens', () => {
+    vi.mocked(useContext).mockReturnValueOnce(true);
+    expect(findElement(Page({ children: 'Tab' }), 'SafeAreaView')?.props.edges).toEqual(['left', 'right']);
+    vi.mocked(useContext).mockReturnValueOnce(false);
+    expect(findElement(Page({ children: 'Stack' }), 'SafeAreaView')?.props.edges).toEqual(['left', 'right', 'bottom']);
+    vi.mocked(useContext).mockReturnValueOnce(false);
+    expect(findElement(Page({ auth: true, children: 'Auth' }), 'SafeAreaView')?.props.edges).toEqual(['top', 'left', 'right', 'bottom']);
+  });
   it('keeps authenticated page wrappers transparent and the scroll content full-height', () => {
     const page = Page({ children: 'Content' });
     for (const type of ['View', 'KeyboardAvoidingView', 'SafeAreaView', 'ScrollView']) {

@@ -3,11 +3,11 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 import NetInfo from '@react-native-community/netinfo';
 import { useQuery } from '@tanstack/react-query';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
-import { Activity, AlertTriangle, Bell, ChevronDown, ClipboardList, Database, FileText, LayoutDashboard, LogOut, Menu, Palette as PaletteIcon, Settings, Sliders, Waves, Wifi, WifiOff, X } from 'lucide-react-native';
+import { Activity, AlertTriangle, Bell, ChevronDown, ClipboardList, Database, FileText, LayoutDashboard, LogOut, Menu, Sliders, UserRound, Users, Waves, Wifi, WifiOff, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MainTabParamList } from '../navigation';
 import { canAccess } from '../access';
-import { api, liveClient } from '../services/client';
+import { api, DATA_MODE, listPendingAccounts, liveClient } from '../services/client';
 import { getConnectionLabel } from '../services/connectionStatus';
 import { useSession, useTankSelection } from '../state';
 import { Brand } from './ui';
@@ -25,10 +25,12 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const [panel, setPanel] = useState<Panel>(null);
   const [online, setOnline] = useState<boolean | null>(null);
   const [connection, setConnection] = useState(liveClient?.getConnectionState() ?? 'disconnected');
-  const alerts = useQuery({ queryKey: ['alerts', 'toolbar'], queryFn: () => api.listAlerts(), enabled: Boolean(user) });
+  const alerts = useQuery({ queryKey: ['alerts', 'all'], queryFn: () => api.listAlerts(), enabled: Boolean(user), refetchInterval: 5000 });
+  const pending = useQuery({ queryKey: ['pending-accounts', user?.id], queryFn: listPendingAccounts, enabled: user?.role === 'admin' && DATA_MODE === 'api', refetchInterval: 5000 });
   const latestReading = useQuery({ queryKey: ['latest-reading', tankId], queryFn: () => api.getLatestReading(tankId), enabled: Boolean(user && tankId) });
   const [, updateClock] = useState(0);
   const openAlerts = alerts.data?.filter((item) => item.status === 'open').length;
+  const alertCount = openAlerts === undefined ? undefined : openAlerts + (pending.data?.length ?? 0);
   const tank = tanks.find((item) => item.id === tankId);
 
   useEffect(() => NetInfo.addEventListener((state) => setOnline(state.isConnected)), []);
@@ -46,10 +48,12 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
     { name: 'Alerts', label: 'Alerts center', icon: AlertTriangle, group: 'Monitor' },
     ...(canAccess(user?.role ?? null, 'history') ? [{ name: 'History', label: 'Historical logs', icon: Database, group: 'Records' } satisfies Destination] : []),
     { name: 'Activity', label: 'Activity logs', icon: ClipboardList, group: 'Records' },
-    { name: 'Calibration', label: 'Calibration', icon: Sliders, group: 'Records' },
+    ...(canAccess(user?.role ?? null, 'canCalibrate') ? [{ name: 'Calibration', label: 'Calibration', icon: Sliders, group: 'Records' } satisfies Destination] : []),
     { name: 'Reports', label: 'Reports', icon: FileText, group: 'Records' },
-    ...(user?.role === 'manager' || user?.role === 'admin' ? [{ name: 'Review', label: user.role === 'admin' ? 'Admin overview' : 'Validation review', icon: ClipboardList, group: 'Manage' } satisfies Destination] : []),
-    { name: 'Settings', label: 'Settings', icon: Settings, group: 'Manage' },
+    ...(canAccess(user?.role ?? null, 'validation') ? [{ name: 'Review', label: 'Validation', icon: ClipboardList, group: 'Records' } satisfies Destination] : []),
+    ...(canAccess(user?.role ?? null, 'users') ? [{ name: 'Users', label: 'Users & roles', icon: Users, group: 'Manage' } satisfies Destination] : []),
+    ...(canAccess(user?.role ?? null, 'admin') ? [{ name: 'AuditLogs', label: 'Audit & system logs', icon: ClipboardList, group: 'Manage' } satisfies Destination] : []),
+    { name: 'Profile', label: 'My profile', icon: UserRound, group: 'Manage' },
   ];
   const connectionLabel = getConnectionLabel(online, connection, latestReading.data?.timestamp, Date.now());
   const initials = user?.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() ?? '';
@@ -75,22 +79,14 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
       <View style={styles.brandRow}>
         <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" accessibilityState={{ expanded: panel === 'navigation' }} onPress={() => setPanel('navigation')} style={styles.iconButton}><Menu size={21} color={colors.ink} /></Pressable>
         <View style={styles.brandSlot}><Brand compact /></View>
-        <Pressable accessibilityRole="button" accessibilityLabel={alerts.isError ? 'Alerts unavailable; open alerts' : openAlerts === undefined ? 'Loading alerts; open alerts' : `${openAlerts} open alerts`} onPress={() => goTo('Alerts')} style={styles.iconButton}>
+        <Pressable accessibilityRole="button" accessibilityLabel={alerts.isError ? 'Alerts unavailable; open alerts' : alertCount === undefined ? 'Loading alerts; open alerts' : `${alertCount} open alerts and pending requests${pending.isError ? ', account requests unavailable' : ''}`} onPress={() => goTo('Alerts')} style={styles.iconButton}>
           <Bell size={20} color={colors.ink} />
-          {openAlerts !== undefined && openAlerts > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{openAlerts > 99 ? '99+' : openAlerts}</Text></View>}
+          {alertCount !== undefined && alertCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{alertCount > 99 ? '99+' : alertCount}</Text></View>}
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={`Account menu for ${user?.name ?? 'user'}`} accessibilityState={{ expanded: panel === 'account' }} onPress={() => setPanel('account')} style={styles.avatar}><Text style={styles.avatarText}>{initials}</Text></Pressable>
       </View>
-      <View style={styles.controls}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Select tank: ${tank?.name ?? (isLoading ? 'loading' : error ? 'unavailable' : 'none')}`} accessibilityState={{ expanded: panel === 'tanks' }} onPress={() => setPanel('tanks')} style={styles.tankButton}>
-          <Waves size={16} color={colors.teal} /><Text numberOfLines={1} style={styles.tankText}>{tank?.name ?? (isLoading ? 'Loading tanks…' : error ? 'Tanks unavailable' : 'Select tank')}</Text><ChevronDown size={16} color={colors.muted} />
-        </Pressable>
-        <View accessibilityLabel={`Connection ${connectionLabel}`} style={styles.connection}>
-          {connectionLabel === 'Live' ? <Wifi size={16} color="#16a34a" /> : <WifiOff size={16} color={colors.warning} />}
-          <Text style={styles.connectionText}>{connectionLabel}</Text>
-        </View>
-      </View>
       {alerts.isError && <Text style={styles.error}>Could not load alert count. Open alerts to retry.</Text>}
+      {pending.isError && <Text style={styles.error}>Could not load account requests. Open alerts to retry.</Text>}
     </View>
     <Modal visible={panel !== null} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setPanel(null)}>
       <View style={styles.overlay}>
@@ -110,11 +106,21 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
                 </View> : null;
               })}
             </>}
-            {panel === 'tanks' && (isLoading ? <Text style={styles.description}>Loading tanks…</Text> : error ? <><Text accessibilityRole="alert" style={styles.error}>Could not load tanks: {error.message}</Text><Pressable accessibilityRole="button" onPress={refetch} style={styles.menuItem}><Text style={styles.selectedText}>Retry tank list</Text></Pressable></> : !tanks.length ? <Text style={styles.description}>No tanks are available for this account.</Text> : tanks.map((item) => <Pressable key={item.id} accessibilityRole="radio" accessibilityState={{ checked: item.id === tankId }} onPress={() => { setTankId(item.id); setPanel(null); }} style={[styles.menuItem, item.id === tankId && styles.selected]}><Waves size={19} color={colors.teal} /><View style={{ flex: 1 }}><Text style={styles.itemText}>{item.name}</Text><Text style={styles.description}>{item.site}</Text></View>{item.id === tankId && <Text style={styles.selectedText}>Selected</Text>}</Pressable>))}
+            {panel === 'tanks' && <>
+              <Pressable accessibilityRole="button" onPress={() => setPanel('account')} style={styles.menuItem}><Text style={styles.selectedText}>Back to account</Text></Pressable>
+              {isLoading ? <Text style={styles.description}>Loading tanks…</Text> : error ? <><Text accessibilityRole="alert" style={styles.error}>Could not load tanks: {error.message}</Text><Pressable accessibilityRole="button" onPress={refetch} style={styles.menuItem}><Text style={styles.selectedText}>Retry tank list</Text></Pressable></> : !tanks.length ? <Text style={styles.description}>No tanks are available for this account.</Text> : tanks.map((item) => <Pressable key={item.id} accessibilityRole="radio" accessibilityState={{ checked: item.id === tankId }} onPress={() => { setTankId(item.id); setPanel('account'); }} style={[styles.menuItem, item.id === tankId && styles.selected]}><Waves size={19} color={colors.teal} /><View style={{ flex: 1 }}><Text style={styles.itemText}>{item.name}</Text><Text style={styles.description}>{item.site}</Text></View>{item.id === tankId && <Text style={styles.selectedText}>Selected</Text>}</Pressable>)}
+            </>}
             {panel === 'account' && <>
               <Text style={styles.panelTitle}>{user?.name}</Text><Text style={styles.description}>{user?.role}</Text>
-              <Pressable accessibilityRole="button" onPress={() => { setPanel(null); navigation.getParent()?.navigate('Appearance'); }} style={styles.menuItem}><PaletteIcon size={19} color={colors.muted} /><Text style={styles.itemText}>Appearance</Text></Pressable>
-              <Pressable accessibilityRole="button" onPress={() => goTo('Settings')} style={styles.menuItem}><Settings size={19} color={colors.muted} /><Text style={styles.itemText}>Settings</Text></Pressable>
+              <Text style={styles.groupLabel}>DASHBOARD</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Select tank: ${tank?.name ?? (isLoading ? 'loading' : error ? 'unavailable' : 'none')}`} onPress={() => setPanel('tanks')} style={styles.tankButton}>
+                <Waves size={19} color={colors.teal} /><View style={{ flex: 1, minWidth: 0 }}><Text style={styles.description}>Selected tank</Text><Text numberOfLines={1} style={styles.tankText}>{tank?.name ?? (isLoading ? 'Loading tanks…' : error ? 'Tanks unavailable' : 'Select tank')}</Text></View><ChevronDown size={18} color={colors.muted} />
+              </Pressable>
+              <View accessibilityLabel={`Connection ${connectionLabel}`} style={styles.connection}>
+                {connectionLabel === 'Live' ? <Wifi size={19} color={colors.normal} /> : <WifiOff size={19} color={colors.warning} />}
+                <Text style={styles.description}>Connection</Text><Text style={styles.connectionText}>{connectionLabel}</Text>
+              </View>
+              <Pressable accessibilityRole="button" onPress={() => goTo('Profile')} style={styles.menuItem}><UserRound size={19} color={colors.muted} /><Text style={styles.itemText}>My profile</Text></Pressable>
               <Pressable accessibilityRole="button" onPress={() => void handleSignOut()} style={styles.menuItem}><LogOut size={19} color={colors.critical} /><Text style={[styles.itemText, { color: colors.critical }]}>Sign out</Text></Pressable>
             </>}
           </ScrollView>
@@ -134,11 +140,10 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   avatarText: { color: colors.teal, fontWeight: '800', fontSize: uiScale.type.caption },
   badge: { position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, paddingHorizontal: 3, borderRadius: 10, backgroundColor: '#b51c1c', alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: 'white', fontWeight: '700', fontSize: uiScale.type.caption },
-  controls: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tankButton: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 14 },
-  tankText: { flex: 1, color: colors.ink, fontWeight: '700', fontSize: uiScale.type.caption },
-  connection: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 12 },
-  connectionText: { color: colors.muted, fontWeight: '700', fontSize: 12 },
+  tankButton: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 8 },
+  tankText: { color: colors.ink, fontWeight: '700', fontSize: 15 },
+  connection: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14 },
+  connectionText: { color: colors.ink, fontWeight: '700', fontSize: 14, marginLeft: 'auto' },
   error: { color: colors.critical, fontSize: 14, lineHeight: 20 },
   overlay: { flex: 1, backgroundColor: colors.overlay, flexDirection: 'row' },
   panel: { backgroundColor: colors.surface, width: '85%', maxWidth: 340 },

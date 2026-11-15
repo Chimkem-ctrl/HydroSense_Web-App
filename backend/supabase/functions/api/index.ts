@@ -645,12 +645,25 @@ Deno.serve(async (request) => {
     return json(body.tolerances);
   }
 
+  if (action === "/v1/profile" && request.method === "GET") {
+    return json({
+      id: profile.id, name: `${profile.first_name} ${profile.last_name}`.trim(), email: profile.email,
+      role: profile.role, status: profile.status, site: profile.site, createdAt: profile.created_at,
+      employeeId: profile.employee_id, phone: profile.phone, position: profile.position, address: profile.address,
+      emergencyContactName: profile.emergency_contact_name, emergencyContactPhone: profile.emergency_contact_phone,
+    });
+  }
+
   if ((action === "/v1/admin/users" || action === "/v1/admin/pending-requests") && request.method === "GET") {
     if (!profile || profile.status !== "approved" || !["manager", "admin"].includes(profile.role)) return json({ error: "Forbidden." }, 403);
     const status = action === "/v1/admin/pending-requests" ? "pending" : url.searchParams.get("status");
     if (status && !["pending", "approved", "rejected"].includes(status)) return json({ error: "Invalid account status." }, 400);
     if (profile.role !== "admin" && status && status !== "approved") return json({ error: "Forbidden." }, 403);
     const query = admin.from("profiles").select("*").order("created_at", { ascending: false }).eq("status", status ?? "approved");
+    if (profile.role === "manager") {
+      if (!profile.site?.trim()) return json([]);
+      query.eq("site", profile.site).in("role", ["operator", "manager"]);
+    }
     const { data, error } = await query;
     if (error) return json({ error: error.message }, 500);
     return json(data?.map((user) => ({

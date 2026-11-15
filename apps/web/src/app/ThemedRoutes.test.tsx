@@ -112,6 +112,8 @@ describe('themed dashboard routes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close navigation' }));
     fireEvent.click(screen.getByRole('button', { name: /Account menu for/ }));
     expect(screen.getByRole('menuitem', { name: 'My profile' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Alert preferences' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Appearance' })).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Select tank' })).toBeInTheDocument();
   });
 
@@ -240,7 +242,7 @@ describe('themed dashboard routes', () => {
     expect(window.location.pathname).toBe('/');
   });
 
-  it('scrolls to profile hash targets on load and account-menu navigation', async () => {
+  it('scrolls to profile hash targets on load', async () => {
     const scroll = vi.fn();
     const previous = HTMLElement.prototype.scrollIntoView;
     HTMLElement.prototype.scrollIntoView = scroll;
@@ -250,12 +252,6 @@ describe('themed dashboard routes', () => {
       await screen.findByRole('heading', { name: 'My profile', level: 1 });
       expect(scroll).toHaveBeenCalledTimes(1);
       expect(scroll.mock.instances[0]).toBe(document.getElementById('alerts'));
-      fireEvent.click(screen.getByRole('button', { name: /Account menu for/ }));
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Appearance' }));
-      expect(window.location.hash).toBe('#appearance');
-      expect(scroll).toHaveBeenCalledTimes(2);
-      expect(scroll.mock.instances[1]).toBe(document.getElementById('appearance'));
-      expect(screen.queryByRole('menuitem', { name: 'Appearance' })).not.toBeInTheDocument();
     } finally {
       HTMLElement.prototype.scrollIntoView = previous;
     }

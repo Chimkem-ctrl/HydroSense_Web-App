@@ -14,7 +14,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  Moon,
   Settings,
   Users,
   Waves,
@@ -137,7 +136,6 @@ export function AppShell() {
             <button type="button" className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMenuOpen(true)}><Menu size={19} /></button>
             {tanks.isLoading ? <LoadingState label="Loading tanks" /> : tanks.isError ? <ErrorState error={tanks.error} /> : (
               <label className="inline small" aria-label="Selected tank">
-                <Waves size={16} aria-hidden="true" />
                 <select className="select-control" aria-label="Select tank" value={tankId} onChange={(event) => setTankId(event.target.value)}>
                   {(tanks.data ?? []).map((tank) => <option value={tank.id} key={tank.id}>{tank.name}</option>)}
                 </select>
@@ -157,8 +155,6 @@ export function AppShell() {
                 </button>              {accountMenuOpen && <div className="account-menu-popover" role="menu" aria-label="Account options">
                 
                 <Link to="/profile" role="menuitem"><UserRound size={15} />My profile</Link>
-                <Link to="/profile#alerts" role="menuitem"><Bell size={15} />Alert preferences</Link>
-                <Link to="/profile#appearance" role="menuitem"><Moon size={15} />Appearance</Link>
                 <Link to="/signin" role="menuitem" onClick={signOut}><LogOut size={15} />Sign out</Link>
               </div>}
             </div>

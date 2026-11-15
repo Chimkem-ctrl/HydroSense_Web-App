@@ -3,11 +3,15 @@ export type MainTabParamList = {
   Alerts: undefined;
   Trends: undefined;
   Activity: undefined;
+  FieldEntry: undefined;
   Calibration: undefined;
   Reports: undefined;
   Status: undefined;
   History: undefined;
   Review: undefined;
+  Profile: undefined;
+  Users: undefined;
+  AuditLogs: undefined;
   Settings: undefined;
 };
 

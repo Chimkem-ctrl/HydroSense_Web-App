@@ -13,7 +13,7 @@ export function CriticalAlertModal() {
   const { colors, reduceMotion } = useTheme();
   const { user } = useSession();
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ['alerts', 'critical-popup'], queryFn: () => api.listAlerts(), enabled: Boolean(user), refetchInterval: 30000 });
+  const query = useQuery({ queryKey: ['alerts', 'all'], queryFn: () => api.listAlerts(), enabled: Boolean(user), refetchInterval: 5000 });
   const critical = (query.data ?? [])
     .filter((alert) => alert.status === 'open' && alert.severity === 'critical')
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));

@@ -24,9 +24,9 @@ import {
   validateAdvisoryRules,
   validateThresholds,
 } from '@hydrosense/shared';
-import type { ActivityLog, ActivityLogKind, AdvisoryRuleSettings, AlertItem, CalibrationLog, MeasuredParameter, Reading, Role, Threshold } from '@hydrosense/shared';
+import type { ActivityLog, ActivityLogKind, AdvisoryRuleSettings, AlertItem, CalibrationLog, MeasuredParameter, Reading, Threshold } from '@hydrosense/shared';
 import type { MainTabParamList, RootStackParamList } from './navigation';
-import { DATA_MODE, api, listPendingAccounts, reviewPendingAccount } from './services/client';
+import { DATA_MODE, api, listPendingAccounts } from './services/client';
 import { canAccess } from './access';
 import { useSession, useTankSelection } from './state';
 import { Button, Card, createFormStyles, DataRow, Page, StateMessage, Title } from './components/ui';
@@ -97,8 +97,8 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
   const { colors } = useTheme();
   const { user } = useSession();
   const { width } = useWindowDimensions();
-  const { tankId, tanks } = useTankSelection();
-  const { data: reading, isLoading, isError, refetch } = useQuery({ queryKey: ['latest-reading', tankId], queryFn: () => api.getLatestReading(tankId), enabled: Boolean(tankId) });
+  const { tankId, tanks, isLoading: tanksLoading, error: tanksError } = useTankSelection();
+  const { data: reading, isLoading, isError, error: readingError, refetch } = useQuery({ queryKey: ['latest-reading', tankId], queryFn: () => api.getLatestReading(tankId), enabled: Boolean(tankId) });
   const thresholds = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
   const advisories = useQuery({ queryKey: ['advisories', tankId], queryFn: () => api.listAdvisories(tankId), enabled: Boolean(tankId) });
   const devices = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses() });
@@ -111,7 +111,7 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
     <View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700', letterSpacing: 1 }}>WATER QUALITY MONITORING</Text><Text style={{ color: colors.ink, fontSize: uiScale.type.title, fontWeight: '500' }}>Welcome, {user?.name}.</Text></View>
     <Title detail={tank ? `${tank.name} · ${tank.site} · rearing day ${getRaisingDay(tank.rearingStartDate)}/21` : 'Live water-quality status'}>Live monitor</Title>
     <TankPicker />
-    {isLoading || thresholds.isLoading ? <StateMessage message="Loading latest readings and thresholds…" loading /> : isError || thresholds.isError ? <Card><StateMessage message={`Could not load readings or thresholds: ${(thresholds.error ?? null)?.message ?? 'Check your connection.'}`} /><Button label="Retry" onPress={() => { void refetch(); void thresholds.refetch(); }} secondary /></Card> : reading && statuses ? <>
+    {tanksLoading || (Boolean(tankId) && isLoading) || thresholds.isLoading ? <StateMessage message="Loading latest readings and thresholds…" loading /> : tanksError ? null : isError || thresholds.isError ? <Card><StateMessage message={`Could not load readings or thresholds: ${(readingError ?? thresholds.error)?.message ?? 'Check your connection.'}`} /><Button label="Retry" onPress={() => { void refetch(); void thresholds.refetch(); }} secondary /></Card> : reading && statuses ? <>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>
         {(['temperature', 'do', 'ph'] as const).map((parameter) => <View key={parameter} style={{ width: width >= 950 ? '32%' : width >= 600 ? '48%' : '100%' }}><ReadingCard parameter={parameter} reading={reading} threshold={thresholds.data?.find((item) => item.parameter === parameter)} /></View>)}
       </View>
@@ -126,10 +126,10 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
           <DataRow label="Battery" value={device.batteryPct > 0 ? `${device.batteryPct}%` : 'Unavailable'} detail={`Power source: ${device.powerSource}`} />
           {alerts.isError ? <StateMessage message="Could not load alerts." /> : <DataRow label="Active alerts" value={alerts.isLoading ? 'Loading…' : `${openCount}`} />}
         </>}
-        <Button label="Calibration helper" secondary onPress={() => navigation.getParent()?.navigate('Calibration')} />
+        {canAccess(user?.role ?? null, 'canCalibrate') && <Button label="Calibration helper" secondary onPress={() => navigation.navigate('Calibration')} />}
       </Card>
     </> : <StateMessage message="No reading is available for this tank." />}
-    <Button label="Record manual water test" onPress={() => navigation.getParent()?.navigate('FieldEntry')} secondary />
+    <Button label="Record manual water test" onPress={() => navigation.navigate('FieldEntry')} secondary />
   </Page>;
 }
 
@@ -139,19 +139,22 @@ function alertTitle(alert: AlertItem) {
 
 export function AlertsScreen({ navigation }: Props<'Alerts'>) {
   const { colors } = useTheme();
-  const { tankId } = useTankSelection();
-  const query = useQuery({ queryKey: ['alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
+  const { user } = useSession();
+  const query = useQuery({ queryKey: ['alerts', 'all'], queryFn: () => api.listAlerts(), refetchInterval: 5000 });
+  const pending = useQuery({ queryKey: ['pending-accounts', user?.id], queryFn: listPendingAccounts, enabled: user?.role === 'admin' && DATA_MODE === 'api', refetchInterval: 5000 });
   const rows = [...(query.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return <Page>
     <Title detail="Review alerts and responses">Alerts</Title>
-    <TankPicker />
+    {user?.role === 'admin' && DATA_MODE === 'api' && <Card title="Account requests">
+      {pending.isLoading ? <StateMessage message="Loading account requests..." loading /> : pending.isError ? <><StateMessage message={`Could not load requests: ${pending.error.message}`} /><Button label="Retry requests" secondary onPress={() => void pending.refetch()} /></> : <Button label={`${pending.data?.length ?? 0} pending requests · Review`} secondary onPress={() => navigation.navigate('Users')} />}
+    </Card>}
     <Card title="Alert list">
-      {query.isLoading ? <StateMessage message="Loading alerts…" loading /> : query.isError ? <StateMessage message="Alert data could not be loaded." /> : rows.length === 0 ? <StateMessage message="No alerts are recorded for this tank." /> : rows.map((alert) => {
+      {query.isLoading ? <StateMessage message="Loading alerts…" loading /> : query.isError ? <><StateMessage message={`Alert data could not be loaded: ${query.error.message}`} /><Button label="Retry alerts" secondary onPress={() => void query.refetch()} /></> : rows.length === 0 ? <StateMessage message="No alerts are recorded." /> : rows.map((alert) => {
         const StatusIcon = alert.severity === 'critical' ? AlertCircle : AlertTriangle;
         const statusColor = alert.severity === 'critical' ? colors.critical : colors.warning;
         return <Pressable key={alert.id} onPress={() => navigation.getParent()?.navigate('AlertDetail', { alertId: alert.id })} style={{ minHeight: 64, justifyContent: 'center', paddingVertical: uiScale.spacing[3], borderBottomWidth: 1, borderBottomColor: colors.border, gap: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[1] }}><StatusIcon size={16} color={statusColor} /><Text style={{ color: statusColor, fontWeight: '800' }}>{alertTitle(alert)} · {alert.status}</Text></View>
-        <Text style={{ color: colors.ink }}>{alert.value} · threshold {alert.threshold}</Text>
+        <Text style={{ color: colors.ink }}>{alert.tankId} · {alert.value} · threshold {alert.threshold}</Text>
         <Text style={{ color: colors.muted }}>{formatManilaDateTime(alert.createdAt)} PHT · tap for details</Text>
       </Pressable>;
       })}
@@ -267,53 +270,6 @@ export function ManagerReviewScreen() {
           <DataRow label="Result" value={Math.abs(difference) <= tolerance ? 'Pass' : 'Fail'} />
         </Card>;
       })}
-  </Page>;
-}
-
-export function AdminReviewScreen({ navigation }: Props<'Review'>) {
-  const { colors } = useTheme();
-  const { user } = useSession();
-  const allowed = canAccess(user?.role ?? null, 'admin');
-  const queryClient = useQueryClient();
-  const [selectedRoles, setSelectedRoles] = useState<Record<string, Role | undefined>>({});
-  const pending = useQuery({ queryKey: ['pending-accounts'], queryFn: listPendingAccounts, enabled: allowed && DATA_MODE === 'api' });
-  const review = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: Role | null }) => reviewPendingAccount(id, role),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['pending-accounts'] });
-      await queryClient.invalidateQueries({ queryKey: ['admin-users'] });
-    },
-  });
-  const users = useQuery({ queryKey: ['admin-users'], queryFn: () => api.listUsers(), enabled: allowed });
-  const logs = useQuery({ queryKey: ['audit-logs'], queryFn: () => api.listAuditLogs(), enabled: allowed });
-  if (!allowed) return <Page><StateMessage message="You do not have access to administration." /></Page>;
-  return <Page>
-    <Title detail="Review account requests and audit events">Admin overview</Title>
-    <Button label="Review validation comparisons" secondary onPress={() => navigation.getParent()?.navigate('ValidationReview')} />
-    <Card title="Pending requests">
-      {DATA_MODE === 'mock' ? <StateMessage message="Account review is unavailable in mobile demo mode. Connect to the backend to review requests." /> :
-        pending.isLoading ? <StateMessage message="Loading requests…" loading /> : pending.isError ? <><StateMessage message={`Could not load requests: ${pending.error.message}`} /><Button label="Retry requests" secondary onPress={() => void pending.refetch()} /></> :
-          !pending.data?.length ? <StateMessage message="No account requests are awaiting review." /> : pending.data.map((account) => <View key={account.id} style={{ gap: 8, paddingVertical: 10 }}>
-            <Text style={{ color: colors.ink, fontWeight: '700' }}>{account.firstName} {account.lastName}</Text>
-            <Text style={{ color: colors.muted }}>{account.email} · {account.employeeId ?? '—'}</Text>
-            <Text style={{ color: colors.ink }}>Choose an approval role:</Text>
-            <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {(['operator', 'manager', 'admin'] as const).map((role) => <Pressable key={role} accessibilityRole="radio" accessibilityState={{ checked: selectedRoles[account.id] === role }} onPress={() => setSelectedRoles((current) => ({ ...current, [account.id]: role }))}
-                style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: uiScale.spacing[3], borderWidth: 1, borderRadius: uiScale.radius.control, borderColor: selectedRoles[account.id] === role ? colors.teal : colors.border, backgroundColor: selectedRoles[account.id] === role ? colors.selected : colors.surface }}>
-                <Text style={{ color: colors.ink }}>{role[0].toUpperCase() + role.slice(1)}</Text>
-              </Pressable>)}
-            </View>
-            <Button label="Approve" disabled={!selectedRoles[account.id] || review.isPending} onPress={() => { const role = selectedRoles[account.id]; if (role) review.mutate({ id: account.id, role }); }} />
-            <Button label="Reject" secondary disabled={review.isPending} onPress={() => review.mutate({ id: account.id, role: null })} />
-          </View>)}
-      {review.isError && <StateMessage message={`Could not review request: ${review.error.message}`} />}
-    </Card>
-    <Card title="Accounts">
-      {users.isLoading ? <StateMessage message="Loading accounts…" loading /> : users.isError ? <><StateMessage message={`Could not load accounts: ${users.error.message}`} /><Button label="Retry accounts" secondary onPress={() => void users.refetch()} /></> : !users.data?.length ? <StateMessage message="No accounts found." /> : users.data.map((account) => <DataRow key={account.id} label={account.name || account.email} value={account.role ?? 'Unassigned'} detail={account.email} />)}
-    </Card>
-    <Card title="Recent audit events">
-      {logs.isLoading ? <StateMessage message="Loading audit events…" loading /> : logs.isError ? <><StateMessage message={`Could not load audit events: ${logs.error.message}`} /><Button label="Retry events" secondary onPress={() => void logs.refetch()} /></> : !logs.data?.length ? <StateMessage message="No audit events found." /> : logs.data.slice(0, 20).map((log) => <View key={log.id} style={{ gap: 4, paddingVertical: 8 }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{log.action} · {log.user}</Text><Text style={{ color: colors.muted }}>{formatManilaDateTime(log.timestamp)} PHT · {log.detail}</Text></View>)}
-    </Card>
   </Page>;
 }
 
@@ -662,6 +618,14 @@ function ManualEntryCard() {
     <Button label="Save field readings" disabled={mutation.isPending} onPress={() => mutation.mutate()} />
     {mutation.isError && <Text style={{ color: colors.critical }}>{mutation.error.message}</Text>}
   </Card>;
+}
+
+export function FieldEntryScreen() {
+  return <Page>
+    <Title detail="Record manual field water-quality measurements">Field water-quality entry</Title>
+    <TankPicker />
+    <ManualEntryCard />
+  </Page>;
 }
 
 export function HistoryScreen() {

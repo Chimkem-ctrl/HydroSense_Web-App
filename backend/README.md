@@ -97,6 +97,9 @@ Roles:
 - `admin`: receives all manager permissions plus audit-log access and account administration.
 
 Frontend route guards are not security controls. Authorization is enforced by the API and database policies.
+Managers can list approved non-admin profiles only for their own assigned site;
+administrators can manage profiles across sites. Apply the profile manager-scope
+migration alongside the updated API function.
 
 Account approval flow:
 
@@ -134,6 +137,9 @@ Sign-up body:
 Only `operator` and `manager` may be requested.
 
 ### Tanks and readings
+
+`GET /v1/profile` returns the authenticated approved user's profile details,
+including the hatchery/site assignment.
 
 The hardware API accepts timestamped buffered readings with a `sourceId`,
 `recordedAt` (UTC), and `historical` flag. The `(tank_id, source_id)` key
