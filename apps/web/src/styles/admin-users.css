@@ -1,18 +1,24 @@
 .admin-users-page { gap: 20px; }
-.admin-users-page .admin-users-panel { display: grid; min-width: 0; gap: 16px; }
+.admin-users-page .admin-users-panel { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 16px; }
 .admin-users-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px 16px; }
 .admin-users-heading h2 { margin: 0; font-size: 18px; font-weight: 700; }
 .admin-users-heading p { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
 .admin-users-count { display: inline-flex; align-items: center; min-height: 30px; padding: 3px 10px; border: 1px solid var(--control-border); border-radius: var(--radius-pill); color: var(--text-secondary); background: var(--control-fill); font-size: 12px; font-weight: 700; white-space: nowrap; }
 .admin-users-page .admin-users-scroll-hint { margin: 0; color: var(--text-secondary); font-size: 12px; }
 .admin-users-page .table-wrap { position: relative; min-width: 0; }
-.admin-users-page .admin-users-table { min-width: 850px; }
-.admin-users-page .admin-users-table th:nth-child(1) { width: 18%; }
-.admin-users-page .admin-users-table th:nth-child(2) { width: 22%; }
-.admin-users-page .admin-users-table th:nth-child(3) { width: 14%; }
-.admin-users-page .admin-users-table th:nth-child(4) { width: 16%; }
-.admin-users-page .admin-users-table th:nth-child(5) { width: 17%; }
-.admin-users-page .admin-users-table th:nth-child(6) { width: 13%; }
+.admin-users-page .admin-users-site { min-width: 0; margin-bottom: 20px; }
+.admin-users-page .admin-users-site:last-child { margin-bottom: 0; }
+.admin-users-page .admin-users-site h3 { margin: 0 0 10px; font-size: 16px; overflow-wrap: anywhere; }
+.admin-users-page .admin-users-table { width: 100%; min-width: 900px; table-layout: auto; }
+.admin-users-page .admin-requests-table { min-width: 1200px; }
+.admin-users-page .admin-users-table th { white-space: nowrap; }
+.admin-users-page .admin-users-table th:nth-child(1) { min-width: 140px; }
+.admin-users-page .admin-users-table th:nth-child(2) { min-width: 200px; }
+.admin-users-page .admin-users-table th:nth-child(3) { min-width: 160px; }
+.admin-users-page .admin-requests-table th:nth-child(4) { min-width: 125px; }
+.admin-users-page .admin-requests-table th:nth-child(5) { min-width: 140px; }
+.admin-users-page .admin-requests-table th:nth-child(6) { min-width: 165px; }
+.admin-users-page .admin-requests-table th:nth-child(7) { min-width: 235px; }
 .admin-users-page .admin-users-table th, .admin-users-page .admin-users-table td { padding: 12px; vertical-align: middle; }
 .admin-users-page .admin-users-table td { overflow-wrap: anywhere; }
 .admin-users-page .admin-users-table td:first-child { font-weight: 700; }

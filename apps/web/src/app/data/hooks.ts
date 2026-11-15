@@ -10,6 +10,18 @@ export function useTanks() {
   return useQuery({ queryKey: ['tanks'], queryFn: () => api.listTanks() });
 }
 
+export function useProfileSite() {
+  const user = useAuth();
+  return useQuery({
+    queryKey: ['profile-site', user?.id],
+    queryFn: async () => {
+      if (!user) throw new Error('Sign in to load your hatchery assignment.');
+      return (await authService.getProfileSite(user)) ?? null;
+    },
+    enabled: Boolean(user),
+  });
+}
+
 export function useLatestReading(tankId: string) {
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -59,7 +71,7 @@ export function usePendingRequests(allowManager = false) {
   return useQuery({
     queryKey: ['pending-requests', user?.id, user?.role],
     queryFn: () => authService.listPendingRequests(),
-    enabled: user?.role === 'admin' || (allowManager && user?.role === 'manager' && Boolean(user.hatcheryId)),
+    enabled: user?.role === 'admin' || (allowManager && user?.role === 'manager'),
     refetchInterval: tierConfig.refreshIntervalMs,
   });
 }

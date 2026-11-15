@@ -44,23 +44,17 @@ afterEach(() => {
 });
 
 describe('users and roles', () => {
-  it('filters manager display by hatchery, excludes admins and disables approvals', async () => {
+  it('filters manager accounts by hatchery without showing or fetching pending requests', async () => {
     signIn('manager', hatchery.id);
     mockAccounts();
     window.history.replaceState({}, '', '/admin/users');
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Users & roles', level: 1 })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Users & roles' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: hatchery.name })).toBeInTheDocument();
+    expect(await screen.findAllByRole('heading', { name: hatchery.name })).not.toHaveLength(0);
     expect(screen.getByText('Review operator accounts for your hatchery.')).toBeInTheDocument();
-    const requests = await screen.findByRole('region', { name: 'Pending requests table' });
-    expect(within(requests).getByText('Local Applicant')).toBeInTheDocument();
-    expect(within(requests).queryByText('Other Applicant')).not.toBeInTheDocument();
-    expect(within(requests).getByText('Valid for SMS')).toBeInTheDocument();
-    expect(within(requests).getByRole('button', { name: 'Approve' })).toBeDisabled();
-    expect(within(requests).getByRole('button', { name: 'Reject' })).toBeDisabled();
-    expect(within(requests).getByText('Manager approvals are not connected yet.')).toBeInTheDocument();
-    expect(within(requests).queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Pending requests' })).not.toBeInTheDocument();
+    expect(authService.listPendingRequests).not.toHaveBeenCalled();
     const accounts = await screen.findByRole('region', { name: 'Team accounts table' });
     expect(within(accounts).getByText('Local Operator')).toBeInTheDocument();
     expect(within(accounts).getByText('Local Manager')).toBeInTheDocument();
@@ -89,11 +83,18 @@ describe('users and roles', () => {
     window.history.replaceState({}, '', '/admin/users');
     render(<App />);
     const requests = await screen.findByRole('region', { name: 'Pending requests table' });
+    expect(within(requests).getByRole('heading', { name: hatchery.name })).toBeInTheDocument();
+    expect(within(requests).getByRole('region', { name: 'other pending requests' })).toBeInTheDocument();
     expect(within(requests).getByText('Other Applicant')).toBeInTheDocument();
     const approvalRole = within(requests).getByRole('combobox', { name: 'Approval role for Local Applicant' });
     expect(within(approvalRole).queryByRole('option', { name: 'Admin' })).not.toBeInTheDocument();
-    expect(within(requests).getByRole('columnheader', { name: 'Requested role' })).toBeInTheDocument();
+    expect(within(requests).getAllByRole('columnheader', { name: 'Requested role' })).toHaveLength(2);
     const accounts = await screen.findByRole('region', { name: 'Team accounts table' });
+    const localSite = within(accounts).getByRole('region', { name: `${hatchery.name} accounts` });
+    const otherSite = within(accounts).getByRole('region', { name: 'Other hatchery accounts' });
+    expect(within(localSite).getByText('Local Operator')).toBeInTheDocument();
+    expect(within(otherSite).getByText('Other Operator')).toBeInTheDocument();
+    expect(within(localSite).queryByRole('columnheader', { name: 'Site' })).not.toBeInTheDocument();
     expect(within(accounts).getByText('Other Operator')).toBeInTheDocument();
     expect(within(accounts).getByText('Local Admin')).toBeInTheDocument();
     const select = within(accounts).getByRole('combobox', { name: 'Role for Local Operator' });
@@ -106,6 +107,41 @@ describe('users and roles', () => {
     expect(await screen.findByText('Update failed')).toBeInTheDocument();
   });
 
+  it('moves an approved request into its hatchery account list after refresh', async () => {
+    signIn('admin');
+    let approved = false;
+    vi.spyOn(api, 'listUsers').mockResolvedValue([]);
+    vi.spyOn(authService, 'listPendingRequests').mockImplementation(async () => approved ? [] : [pending[0]]);
+    vi.spyOn(authService, 'listApprovedUsers').mockImplementation(async () => approved ? [{
+      ...pending[0], role: 'operator', status: 'approved',
+    }] : []);
+    const approve = vi.spyOn(authService, 'approveRequest').mockImplementation(async () => {
+      approved = true;
+      return { ...pending[0], role: 'operator', status: 'approved' };
+    });
+    window.history.replaceState({}, '', '/admin/users');
+    render(<App />);
+    const requests = await screen.findByRole('region', { name: 'Pending requests table' });
+    fireEvent.change(within(requests).getByRole('combobox', { name: 'Approval role for Local Applicant' }), { target: { value: 'operator' } });
+    fireEvent.click(within(requests).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(approve).toHaveBeenCalledWith('p1', 'operator'));
+    const accounts = await screen.findByRole('region', { name: `${hatchery.name} accounts` });
+    expect(within(accounts).getByText('Local Applicant')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('region', { name: `${hatchery.name} pending requests` })).not.toBeInTheDocument());
+  });
+
+  it('uses the fetched site for managers with an assignment outside the signup list', async () => {
+    signIn('manager');
+    mockAccounts();
+    vi.spyOn(authService, 'getProfileSite').mockResolvedValue('Other hatchery');
+    window.history.replaceState({}, '', '/admin/users');
+    render(<App />);
+    const accounts = await screen.findByRole('region', { name: 'Team accounts table' });
+    expect(within(accounts).getByRole('heading', { name: 'Other hatchery' })).toBeInTheDocument();
+    expect(within(accounts).getByText('Other Operator')).toBeInTheDocument();
+    expect(within(accounts).queryByText('Local Operator')).not.toBeInTheDocument();
+  });
+
   it.each([['operator', '/admin/users'], ['operator', '/admin/logs'], ['manager', '/admin/logs']] as const)('denies %s access to %s', async (role, path) => {
     signIn(role, hatchery.id);
     window.history.replaceState({}, '', path);
@@ -115,14 +151,14 @@ describe('users and roles', () => {
     expect(screen.queryByRole('link', { name: 'Audit & system logs' })).not.toBeInTheDocument();
   });
 
-  it('surfaces manager authorization failures from the existing services', async () => {
+  it('surfaces manager account authorization failures', async () => {
     signIn('manager', hatchery.id);
     vi.spyOn(api, 'listUsers').mockRejectedValue(new Error('Not authorized'));
-    vi.spyOn(authService, 'listPendingRequests').mockRejectedValue(new Error('Requests not authorized'));
+    const requests = vi.spyOn(authService, 'listPendingRequests').mockRejectedValue(new Error('Requests not authorized'));
     window.history.replaceState({}, '', '/admin/users');
     render(<App />);
     expect(await screen.findByText(/Not authorized/, {}, { timeout: 5000 })).toBeInTheDocument();
-    expect(await screen.findByText(/Requests not authorized/, {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(requests).not.toHaveBeenCalled();
   });
 });
 

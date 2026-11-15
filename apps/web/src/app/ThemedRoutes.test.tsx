@@ -54,6 +54,22 @@ afterEach(() => {
 });
 
 describe('themed dashboard routes', () => {
+  it('displays the fetched profile site rather than a stale session assignment', async () => {
+    signInAs('operator');
+    vi.spyOn(authService, 'getProfileSite').mockResolvedValue('North Hatchery');
+    window.history.replaceState({}, '', '/profile');
+    render(<App />);
+    expect(await screen.findByText('North Hatchery')).toBeInTheDocument();
+  });
+
+  it('reports a profile site fetch failure', async () => {
+    signInAs('operator');
+    vi.spyOn(authService, 'getProfileSite').mockRejectedValue(new Error('Site lookup failed'));
+    window.history.replaceState({}, '', '/profile');
+    render(<App />);
+    expect(await screen.findByText('Site lookup failed', {}, { timeout: 5000 })).toBeInTheDocument();
+  });
+
   it.each(['operator', 'manager', 'admin'] as const)('exposes the %s role on the shell and sidebar', async (role) => {
     if (role !== 'admin') {
       const user = {
@@ -145,8 +161,14 @@ describe('themed dashboard routes', () => {
       expect(screen.getByRole('button', { name: 'Reboot device' })).toBeDisabled();
       expect(screen.queryByRole('button', { name: 'Request calibration' })).not.toBeInTheDocument();
     }
-    if (role === 'admin') expect(screen.queryByRole('button', { name: 'Request a change' })).not.toBeInTheDocument();
-    else expect(screen.getByRole('button', { name: 'Request a change' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Request a change' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Choose how HydroSense appears on this device.')).not.toBeInTheDocument();
+    const appearance = screen.getByRole('region', { name: 'Appearance' });
+    expect(within(appearance).getAllByRole('radio').map((radio) => radio.getAttribute('value'))).toEqual(['system', 'light', 'dark']);
+    expect(within(appearance).getByRole('radio', { name: 'System' })).toHaveAccessibleDescription('Match your device setting');
+    expect(within(appearance).getByRole('radio', { name: 'Light' })).toHaveAccessibleDescription('Light background');
+    expect(within(appearance).getByRole('radio', { name: 'Dark' })).toHaveAccessibleDescription('Dark background, easier to read at night');
+    expect(screen.getAllByText(/Coming soon:/)).toHaveLength(3);
     const maintenance = screen.getByRole('region', { name: 'Device maintenance' });
     expect(await within(maintenance).findByText('Larval Tank A')).toBeInTheDocument();
     expect(within(maintenance).getByText('HS-MF-001')).toBeInTheDocument();

@@ -23,6 +23,11 @@ export const SUBSCRIBED_HATCHERIES = [
   },
 ] as const;
 
+export function hatcheryLabel(site?: string | null): string {
+  const value = site?.trim();
+  return value ? SUBSCRIBED_HATCHERIES.find((hatchery) => hatchery.id === value)?.name ?? value : 'Unassigned';
+}
+
 export const DEMO_ADMIN_CREDENTIALS = {
   email: import.meta.env.VITE_ADMIN_EMAIL?.trim() || 'hydrosense.team@admin.com',
   password: import.meta.env.VITE_ADMIN_PASSWORD || 'hydrosense_team_2026',
@@ -323,6 +328,20 @@ export function signOut() {
 }
 
 export const authService = {
+  async getProfileSite(user: AuthUser): Promise<string | undefined> {
+    if (DATA_MODE !== 'api') return user.hatcheryId;
+    const token = window.localStorage.getItem('hydrosense.auth.access-token');
+    if (!token) throw new Error('Your session has expired. Sign in again.');
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=site`, {
+      headers: { apikey: API_KEY, Authorization: `Bearer ${token}` },
+    });
+    const profiles = await response.json();
+    if (!response.ok) throw new Error(profiles.message ?? 'Unable to load your hatchery assignment.');
+    if (!Array.isArray(profiles) || !profiles[0]) throw new Error('Your account profile was not found.');
+    if (profiles[0].site !== null && typeof profiles[0].site !== 'string') throw new Error('Your hatchery assignment is invalid.');
+    return profiles[0].site ?? undefined;
+  },
+
   async signIn(email: string, password: string): Promise<AuthResult> {
     if (DATA_MODE === 'api') {
       if (!API_KEY) throw new Error('Supabase publishable key is not configured.');
@@ -374,6 +393,7 @@ export const authService = {
         address: profile.address ?? undefined,
         emergencyContactName: profile.emergency_contact_name ?? undefined,
         emergencyContactPhone: profile.emergency_contact_phone ?? undefined,
+        hatcheryId: profile.site ?? undefined,
         createdAt: profile.created_at,
       };
       window.localStorage.setItem('hydrosense.auth.access-token', authResult.access_token);
