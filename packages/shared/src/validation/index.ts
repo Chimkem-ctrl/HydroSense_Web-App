@@ -66,7 +66,7 @@ export function validateValidationTolerances(values: ValidationTolerance): Valid
     .map(([parameter]) => ({ field: parameter, message: 'Tolerances must be finite, non-negative numbers.' }));
 }
 
-export function canAccessRole(userRole: Role | null, allowed: Role[]): boolean {
+export function canAccessRole(userRole: Role | null, allowed: readonly Role[]): boolean {
   return userRole !== null && allowed.includes(userRole);
 }
 

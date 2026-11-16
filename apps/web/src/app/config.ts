@@ -67,8 +67,7 @@ export const ROLE_ACCESS: Record<string, Role[]> = {
 
 export const NAV_ITEMS = [
   { path: '/', label: 'Live monitor', group: 'Monitor', roles: ROLE_ACCESS.live },
-  { path: '/tanks', label: 'Tank overview', group: 'Monitor', roles: ROLE_ACCESS.tanks },
-  { path: '/health', label: 'System health', group: 'Monitor', roles: ROLE_ACCESS.health },
+  { path: '/tanks', label: 'Tanks & system health', group: 'Monitor', roles: ROLE_ACCESS.tanks },
   { path: '/trends', label: 'Trends', group: 'Monitor', roles: ROLE_ACCESS.trends },
   { path: '/history', label: 'Historical logs', group: 'Records', roles: ROLE_ACCESS.history },
   { path: '/alerts', label: 'Alerts center', group: 'Monitor', roles: ROLE_ACCESS.alerts },

@@ -33,6 +33,8 @@ export interface DeviceStatus {
   powerSource: 'solar' | 'grid' | 'battery';
   wifiRssi: number;
   pendingSyncCount: number;
+  invalidParameters?: MeasuredParameter[];
+  probeCheckedAt?: string;
 }
 
 export interface Threshold {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { buildReport, formatManilaDateTime, getManilaDateString, toCsv } from '@hydrosense/shared';
+import { buildReport, can, formatManilaDateTime, getManilaDateString, toCsv } from '@hydrosense/shared';
 import type { ReportData, ReportSection } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
 import { tierConfig } from '../app/config';
@@ -35,31 +35,33 @@ function manilaEnd(date: string) {
 export default function ReportsPage() {
   const { tankId } = useSelectedTank();
   const { userName, role } = useRole();
-  const canExport = role === 'manager' || role === 'admin';
+  const canExport = can(role, 'exportReports');
+  const canViewValidation = can(role, 'validation');
+  const canViewCalibration = can(role, 'calibration');
   const [type, setType] = useState<ExportType>('readings');
   const [selectedTankIds, setSelectedTankIds] = useState<string[]>([]);
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - Math.min(7, tierConfig.retentionDays) * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
   const minimumDate = getManilaDateString(new Date(Date.now() - Math.max(0, tierConfig.retentionDays - 1) * 86_400_000));
   const maximumDate = getManilaDateString();
-  const [sections, setSections] = useState<ReportSection[]>(reportSections.map(({ value }) => value));
+  const [sections, setSections] = useState<ReportSection[]>(() => reportSections.filter(({ value }) => (value !== 'validation' || canViewValidation) && (value !== 'calibration' || canViewCalibration)).map(({ value }) => value));
   const [notice, setNotice] = useState('');
   useEffect(() => {
     if (tankId) setSelectedTankIds([tankId]);
   }, [tankId]);
   const dataQuery = useQuery({
-    queryKey: ['report-data'],
+    queryKey: ['report-data', role],
     queryFn: async (): Promise<ReportData> => {
-      const [tanks, readings, alerts, thresholds, activityLogs, calibrationLogs, validationRows, deviceStatuses] = await Promise.all([
+      const [tanks, readings, alerts, thresholds, activityLogs, calibrationLogs, deviceStatuses] = await Promise.all([
         api.listTanks(),
         api.listReadings(),
         api.listAlerts(),
         api.listThresholds(),
         api.listActivityLogs(),
-        api.listCalibrationLogs(),
-        api.listValidationRows(),
+        canViewCalibration ? api.listCalibrationLogs() : Promise.resolve([]),
         api.listDeviceStatuses(),
       ]);
+      const validationRows = canViewValidation ? await api.listValidationRows() : [];
       const advisoryRows = await Promise.all(tanks.map(async (tank) => [tank.id, await api.listAdvisories(tank.id)] as const));
       return {
         tanks,
@@ -125,7 +127,7 @@ export default function ReportsPage() {
             <StaleQueryState updatedAt={dataQuery.dataUpdatedAt} />
           </header>
           <div className="dash-report-controls">
-            {canExport && <label className="field">CSV dataset<select value={type} onChange={(event) => setType(event.target.value as ExportType)}><option value="readings">Raw readings</option><option value="alerts">Alerts</option><option value="activity">Activity logs</option><option value="calibration">Calibration log</option><option value="validation">Validation</option></select></label>}
+            {canExport && <label className="field">CSV dataset<select value={type} onChange={(event) => setType(event.target.value as ExportType)}><option value="readings">Raw readings</option><option value="alerts">Alerts</option><option value="activity">Activity logs</option>{canViewCalibration && <option value="calibration">Calibration log</option>}{canViewValidation && <option value="validation">Validation</option>}</select></label>}
             <label className="field">From<input type="date" value={from} min={minimumDate} max={to} onChange={(event) => setFrom(event.target.value)} /></label>
             <label className="field">To<input type="date" value={to} min={from} max={maximumDate} onChange={(event) => setTo(event.target.value)} /></label>
           </div>
@@ -162,7 +164,7 @@ export default function ReportsPage() {
             <p className="small muted dash-subtitle">Choose the sections to include in the report.</p>
           </header>
           <div className="dash-list dash-list-checks">
-            {reportSections.map(({ value, label }) => (
+            {reportSections.filter(({ value }) => (value !== 'validation' || canViewValidation) && (value !== 'calibration' || canViewCalibration)).map(({ value, label }) => (
               <label className="check-row" key={value}>
                 <input type="checkbox" checked={sections.includes(value)} onChange={(event) => setSections((current) => event.target.checked ? [...current, value] : current.filter((section) => section !== value))} />
                 <span>{label}</span>

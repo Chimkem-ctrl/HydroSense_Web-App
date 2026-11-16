@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReport } from './reports';
+import { buildReport, calculateParameterStatistics } from './reports';
 import type { ReportData, ReportSpec } from './reports';
 
 const spec: ReportSpec = {
@@ -56,5 +56,27 @@ describe('buildReport', () => {
   it('rejects invalid date ranges and unknown tanks', () => {
     expect(() => buildReport({ ...spec, from: 'bad-date' }, data)).toThrow('Report date range is invalid.');
     expect(() => buildReport({ ...spec, tankIds: ['missing'] }, data)).toThrow('One or more selected tanks could not be found.');
+  });
+
+  it('excludes physically invalid measurements from statistics', () => {
+    const report = buildReport(spec, { ...data, readings: [
+      ...data.readings,
+      { id: 'invalid', tankId: 'tank-a', timestamp: '2026-01-01T04:00:00Z', temperature: 126, doMgL: -1, ph: 15 },
+    ] });
+    expect(report.statistics.map((row) => row.invalidReadings)).toEqual([1, 1, 1]);
+    expect(report.statistics.find((row) => row.parameter === 'temperature')?.max).toBe(33);
+  });
+
+  it('does not combine excursions between tanks or across invalid or missing samples', () => {
+    const rows = [
+      { ...data.readings[0], temperature: 33 },
+      { ...data.readings[1], tankId: 'tank-b', temperature: 33 },
+      { ...data.readings[1], temperature: 126 },
+      { ...data.readings[2], temperature: 33 },
+      { ...data.readings[2], id: 'later', timestamp: '2026-01-01T15:00:00Z', temperature: 33 },
+    ];
+    expect(calculateParameterStatistics('temperature', rows, [])).toMatchObject({
+      excursions: 4, longestExcursionHours: 0, invalidReadings: 1,
+    });
   });
 });

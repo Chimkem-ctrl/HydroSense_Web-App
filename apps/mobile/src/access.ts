@@ -1,4 +1,3 @@
-import { canAccessRole } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
 
 const access: Record<'history' | 'validation' | 'users' | 'admin' | 'canEditThresholds' | 'canExport' | 'canCalibrate', Role[]> = {
@@ -12,5 +11,5 @@ const access: Record<'history' | 'validation' | 'users' | 'admin' | 'canEditThre
 };
 
 export function canAccess(role: Role | null, feature: keyof typeof access): boolean {
-  return canAccessRole(role, access[feature]);
+  return role !== null && access[feature].includes(role);
 }

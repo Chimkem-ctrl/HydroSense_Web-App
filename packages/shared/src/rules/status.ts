@@ -1,4 +1,5 @@
 import type { Level, MeasuredParameter, Reading, Threshold } from '../types';
+import { isValidMeasurement } from './reading';
 
 export interface ParameterStatus {
   level: Level;
@@ -8,7 +9,7 @@ export interface ParameterStatus {
 }
 
 export const DEFAULT_THRESHOLDS: Threshold[] = [
-  { parameter: 'temperature', min: 28, max: 32 },
+  { parameter: 'temperature', min: 26, max: 30 },
   { parameter: 'do', min: 4 },
   { parameter: 'ph', min: 6, max: 8 },
 ];
@@ -31,8 +32,8 @@ export function getParameterStatus(
 ): ParameterStatus {
   if (!threshold) throw new Error(`Threshold configuration is missing for ${parameter}.`);
   const unit = PARAMETER_UNITS[parameter];
-  if (!Number.isFinite(value)) {
-    return { level: 'critical', label: 'No valid reading', distance: 'Reading unavailable', icon: 'critical' };
+  if (!isValidMeasurement(parameter, value)) {
+    return { level: 'warning', label: 'Check probe', distance: 'Invalid sensor reading', icon: 'warning' };
   }
 
   const outsideLow = threshold.min !== undefined && value < threshold.min;

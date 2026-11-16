@@ -106,7 +106,7 @@
 .glass-shell .nav-link > span { white-space: nowrap; }
 .glass-shell .nav-link:hover { background: var(--row-hover); color: var(--text-primary); }
 .glass-shell .nav-link[aria-current='page'] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); color: var(--text-primary); font-weight: 600; }
-.glass-shell .nav-group { margin: 0 8px var(--space-1); color: var(--text-secondary); font-size: var(--font-caption); white-space: nowrap; }
+.glass-shell .nav-group { margin: 0 8px var(--space-1); color: var(--text-secondary); font-size: var(--font-body); white-space: nowrap; }
 .glass-shell .brand {
   height: 60px;
   flex: 0 0 60px;
@@ -200,7 +200,7 @@
 .glass-shell h2 { font-size: var(--font-h2); }
 .glass-shell h3 { font-size: var(--font-h3); }
 .glass-shell .button, .glass-shell .tab, .glass-shell .select-control, .glass-shell .icon-button, .glass-shell .connection-pill, .glass-shell .badge, .glass-shell .field input, .glass-shell .field select, .glass-shell .field textarea { font-size: var(--font-button); }
-.glass-shell .small, .glass-shell th, .glass-shell .field, .glass-shell .footer-note, .glass-shell .state-stale, .glass-shell .advisory-evidence p, .glass-shell .advisory-evidence li { font-size: var(--font-caption); }
+.glass-shell .small, .glass-shell th, .glass-shell td, .glass-shell .field, .glass-shell .footer-note, .glass-shell .state-stale, .glass-shell .advisory-evidence p, .glass-shell .advisory-evidence li { font-size: var(--font-caption); }
 .glass-shell .advisory-evidence h3, .glass-shell .advisory-evidence h4 { font-size: var(--font-button); }
 .glass-shell .badge, .glass-shell .connection-pill { font-size: var(--font-caption); }
 .glass-shell .profile-page .profile-summary h2, .glass-shell .profile-page .profile-panel-heading h2, .glass-shell .profile-page .profile-theme legend,
@@ -254,7 +254,7 @@
   .glass-shell .page-view { padding-top: var(--space-4); }
 }
 
-.glass-shell .page-view .page-heading h1 { font-size: 28px; line-height: 1.15; }
+.glass-shell .page-view .page-heading h1 { font-size: var(--font-h1); line-height: 1.15; }
 .glass-shell .page-view .page-heading p { color: var(--text-secondary); font-size: 14px; line-height: 1.45; }
 
 .glass-shell .glass-greeting { gap: var(--space-1); }
@@ -262,13 +262,27 @@
 .glass-shell .glass-greeting h2 { font-size: 18px; line-height: 1.2; }
 
 .glass-shell .live-screen { gap: var(--space-5); }
+.glass-shell .live-screen .live-greeting { margin: 0 0 calc(-1 * var(--space-4)); color: var(--text-secondary); font-size: var(--font-caption); }
+.glass-shell .live-screen .live-tank-switcher { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.glass-shell .live-screen .live-tank-button { width: auto; min-height: 36px; padding: 0 var(--space-3); }
+.glass-shell .live-screen .live-tank-button[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); }
+.glass-shell .live-screen .live-status-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.glass-shell .live-screen .live-status-banner > svg { flex: 0 0 auto; color: var(--ok-text); }
+.glass-shell .live-screen .live-status-warning > svg { color: var(--warn-text); }
+.glass-shell .live-screen .live-status-critical > svg { color: var(--critical-text); }
+.glass-shell .live-screen .live-status-offline > svg { color: var(--text-secondary); }
+.glass-shell .live-screen .live-status-banner > div:first-of-type { flex: 1 1 260px; min-width: 0; }
+.glass-shell .live-screen .live-status-banner h2 { margin: 0; font-size: var(--font-h3); }
+.glass-shell .live-screen .live-status-banner p { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--font-caption); }
+.glass-shell .live-screen .live-status-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.glass-shell .live-screen .live-status-actions .button { width: auto; text-decoration: none; }
 .glass-shell .live-screen .readings-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: var(--space-4); }
 .glass-shell .live-screen .reading-card { height: 100%; min-height: 236px; gap: var(--space-4); padding: var(--space-5); }
 .glass-shell .live-screen .reading-head { min-height: 32px; }
-.glass-shell .live-screen .reading-label { font-size: 12px; line-height: 1.25; }
+.glass-shell .live-screen .reading-label { font-size: 14px; line-height: 1.25; }
 .glass-shell .live-screen .reading-number { display: flex; align-items: baseline; gap: var(--space-2); font-variant-numeric: tabular-nums; }
 .glass-shell .live-screen .reading-unit { font-size: 14px; font-weight: 600; line-height: 1; white-space: nowrap; }
-.glass-shell .live-screen .reading-status, .glass-shell .live-screen .reading-caption { font-size: 12px; line-height: 1.4; }
+.glass-shell .live-screen .reading-status, .glass-shell .live-screen .reading-caption { font-size: 14px; line-height: 1.4; }
 .glass-shell .live-screen .reading-scale { grid-template-columns: minmax(0, 1fr) 24px; align-items: center; column-gap: var(--space-2); row-gap: var(--space-1); padding-top: var(--space-2); font-size: 12px; }
 .glass-shell .live-screen .reading-scale-track { grid-column: 1; grid-row: 1; }
 .glass-shell .live-screen .reading-scale-labels { grid-column: 1; grid-row: 2; height: 18px; line-height: 18px; }
@@ -277,8 +291,9 @@
 .glass-shell .live-screen .live-section, .glass-shell .live-screen .live-panel { gap: var(--space-4); }
 .glass-shell .live-screen .live-panel { padding: var(--space-5); }
 .glass-shell .live-screen .live-section-heading { align-items: baseline; gap: var(--space-2) var(--space-4); }
-.glass-shell .live-screen .live-section-heading h2 { font-size: 18px; line-height: 1.25; }
-.glass-shell .live-screen .live-section-heading p, .glass-shell .live-screen .live-update { color: var(--text-secondary); font-size: 13px; line-height: 1.4; }
+.glass-shell .live-screen .live-section-heading h2 { font-size: var(--font-h2); line-height: 1.25; }
+.glass-shell .live-screen .live-section-heading p { color: var(--text-secondary); font-size: 14px; line-height: 1.4; }
+.glass-shell .live-screen .live-update { color: var(--text-secondary); font-size: var(--font-caption); line-height: 1.4; }
 .glass-shell .live-screen .live-overview-grid { align-items: stretch; gap: var(--space-4); }
 .glass-shell .live-screen .glass-advisories { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: var(--space-4); }
 .glass-shell .live-screen .live-advisory-tile { display: flex; min-width: 0; min-height: 68px; align-items: center; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: rgba(0, 0, 0, 0.35); padding: var(--space-3); }
@@ -293,13 +308,22 @@
   [data-theme='dark'] .glass-shell[data-role='manager'] .live-screen .live-advisory-tile .advisory-chip { background: var(--glass-bg-strong); }
 }
 .glass-shell .live-screen .live-advisory-tile .advisory-chip { max-width: 100%; min-height: 44px; }
+.glass-shell .live-screen .live-advisory-copy { min-width: 0; }
+.glass-shell .live-screen .live-advisory-copy h3 { margin: 0 0 var(--space-1); font-size: 14px; }
+.glass-shell .live-screen .live-advisory-copy p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.glass-shell .live-screen .live-advisory-tile .advisory-low { color: var(--ok-text); }
+.glass-shell .live-screen .live-advisory-tile .advisory-watch { color: var(--warn-text); }
+.glass-shell .live-screen .live-advisory-tile .advisory-high { color: var(--critical-text); }
 .glass-shell .live-screen .live-device-details { gap: var(--space-4); }
 .glass-shell .live-screen .live-device-details > .inline { align-items: center; gap: var(--space-2); }
-.glass-shell .live-screen .live-device-details .badge, .glass-shell .live-screen .live-device-details .connection-pill,
-.glass-shell .live-screen .live-reading-chips .badge { min-height: 32px; padding-top: 4px; padding-bottom: 4px; }
+.glass-shell .live-screen .live-device-details .badge, .glass-shell .live-screen .live-device-details .connection-pill { min-height: 32px; padding-top: 4px; padding-bottom: 4px; }
+.glass-shell .live-screen .live-device-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.glass-shell .live-screen .live-device-metrics > div { display: grid; align-content: start; gap: var(--space-2); min-width: 0; min-height: 100px; border-radius: var(--radius-md); background: var(--accent-soft); padding: var(--space-4); }
+.glass-shell .live-screen .live-device-metrics span { color: var(--text-secondary); font-size: var(--font-caption); }
+.glass-shell .live-screen .live-device-metrics strong { display: flex; align-items: center; gap: var(--space-1); font-size: 20px; line-height: 1.3; overflow-wrap: anywhere; }
+.glass-shell .live-screen .live-device-metrics .live-device-time { font-size: 14px; }
 .glass-shell .live-screen .live-device-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
 .glass-shell .live-screen .live-device-meta > span { min-width: 0; overflow-wrap: anywhere; }
-.glass-shell .live-screen .live-reading-chips { flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 
 @media (max-width: 1100px) {
   .glass-shell .live-screen .readings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

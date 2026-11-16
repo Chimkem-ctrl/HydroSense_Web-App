@@ -4,7 +4,7 @@ import { getAddressByBarangayCode } from "npm:@aivangogh/ph-address@2026.2.4";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
 };
 
 const json = (body: unknown, status = 200) =>
@@ -12,6 +12,40 @@ const json = (body: unknown, status = 200) =>
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+
+function invalidProbeParameters(temperature: number, oxygen: number, ph: number) {
+  return [
+    ...(!Number.isFinite(temperature) || temperature < -55 || temperature > 125 ? ["temperature"] : []),
+    ...(!Number.isFinite(oxygen) || oxygen < 0 ? ["do"] : []),
+    ...(!Number.isFinite(ph) || ph < 0 || ph > 14 ? ["ph"] : []),
+  ];
+}
+
+function evaluateEventImpact(event: { type: string; scope: string }) {
+  switch (event.type) {
+    case "Rainfall":
+    case "Water change / exchange":
+    case "Freshwater dosing (log only)":
+      return {
+        targetAdvisory: "salinity",
+        riskAdjustment: "Watch",
+        message: `Recent event (${event.type}) logged. Salinity check recommended.`,
+      };
+
+    case "Unusually hot weather":
+    case "Feeding":
+    case "Mortality observation":
+    case "Power interruption":
+      return {
+        targetAdvisory: "ammonia",
+        riskAdjustment: event.type === "Power interruption" ? "High" : "Watch",
+        message: `Event (${event.type}) impacts organic load/temperature. Monitor TAN levels.`,
+      };
+
+    default:
+      return null;
+  }
+}
 
 Deno.serve(async (request) => {
   try {
@@ -140,9 +174,11 @@ Deno.serve(async (request) => {
       if (!data) return json({ error: "Claimed SMS not found for this device." }, 404);
       return json({ updated: true });
     }
-    const temperature = Number(reading.temperature);
-    const doMgL = Number(reading.doMgL);
-    const ph = Number(reading.ph);
+    const numericValue = (value: unknown) =>
+      typeof value === "number" || (typeof value === "string" && value.trim() !== "") ? Number(value) : NaN;
+    const temperature = numericValue(reading.temperature);
+    const doMgL = numericValue(reading.doMgL);
+    const ph = numericValue(reading.ph);
     if (!deviceId || ![temperature, doMgL, ph].every(Number.isFinite)) {
       return json({ error: "deviceId, temperature, doMgL, and ph are required numeric values." }, 400);
     }
@@ -172,7 +208,7 @@ Deno.serve(async (request) => {
     }
 
     const optionalNumber = (value: unknown) => {
-      const number = Number(value);
+      const number = numericValue(value);
       return Number.isFinite(number) ? number : null;
     };
     const row = {
@@ -233,19 +269,21 @@ Deno.serve(async (request) => {
       if (alertError) throw alertError;
     };
 
+    const invalidParameters = invalidProbeParameters(temperature, doMgL, ph);
+    if (invalidParameters.length) console.warn(`Invalid sensor readings from ${deviceId}: ${invalidParameters.join(", ")}. Check probe.`);
     const temperatureThreshold = thresholds?.find((t) => t.parameter === "temperature");
     const doThreshold = thresholds?.find((t) => t.parameter === "do");
     const phThreshold = thresholds?.find((t) => t.parameter === "ph");
 
     await Promise.all([
-      checkAndCreateAlert("temperature", temperature, temperatureThreshold),
-      checkAndCreateAlert("do", doMgL, doThreshold),
-      checkAndCreateAlert("ph", ph, phThreshold),
+      ...(!invalidParameters.includes("temperature") ? [checkAndCreateAlert("temperature", temperature, temperatureThreshold)] : []),
+      ...(!invalidParameters.includes("do") ? [checkAndCreateAlert("do", doMgL, doThreshold)] : []),
+      ...(!invalidParameters.includes("ph") ? [checkAndCreateAlert("ph", ph, phThreshold)] : []),
     ]);
 
     const wifiRssi = optionalNumber(reading.wifiRssi);
     const batteryPct = optionalNumber(reading.batteryPct);
-    await admin.from("device_statuses").upsert({
+    const { error: deviceError } = await admin.from("device_statuses").upsert({
       device_id: deviceId,
       online: true,
       last_seen: new Date().toISOString(),
@@ -254,8 +292,12 @@ Deno.serve(async (request) => {
       pending_sync_count: optionalNumber(reading.pendingSyncCount) ?? 0,
       battery_pct: batteryPct ?? null,
     }, { onConflict: "device_id" });
+    if (deviceError) {
+      console.error(`Reading ${data.id} was stored, but device status could not be updated:`, deviceError);
+      return json({ error: "Reading was stored, but device status could not be updated.", readingId: data.id }, 500);
+    }
 
-    return json({ accepted: true, readingId: data.id, timestamp: data.timestamp }, 201);
+    return json({ accepted: true, readingId: data.id, timestamp: data.timestamp, invalidParameters }, 201);
   }
 
   const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
@@ -325,27 +367,14 @@ Deno.serve(async (request) => {
     if (error) return json({ error: error.message }, 500);
     const { data: tanks, error: tanksError } = await admin.from("tanks").select("id,device_id");
     if (tanksError) return json({ error: tanksError.message }, 500);
-    const tankIds = (tanks ?? []).map((tank) => tank.id);
-    let readings: Array<{ tank_id: string; timestamp: string }> | null = null;
-    if (tankIds.length > 0) {
-      const readingsResult = await admin
-        .from("readings")
-        .select("tank_id,timestamp")
-        .in("tank_id", tankIds)
-        .order("timestamp", { ascending: false });
-      if (readingsResult.error) return json({ error: readingsResult.message }, 500);
-      readings = readingsResult.data as Array<{ tank_id: string; timestamp: string }>;
-    }
-
-    const latestReadingByTank = new Map<string, string>();
-    for (const reading of readings ?? []) {
-      if (!latestReadingByTank.has(reading.tank_id)) latestReadingByTank.set(reading.tank_id, reading.timestamp);
-    }
-    const latestReadingByDevice = new Map<string, string>();
-    for (const tank of tanks ?? []) {
-      const timestamp = latestReadingByTank.get(tank.id);
-      if (timestamp) latestReadingByDevice.set(tank.device_id, timestamp);
-    }
+    const latestResults = await Promise.all((tanks ?? []).map(async (tank) => ({
+      deviceId: tank.device_id,
+      result: await admin.from("readings").select("timestamp,temperature,do_mg_l,ph")
+        .eq("tank_id", tank.id).order("timestamp", { ascending: false }).limit(1).maybeSingle(),
+    })));
+    const readingError = latestResults.find(({ result }) => result.error)?.result.error;
+    if (readingError) return json({ error: readingError.message }, 500);
+    const latestReadingByDevice = new Map(latestResults.filter(({ result }) => result.data).map(({ deviceId, result }) => [deviceId, result.data]));
     const statusesByDevice = new Map((data ?? []).map((status) => [status.device_id, status]));
     const deviceIds = new Set([
       ...(data ?? []).map((status) => status.device_id),
@@ -356,7 +385,8 @@ Deno.serve(async (request) => {
 
     return json([...deviceIds].map((deviceId) => {
       const status = statusesByDevice.get(deviceId);
-      const readingTimestamp = latestReadingByDevice.get(deviceId);
+      const latestReading = latestReadingByDevice.get(deviceId);
+      const readingTimestamp = latestReading?.timestamp as string | undefined;
       const statusTimestamp = status?.last_seen as string | undefined;
       const lastSeen = readingTimestamp && (!statusTimestamp || readingTimestamp > statusTimestamp)
         ? readingTimestamp
@@ -369,6 +399,10 @@ Deno.serve(async (request) => {
         powerSource: status?.power_source ?? "battery",
         wifiRssi: status?.wifi_rssi ?? 0,
         pendingSyncCount: status?.pending_sync_count ?? 0,
+        ...(latestReading ? {
+          invalidParameters: invalidProbeParameters(latestReading.temperature, latestReading.do_mg_l, latestReading.ph),
+          probeCheckedAt: latestReading.timestamp,
+        } : {}),
       };
     }));
   }
@@ -405,33 +439,50 @@ Deno.serve(async (request) => {
       .maybeSingle();
     if (readingError) return json({ error: readingError.message }, 500);
     if (!latest) return json([]);
+    if (invalidProbeParameters(latest.temperature, 0, latest.ph).length) {
+      return json({ error: "Advisories unavailable: invalid temperature or pH reading. Check probe." }, 422);
+    }
     const { data: entries, error: entriesError } = await admin.from("manual_entries").select("type").eq("tank_id", tankId);
     if (entriesError) return json({ error: entriesError.message }, 500);
-    const { data: events, error: eventsError } = await admin.from("activity_logs").select("kind,type").in("tank_id", [tankId, "hatchery"]);
+    const { data: events, error: eventsError } = await admin.from("activity_logs").select("kind,type,tank_id").in("tank_id", [tankId, "hatchery"]);
     if (eventsError) return json({ error: eventsError.message }, 500);
     const rain = entries.some((entry) => entry.type === "rain_event") || events.some((event) => event.kind === "ENVIRONMENT" && event.type === "Rainfall");
     const dosing = entries.some((entry) => entry.type === "freshwater_dosing") || events.some((event) => event.kind === "OPERATION" && event.type === "Freshwater dosing (log only)");
+    const impacts = events
+      .map((event) => evaluateEventImpact({ type: event.type, scope: event.tank_id ?? tankId }))
+      .filter((impact) => impact !== null);
+    const salinityMessages = [...new Set(impacts.filter((impact) => impact.targetAdvisory === "salinity").map((impact) => impact.message))];
+    const ammoniaImpacts = impacts.filter((impact) => impact.targetAdvisory === "ammonia");
+    const ammoniaMessages = [...new Set(ammoniaImpacts.map((impact) => impact.message))];
     const temperature = latest.temperature;
     const ph = latest.ph;
-    const salinityLevel = temperature >= settings.salinity_high_temperature_c && !rain && !dosing ? "high" :
+    const salinityBaseLevel = temperature >= settings.salinity_high_temperature_c && !rain && !dosing ? "high" :
       temperature >= settings.salinity_watch_temperature_c || rain || dosing ? "watch" : "low";
-    const ammoniaLevel = temperature >= settings.ammonia_watch_temperature_c || ph >= settings.ammonia_high_ph ? "watch" : "low";
+    const salinityLevel = salinityBaseLevel === "high" ? "high" :
+      salinityBaseLevel === "watch" || salinityMessages.length ? "watch" : "low";
+    const ammoniaBaseLevel = temperature >= settings.ammonia_watch_temperature_c || ph >= settings.ammonia_high_ph ? "watch" : "low";
+    const ammoniaEventLevel = ammoniaImpacts.some((impact) => impact.riskAdjustment === "High") ? "high" : ammoniaImpacts.length ? "watch" : "low";
+    const ammoniaLevel = ammoniaBaseLevel === "watch" || ammoniaEventLevel === "watch" ? "watch" :
+      ammoniaEventLevel === "high" ? "high" : "low";
+    const salinityRule = salinityBaseLevel === "high" ? `Temperature at or above ${settings.salinity_high_temperature_c}°C without a recent dilution event` :
+      salinityBaseLevel === "watch" ? `Temperature at or above ${settings.salinity_watch_temperature_c}°C or a recent water event was logged` :
+      salinityMessages.length ? "" : `No salinity advisory rule fired (temperature below ${settings.salinity_watch_temperature_c}°C; no recent water event)`;
+    const ammoniaRule = ammoniaBaseLevel === "watch"
+      ? `Temperature at or above ${settings.ammonia_watch_temperature_c}°C, high pH, or high feeding load`
+      : ammoniaMessages.length ? "" : "No ammonia advisory rule fired (temperature and pH below configured rules; usual feeding load)";
     return json([
       {
         kind: "salinity",
         level: salinityLevel,
         inputs: { temperatureC: temperature, recentRainEvent: rain ? "yes" : "no", freshwaterDosingLogged: dosing ? "yes" : "no" },
-        firedRule: salinityLevel === "high" ? `Temperature at or above ${settings.salinity_high_temperature_c}°C without a recent dilution event` :
-          salinityLevel === "watch" ? `Temperature at or above ${settings.salinity_watch_temperature_c}°C or a recent water event was logged` :
-          `No salinity advisory rule fired (temperature below ${settings.salinity_watch_temperature_c}°C; no recent water event)`,
+        firedRule: [salinityRule, ...salinityMessages].filter(Boolean).join(". "),
         updatedAt: latest.timestamp,
       },
       {
         kind: "ammonia",
         level: ammoniaLevel,
-        inputs: { temperatureC: temperature, ph, feedingLoad: "usual" },
-        firedRule: ammoniaLevel === "watch" ? `Temperature at or above ${settings.ammonia_watch_temperature_c}°C, high pH, or high feeding load` :
-          "No ammonia advisory rule fired (temperature and pH below configured rules; usual feeding load)",
+        inputs: { temperatureC: temperature, ph, feedingLoad: "usual", ...(ammoniaMessages.length ? { eventImpacts: ammoniaMessages.join(" ") } : {}) },
+        firedRule: [ammoniaRule, ...ammoniaMessages].filter(Boolean).join(". "),
         updatedAt: latest.timestamp,
       },
     ]);
@@ -470,8 +521,14 @@ Deno.serve(async (request) => {
 
   const alertAction = action.match(/^\/v1\/alerts\/([^/]+)\/(acknowledge|resolve)$/);
   if (alertAction && request.method === "POST") {
+    if (alertAction[2] === "resolve" && !["manager", "admin"].includes(profile.role)) return json({ error: "Forbidden." }, 403);
     const input = await request.json();
     const status = alertAction[2] === "resolve" ? "resolved" : "acknowledged";
+    if (typeof input.note !== "string" || input.note.length > 500 ||
+        (status === "resolved" && input.note.trim().length < 3) ||
+        (status === "acknowledged" && input.note.trim().length > 0 && input.note.trim().length < 3)) {
+      return json({ error: status === "resolved" ? "Resolution notes must be 3 to 500 characters." : "Acknowledgement notes must be empty or 3 to 500 characters." }, 400);
+    }
     const alertId = decodeURIComponent(alertAction[1]);
     const updates: Record<string, unknown> = { status, note: input.note };
     if (status === "acknowledged") {
@@ -480,9 +537,13 @@ Deno.serve(async (request) => {
     }
     const { data, error } = await admin.from("alerts").update(updates).eq("id", alertId).select().single();
     if (error) return json({ error: error.message }, 400);
-    await admin.from("alert_responses").insert({
+    const { error: responseError } = await admin.from("alert_responses").insert({
       alert_id: alertId, status, note: input.note, created_by: input.user,
     });
+    if (responseError) {
+      console.error(`Alert ${alertId} was ${status}, but its response history could not be saved:`, responseError);
+      return json({ error: `Alert was ${status}, but its response history could not be saved.`, alertId }, 500);
+    }
     return json({
       id: data.id, tankId: data.tank_id, parameter: data.parameter, value: data.value,
       threshold: data.threshold, severity: data.severity, status: data.status,
@@ -590,6 +651,7 @@ Deno.serve(async (request) => {
   }
 
   if (action === "/v1/calibrations" && ["GET", "POST"].includes(request.method)) {
+    if (!["manager", "admin"].includes(profile.role)) return json({ error: "Forbidden." }, 403);
     if (request.method === "GET") {
       let query = admin.from("calibration_logs").select("*");
       if (url.searchParams.get("tank_id")) query = query.eq("tank_id", url.searchParams.get("tank_id"));
@@ -612,6 +674,7 @@ Deno.serve(async (request) => {
   }
 
   if (action === "/v1/validation" && request.method === "GET") {
+    if (!["manager", "admin"].includes(profile.role)) return json({ error: "Forbidden." }, 403);
     let query = admin.from("validation_rows").select("*");
     if (url.searchParams.get("tank_id")) query = query.eq("tank_id", url.searchParams.get("tank_id"));
     const { data, error } = await query;
@@ -630,12 +693,12 @@ Deno.serve(async (request) => {
   }
 
   if (action === "/v1/validation/tolerances" && ["GET", "PUT"].includes(request.method)) {
+    if (!["manager", "admin"].includes(profile.role)) return json({ error: "Forbidden." }, 403);
     if (request.method === "GET") {
       const { data, error } = await admin.from("validation_tolerances").select("*").eq("id", true).single();
       if (error) return json({ error: error.message }, 500);
       return json({ temperature: data.temperature, ph: data.ph, do: data.dissolved_oxygen });
     }
-    if (!["manager", "admin"].includes(profile.role)) return json({ error: "Forbidden." }, 403);
     const body = await request.json();
     await admin.from("validation_tolerances").update({
       temperature: body.tolerances.temperature,
@@ -655,7 +718,9 @@ Deno.serve(async (request) => {
   }
 
   if ((action === "/v1/admin/users" || action === "/v1/admin/pending-requests") && request.method === "GET") {
-    if (!profile || profile.status !== "approved" || !["manager", "admin"].includes(profile.role)) return json({ error: "Forbidden." }, 403);
+    if (profile.role !== "admin" && (profile.role !== "manager" || action === "/v1/admin/pending-requests")) {
+      return json({ error: "Forbidden." }, 403);
+    }
     const status = action === "/v1/admin/pending-requests" ? "pending" : url.searchParams.get("status");
     if (status && !["pending", "approved", "rejected"].includes(status)) return json({ error: "Invalid account status." }, 400);
     if (profile.role !== "admin" && status && status !== "approved") return json({ error: "Forbidden." }, 403);

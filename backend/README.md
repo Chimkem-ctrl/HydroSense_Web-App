@@ -101,6 +101,24 @@ Managers can list approved non-admin profiles only for their own assigned site;
 administrators can manage profiles across sites. Apply the profile manager-scope
 migration alongside the updated API function.
 
+The role-matrix profile-access migration restricts direct profile listing to
+approved admins while preserving a user's access to their own profile. Profile
+changes must go through the API, which applies account-management checks. Apply
+the migration and deploy the updated Edge Function for existing installations;
+source changes alone do not change a deployed database or API.
+The operational-table protection migration disables direct client access to
+settings, records, validation and audit tables; the API remains responsible
+for role checks. Any external integration using those tables directly must
+move to the API before that migration is applied.
+
+Device status includes invalid probe parameters and the sample time when a
+latest reading exists. This warning is derived from the latest stored reading,
+so it persists until a later valid sample and does not create a water-quality
+alert. No extra warning table or migration is required for it.
+Hardware ingestion accepts omitted battery readings after the optional-battery
+migration. If updating device status fails after a reading is stored, the API
+returns an error identifying the partial failure rather than reporting success.
+
 Account approval flow:
 
 1. Sign-up creates a Supabase Auth user and a pending profile.
@@ -216,7 +234,7 @@ Threshold update body:
 ```json
 {
   "thresholds": [
-    { "parameter": "temperature", "min": 28, "max": 32 },
+    { "parameter": "temperature", "min": 26, "max": 30 },
     { "parameter": "do", "min": 5 },
     { "parameter": "ph", "min": 7.2, "max": 8.5 }
   ],

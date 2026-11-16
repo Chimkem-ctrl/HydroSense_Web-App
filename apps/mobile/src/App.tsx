@@ -14,7 +14,7 @@ import * as SystemUI from 'expo-system-ui';
 import { StatusBar } from 'expo-status-bar';
 import { BlurTargetView } from 'expo-blur';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
-import { Activity, AlertTriangle, LayoutDashboard, Wifi } from 'lucide-react-native';
+import { Activity, AlertTriangle, LayoutDashboard, MoreHorizontal, Waves } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isBottomBarRoute } from './navigation';
 import type { BottomBarRoute, MainTabParamList, RootStackParamList } from './navigation';
@@ -27,9 +27,10 @@ import {
   FieldEntryScreen,
   HistoryScreen,
   HomeScreen,
+  TanksScreen,
+  MoreScreen,
   ManagerReviewScreen,
   ReportsScreen,
-  SettingsScreen,
   StatusScreen,
   TrendsScreen,
 } from './screens';
@@ -93,8 +94,10 @@ function MainTabs() {
   const { user } = useSession();
   return <TabBarVisibleContext.Provider value><Tabs.Navigator tabBar={(props) => <MobileTabBar {...props} />} screenOptions={{ sceneStyle: { backgroundColor: 'transparent' }, header: (props) => <HeaderToolbar {...props} /> }}>
     <Tabs.Screen name="Home" component={HomeScreen} />
+    <Tabs.Screen name="Tanks" component={TanksScreen} />
     <Tabs.Screen name="Alerts" component={AlertsScreen} />
     <Tabs.Screen name="Trends" component={TrendsScreen} />
+    <Tabs.Screen name="More" component={MoreScreen} />
     <Tabs.Screen name="Activity" component={ActivityLogsScreen} />
     <Tabs.Screen name="FieldEntry" component={FieldEntryScreen} options={{ title: 'Field water-quality entry' }} />
     {canAccess(user?.role ?? null, 'canCalibrate') && <Tabs.Screen name="Calibration" component={CalibrationAndMaintenanceScreen} />}
@@ -105,15 +108,15 @@ function MainTabs() {
     <Tabs.Screen name="Profile" component={ProfileScreen} options={{ title: 'My profile' }} />
     {canAccess(user?.role ?? null, 'users') && <Tabs.Screen name="Users" component={UsersScreen} options={{ title: 'Users & roles' }} />}
     {canAccess(user?.role ?? null, 'admin') && <Tabs.Screen name="AuditLogs" component={AuditLogsScreen} options={{ title: 'Audit & system logs' }} />}
-    <Tabs.Screen name="Settings" component={SettingsScreen} />
   </Tabs.Navigator></TabBarVisibleContext.Provider>;
 }
 
 const tabIcons = {
   Home: LayoutDashboard,
+  Tanks: Waves,
   Alerts: AlertTriangle,
   Trends: Activity,
-  Status: Wifi,
+  More: MoreHorizontal,
 } satisfies Record<BottomBarRoute, typeof Activity>;
 
 function MobileTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
@@ -124,14 +127,14 @@ function MobileTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     <View style={{ flexDirection: 'row', paddingHorizontal: 8, paddingTop: 6, gap: 2 }}>
       {state.routes.map((route, index) => {
         if (!isBottomBarRoute(route.name)) return null;
-        const selected = state.index === index;
+        const selected = state.index === index || (route.name === 'More' && !isBottomBarRoute(state.routes[state.index].name));
         const options = descriptors[route.key].options;
         const label = typeof options.tabBarLabel === 'string' ? options.tabBarLabel : options.title ?? route.name;
         const Icon = tabIcons[route.name];
         return <Pressable key={route.key} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={options.tabBarAccessibilityLabel ?? label}
           onPress={() => {
             const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-            if (!selected && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+            if (state.index !== index && !event.defaultPrevented) navigation.navigate(route.name, route.params);
           }}
           onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
           style={{ flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.card, gap: 3, backgroundColor: selected ? colors.selected : 'transparent' }}>

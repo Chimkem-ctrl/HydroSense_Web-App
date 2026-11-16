@@ -92,25 +92,11 @@ export function LoginScreen({ navigation }: Props<'Login'>) {
     }
   }
 
-  async function demo(role: 'operator' | 'manager' | 'admin') {
-    try {
-      setError('');
-      await signIn({ id: `demo-${role}`, name: `Demo ${role}`, role });
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Unable to start the demo.');
-    }
-  }
-
   return <Page auth>
     <Brand />
     <Card>
       <Title centered detail="Sign in to your HydroSense account">Welcome Back</Title>
-      {DATA_MODE === 'mock' ? <>
-        <Text style={{ color: colors.muted }}>Demo-only access uses sample data and does not authenticate with the backend.</Text>
-        <Button label="Continue as demo operator" onPress={() => void demo('operator')} />
-        <Button label="Continue as demo manager" secondary onPress={() => void demo('manager')} />
-        <Button label="Continue as demo admin" secondary onPress={() => void demo('admin')} />
-      </> : <>
+      {DATA_MODE === 'mock' && <Text style={{ color: colors.muted }}>Sign in with your account. Monitoring data in this preview is sample data.</Text>}
         <AuthField label="Email" value={email} onChange={setEmail} keyboard="email-address" placeholder="Enter your email" />
         <AuthField label="Password" value={password} onChange={setPassword} secure placeholder="Enter your password" />
         <Pressable accessibilityRole="button" disabled={busy} onPress={() => navigation.navigate('ForgotPassword')} style={{ minHeight: 48, alignSelf: 'flex-end', justifyContent: 'center', paddingHorizontal: uiScale.spacing[2] }}><Text style={{ color: colors.teal, fontWeight: '700' }}>Forgot password?</Text></Pressable>
@@ -119,7 +105,6 @@ export function LoginScreen({ navigation }: Props<'Login'>) {
           Don't have an account?{' '}
           <Text accessibilityRole="link" accessibilityState={{ disabled: busy }} onPress={busy ? undefined : () => navigation.navigate('SignUp')} style={{ color: colors.teal, fontWeight: '700' }}>Sign Up</Text>
         </Text>
-      </>}
       <Message text={error} />
     </Card>
   </Page>;

@@ -14,6 +14,25 @@ packages/
 
 Both apps import business logic and API contracts from `packages/shared`; neither app imports from the other. The repository uses npm workspaces to keep the existing web setup intact while sharing types and domain logic.
 
+### Role capabilities
+
+The shared capability matrix defines the intended access below. Individual
+mobile screens and backend enforcement are still being completed; UI guards
+alone are not an authorization boundary.
+
+| Capability | Operator | Manager | Admin |
+|---|---|---|---|
+| Monitoring, tanks, system health, trends, alerts, history, reports, activity logs, manual entries and profile | Yes | Yes | Yes |
+| Acknowledge alerts; export reports, alert logs and charts | Yes | Yes | Yes |
+| Calibration, validation, users and roles, tank management, alert resolution, and threshold and tolerance editing | No | Yes | Yes |
+| Signup review and audit logs | No | No | Yes |
+
+Managers can view users in their assigned hatchery only. Deploying the
+updated API function is required for its role checks; these source changes do
+not modify an already deployed backend. The default temperature safe range is
+26–30°C for new/default configurations; existing saved thresholds remain in
+effect and are not changed automatically.
+
 ## Setup
 
 Requirements: Node.js 20+ and npm.
@@ -154,7 +173,7 @@ The live client reconnects after disconnect. Do not send hardware control comman
 
 ## Product behavior
 
-- Measured parameters: temperature (28–32 °C), dissolved oxygen (≥4 mg/L), and pH (6–8), with visible status labels/icons and safe-range distance.
+- Default measured-parameter ranges: temperature (26–30 °C), dissolved oxygen (≥4 mg/L), and pH (6–8). Configured thresholds take precedence.
 - Salinity target (28–33 ppt) and ammonia are not measured. They appear only as advisory chips with inputs and the fired rule in a popover.
 - Asia/Manila timestamps, 24-hour time, 3-hour mock reading cadence, and overnight chart shading (22:00–06:00).
-- Operator, manager and admin navigation is role-gated. Admins can add/remove tanks and associate monitoring hardware.
+- Operator, manager and admin navigation is role-gated. Managers and admins can add/remove tanks and associate monitoring hardware.

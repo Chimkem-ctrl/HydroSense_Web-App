@@ -1,4 +1,4 @@
-import { Modal, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react-native';
 import { formatManilaDateTime } from '@hydrosense/shared';
@@ -7,10 +7,10 @@ import { useSession } from '../state';
 import { useTheme } from '../theme';
 import { Button } from './ui';
 
-export const CRITICAL_ACK_NOTE = 'Acknowledged from the critical alert pop-up.';
+export const CRITICAL_ACK_NOTE = 'Acknowledged from the critical alert banner.';
 
 export function CriticalAlertModal() {
-  const { colors, reduceMotion } = useTheme();
+  const { colors } = useTheme();
   const { user } = useSession();
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ['alerts', 'all'], queryFn: () => api.listAlerts(), enabled: Boolean(user), refetchInterval: 5000 });
@@ -27,22 +27,26 @@ export function CriticalAlertModal() {
         queryClient.invalidateQueries({ queryKey: ['alert-responses'] }),
       ]);
     },
+    onError: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+        queryClient.invalidateQueries({ queryKey: ['alert-detail'] }),
+        queryClient.invalidateQueries({ queryKey: ['alert-responses'] }),
+      ]);
+    },
   });
-  if (!alert) return null;
-  return <Modal visible transparent animationType={reduceMotion ? 'none' : 'fade'} statusBarTranslucent onRequestClose={() => undefined}>
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: 'rgba(2, 9, 17, 0.78)' }}>
-      <View accessibilityViewIsModal accessibilityRole="alert" style={{ width: '100%', maxWidth: 420, gap: 12, alignItems: 'center', padding: 24, borderRadius: 20, borderWidth: 1, borderColor: colors.critical, backgroundColor: colors.surface }}>
-        <View style={{ width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: `${colors.critical}24` }}>
-          <AlertTriangle size={30} color={colors.critical} />
-        </View>
-        <Text style={{ color: colors.critical, fontSize: 22, fontWeight: '800' }}>Critical alert</Text>
-        <Text style={{ color: colors.ink, fontSize: 16, textAlign: 'center', lineHeight: 24 }}>{alert.parameter} is at {alert.value} in {alert.tankId}. Threshold: {alert.threshold}.</Text>
-        <Text style={{ color: colors.muted, fontSize: 14, textAlign: 'center' }}>Raised {formatManilaDateTime(alert.createdAt)} PHT{critical.length > 1 ? ` · ${critical.length - 1} more critical ${critical.length - 1 === 1 ? 'alert' : 'alerts'} waiting` : ''}</Text>
-        {mutation.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>{mutation.error.message}</Text>}
-        <View style={{ alignSelf: 'stretch', marginTop: 4 }}>
-          <Button label={mutation.isPending ? 'Acknowledging…' : 'Acknowledge'} disabled={mutation.isPending} onPress={() => mutation.mutate(alert.id)} />
-        </View>
+  if (!alert) return mutation.isError ? <View accessibilityRole="alert" style={{ padding: 12, gap: 6, backgroundColor: colors.surface }}><Text style={{ color: colors.critical }}>Acknowledgement failed: {mutation.error.message}</Text><Button label="Dismiss" secondary onPress={() => mutation.reset()} /></View> : null;
+  return <View accessibilityRole="alert" style={{ paddingHorizontal: 12, paddingVertical: 8, gap: 6, borderBottomWidth: 1, borderBottomColor: colors.critical, backgroundColor: colors.surface }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <AlertTriangle size={19} color={colors.critical} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.critical, fontWeight: '800' }}>Critical alert · {alert.parameter} {alert.value}</Text>
+        <Text style={{ color: colors.muted, fontSize: 12 }}>{alert.tankId} · {formatManilaDateTime(alert.createdAt)} PHT{critical.length > 1 ? ` · ${critical.length - 1} more` : ''}</Text>
       </View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Acknowledge critical alert" disabled={mutation.isPending} onPress={() => mutation.mutate(alert.id)} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.critical }}>
+        <Text style={{ color: colors.critical, fontWeight: '700' }}>{mutation.isPending ? 'Saving…' : 'Acknowledge'}</Text>
+      </Pressable>
     </View>
-  </Modal>;
+    {mutation.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>{mutation.error.message}</Text>}
+  </View>;
 }
