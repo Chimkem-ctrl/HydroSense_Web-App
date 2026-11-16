@@ -1,13 +1,13 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import type { ComponentRef } from 'react';
-import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationLightTheme, NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import type { LinkingOptions } from '@react-navigation/native';
 import { BottomTabBarHeightCallbackContext, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { onlineManager } from '@tanstack/react-query';
+import { focusManager, onlineManager } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import * as Notifications from 'expo-notifications';
 import * as SystemUI from 'expo-system-ui';
@@ -22,12 +22,11 @@ import {
   ActivityLogsScreen,
   AlertDetailScreen,
   AlertsScreen,
-  AppearanceScreen,
   CalibrationAndMaintenanceScreen,
   ConnectionNotice,
+  FieldEntryScreen,
   HistoryScreen,
   HomeScreen,
-  AdminReviewScreen,
   ManagerReviewScreen,
   ReportsScreen,
   SettingsScreen,
@@ -38,8 +37,9 @@ import { LoginScreen, SignUpScreen, PendingApprovalScreen, ForgotPasswordScreen 
 import { useSession, SessionProvider, TankProvider } from './state';
 import { ThemeProvider, uiScale, useTheme } from './theme';
 import { HeaderToolbar } from './components/HeaderToolbar';
+import { AuditLogsScreen, ProfileScreen, UsersScreen } from './managementScreens';
 import { CriticalAlertModal } from './components/CriticalAlertModal';
-import { BlurTargetContext } from './components/ui';
+import { BlurTargetContext, TabBarVisibleContext } from './components/ui';
 import { api, liveClient } from './services/client';
 import { queryClient, queryPersister } from './services/queryClient';
 import { canAccess } from './access';
@@ -66,6 +66,13 @@ const roleBackgrounds: Record<Role, Record<ThemeMode, number>> = {
 onlineManager.setEventListener((setOnline) => NetInfo.addEventListener((state) => {
   setOnline(Boolean(state.isConnected));
 }));
+if (Platform.OS !== 'web') {
+  focusManager.setEventListener((setFocused) => {
+    setFocused(AppState.currentState === 'active');
+    const subscription = AppState.addEventListener('change', (state) => setFocused(state === 'active'));
+    return () => subscription.remove();
+  });
+}
 
 if (Platform.OS !== 'web') Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -84,19 +91,22 @@ const linking: LinkingOptions<RootStackParamList> = {
 
 function MainTabs() {
   const { user } = useSession();
-  return <Tabs.Navigator tabBar={(props) => <MobileTabBar {...props} />} screenOptions={{ sceneStyle: { backgroundColor: 'transparent' }, header: (props) => <HeaderToolbar {...props} /> }}>
+  return <TabBarVisibleContext.Provider value><Tabs.Navigator tabBar={(props) => <MobileTabBar {...props} />} screenOptions={{ sceneStyle: { backgroundColor: 'transparent' }, header: (props) => <HeaderToolbar {...props} /> }}>
     <Tabs.Screen name="Home" component={HomeScreen} />
     <Tabs.Screen name="Alerts" component={AlertsScreen} />
     <Tabs.Screen name="Trends" component={TrendsScreen} />
     <Tabs.Screen name="Activity" component={ActivityLogsScreen} />
-    <Tabs.Screen name="Calibration" component={CalibrationAndMaintenanceScreen} />
+    <Tabs.Screen name="FieldEntry" component={FieldEntryScreen} options={{ title: 'Field water-quality entry' }} />
+    {canAccess(user?.role ?? null, 'canCalibrate') && <Tabs.Screen name="Calibration" component={CalibrationAndMaintenanceScreen} />}
     <Tabs.Screen name="Reports" component={ReportsScreen} />
     <Tabs.Screen name="Status" component={StatusScreen} />
     {canAccess(user?.role ?? null, 'history') && <Tabs.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />}
-    {user?.role === 'manager' && <Tabs.Screen name="Review" component={ManagerReviewScreen} options={{ title: 'Review' }} />}
-    {user?.role === 'admin' && <Tabs.Screen name="Review" component={AdminReviewScreen} options={{ title: 'Admin' }} />}
+    {canAccess(user?.role ?? null, 'validation') && <Tabs.Screen name="Review" component={ManagerReviewScreen} options={{ title: 'Validation' }} />}
+    <Tabs.Screen name="Profile" component={ProfileScreen} options={{ title: 'My profile' }} />
+    {canAccess(user?.role ?? null, 'users') && <Tabs.Screen name="Users" component={UsersScreen} options={{ title: 'Users & roles' }} />}
+    {canAccess(user?.role ?? null, 'admin') && <Tabs.Screen name="AuditLogs" component={AuditLogsScreen} options={{ title: 'Audit & system logs' }} />}
     <Tabs.Screen name="Settings" component={SettingsScreen} />
-  </Tabs.Navigator>;
+  </Tabs.Navigator></TabBarVisibleContext.Provider>;
 }
 
 const tabIcons = {
@@ -124,7 +134,7 @@ function MobileTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             if (!selected && !event.defaultPrevented) navigation.navigate(route.name, route.params);
           }}
           onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
-          style={{ flex: 1, minHeight: 55, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.card, gap: 3, backgroundColor: selected ? colors.selected : 'transparent' }}>
+          style={{ flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.card, gap: 3, backgroundColor: selected ? colors.selected : 'transparent' }}>
           <Icon size={20} color={selected ? colors.teal : colors.muted} strokeWidth={2} />
           <Text style={{ fontSize: uiScale.type.caption, fontWeight: selected ? '700' : '500', color: selected ? colors.teal : colors.muted }}>{label}</Text>
         </Pressable>;
@@ -148,7 +158,8 @@ function LiveSync() {
           if (event.type === 'reading') {
             queryClient.setQueryData(['latest-reading', tank.id], event.reading);
             void queryClient.invalidateQueries({ queryKey: ['mobile-trends', tank.id] });
-            void queryClient.invalidateQueries({ queryKey: ['mobile-history', tank.id] });
+            void queryClient.invalidateQueries({ queryKey: ['history', tank.id] });
+            void queryClient.invalidateQueries({ queryKey: ['alerts'] });
           } else {
             void queryClient.invalidateQueries({ queryKey: ['device-statuses'] });
           }
@@ -211,7 +222,6 @@ function AppNavigation() {
           <Stack.Screen name="PendingApproval" component={PendingApprovalScreen} options={{ title: 'Account request' }} />
         </> : <>
           <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-          <Stack.Screen name="Appearance" component={AppearanceScreen} options={{ title: 'Appearance' }} />
           <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert detail' }} />
           {canAccess(user.role, 'validation') && <Stack.Screen name="ValidationReview" component={ManagerReviewScreen} options={{ title: 'Validation review' }} />}
         </>}

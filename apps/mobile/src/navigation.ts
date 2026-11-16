@@ -3,11 +3,15 @@ export type MainTabParamList = {
   Alerts: undefined;
   Trends: undefined;
   Activity: undefined;
+  FieldEntry: undefined;
   Calibration: undefined;
   Reports: undefined;
   Status: undefined;
   History: undefined;
   Review: undefined;
+  Profile: undefined;
+  Users: undefined;
+  AuditLogs: undefined;
   Settings: undefined;
 };
 
@@ -24,7 +28,6 @@ export type RootStackParamList = {
   ForgotPassword: undefined;
   PendingApproval: undefined;
   Main: undefined;
-  Appearance: undefined;
   AlertDetail: { alertId: string };
   ValidationReview: undefined;
 };

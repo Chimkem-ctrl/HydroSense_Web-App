@@ -3,10 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatManilaDateTime, getManilaDateString, toCsv } from '@hydrosense/shared';
 import type { DashboardUser, Role } from '@hydrosense/shared';
 import { api } from '../app/api';
-import { ROLE_LABELS, tierConfig } from '../app/config';
+import { DATA_MODE, ROLE_LABELS, tierConfig } from '../app/config';
 import { useAuth, useRole } from '../app/auth/RoleContext';
-import { usePendingRequests } from '../app/data/hooks';
-import { authService, SUBSCRIBED_HATCHERIES } from '../services/authService';
+import { usePendingRequests, useProfileSite } from '../app/data/hooks';
+import { authService, hatcheryLabel } from '../services/authService';
 import { isValidForSms } from '../services/phone';
 import { downloadCsv } from '../services/downloadCsv';
 import type { AuditLog } from '@hydrosense/shared';
@@ -22,20 +22,20 @@ export function AdminUsersPage() {
   const { userName, role } = useRole();
   const currentUser = useAuth();
   const isManager = role === 'manager';
-  const hatchery = SUBSCRIBED_HATCHERIES.find((item) => item.id === currentUser?.hatcheryId);
+  const site = useProfileSite();
+  const hatchery = site.data?.trim() ? hatcheryLabel(site.data) : undefined;
   const queryClient = useQueryClient();
   const users = useQuery({
     queryKey: ['admin-users', currentUser?.id, role],
     queryFn: async () => {
       const apiUsers = await api.listUsers();
-      const accountUsers: DashboardUser[] = (await authService.listApprovedUsers()).map((user) => ({
+      if (DATA_MODE === 'api') return apiUsers;
+      const accountUsers: DashboardUser[] = (isManager ? [] : await authService.listApprovedUsers()).map((user) => ({
         id: user.id,
         name: `${user.firstName} ${user.lastName}`,
         email: user.email,
         role: user.role,
-        site: user.hatcheryId
-          ? SUBSCRIBED_HATCHERIES.find((hatchery) => hatchery.id === user.hatcheryId)?.name ?? user.hatcheryId
-          : 'HydroSense',
+        site: hatcheryLabel(user.hatcheryId),
         active: true,
         lastActive: user.createdAt,
         employeeId: user.employeeId,
@@ -50,7 +50,7 @@ export function AdminUsersPage() {
     },
     enabled: tierConfig.teamAccounts && (!isManager || Boolean(hatchery)),
   });
-  const pendingRequests = usePendingRequests(isManager && Boolean(hatchery));
+  const pendingRequests = usePendingRequests();
   const [selectedRoles, setSelectedRoles] = useState<Record<string, Role | undefined>>({});
   const mutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: Exclude<Role, 'admin'> }) => {
@@ -85,29 +85,40 @@ export function AdminUsersPage() {
     },
   });
   // The backend must enforce hatchery scope; these filters only limit the display.
-  const visibleRequests = (pendingRequests.data ?? []).filter((request) => !isManager || Boolean(hatchery && request.hatcheryId === hatchery.id));
-  const visibleUsers = (users.data ?? []).filter((user) => !isManager || Boolean(hatchery && user.site === hatchery.name && user.role !== 'admin'));
+  const visibleRequests = (pendingRequests.data ?? []).filter((request) => !isManager || Boolean(hatchery && hatcheryLabel(request.hatcheryId) === hatchery));
+  const visibleUsers = (users.data ?? []).filter((user) => !isManager || Boolean(hatchery && hatcheryLabel(user.site) === hatchery && user.role !== 'admin'));
+  const groupedRequests = new Map<string, typeof visibleRequests>();
+  for (const request of visibleRequests) {
+    const name = hatcheryLabel(request.hatcheryId);
+    groupedRequests.set(name, [...(groupedRequests.get(name) ?? []), request]);
+  }
+  const groupedUsers = new Map<string, DashboardUser[]>();
+  for (const user of visibleUsers) {
+    const name = hatcheryLabel(user.site);
+    groupedUsers.set(name, [...(groupedUsers.get(name) ?? []), user]);
+  }
   return (
     <div className="stack admin-users-page">
       <PageHeading title="Users & roles" description={isManager ? 'Review operator accounts for your hatchery.' : `Manage team accounts · node limit ${tierConfig.nodeLimit}.`} />
-      {isManager && hatchery && <h2 className="card-title">{hatchery.name}</h2>}
-      {isManager && !hatchery ? <EmptyState>No hatchery is assigned to your account. Contact an administrator.</EmptyState> : <>
+      {isManager && site.isLoading ? <LoadingState label="Loading hatchery assignment" /> : isManager && site.isError ? <ErrorState error={site.error} onRetry={() => void site.refetch()} /> : isManager && !hatchery ? <EmptyState>No hatchery is assigned to your account. Contact an administrator.</EmptyState> : <>
       <StaleQueryState updatedAt={users.dataUpdatedAt} />
-      <section className="card admin-users-panel" aria-labelledby="pending-requests-title">
+      {!isManager && <section className="card admin-users-panel" aria-labelledby="pending-requests-title">
         <div className="admin-users-heading">
           <div><h2 id="pending-requests-title">Pending requests</h2><p>Review new account requests and assign a role.</p></div>
           {!pendingRequests.isLoading && !pendingRequests.isError && pendingRequests.data && <span className="admin-users-count">{visibleRequests.length} pending</span>}
         </div>
         {pendingRequests.isLoading ? <LoadingState /> : pendingRequests.isError ? <ErrorState error={pendingRequests.error} onRetry={() => void pendingRequests.refetch()} /> : !visibleRequests.length ? <EmptyState>No account requests are awaiting review.</EmptyState> : (
           <><p className="admin-users-scroll-hint">Scroll horizontally to see all request details and actions.</p>
-          <div className="table-wrap" role="region" aria-label="Pending requests table" tabIndex={0}><table className="admin-users-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Employee ID</th><th scope="col">Hatchery</th><th scope="col">Requested role</th><th scope="col">Date</th><th scope="col">Review</th></tr></thead><tbody>
-            {visibleRequests.map((request) => (
+          <div role="region" aria-label="Pending requests table">
+          {[...groupedRequests].map(([name, requests]) => <section className="admin-users-site" key={name}>
+          <h3>{name}</h3>
+          <div className="table-wrap" role="region" aria-label={`${name} pending requests`} tabIndex={0}><table className="admin-users-table admin-requests-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Employee ID</th><th scope="col">Requested role</th><th scope="col">Date</th><th scope="col">Review</th></tr></thead><tbody>
+            {requests.map((request) => (
               <tr key={request.id}>
                 <td>{request.firstName} {request.lastName}</td>
                 <td>{request.email}</td>
                 <td><PhoneCell phone={request.phone} /></td>
                 <td>{request.employeeId ?? '—'}</td>
-                <td>{SUBSCRIBED_HATCHERIES.find((hatchery) => hatchery.id === request.hatcheryId)?.name ?? '—'}</td>
                 <td>{request.requestedRole ? ROLE_LABELS[request.requestedRole] : '—'}</td>
                 <td>{formatManilaDateTime(request.createdAt)} PHT</td>
                 <td>
@@ -125,11 +136,11 @@ export function AdminUsersPage() {
                 </td>
               </tr>
             ))}
-          </tbody></table></div></>
+          </tbody></table></div></section>)}</div></>
         )}
         {approveRequest.isError && <ErrorState error={approveRequest.error} />}
         {rejectRequest.isError && <ErrorState error={rejectRequest.error} />}
-      </section>
+      </section>}
       <section className="card admin-users-panel" aria-labelledby="team-accounts-title">
         <div className="admin-users-heading">
           <div><h2 id="team-accounts-title">Team accounts</h2><p>View team members and manage their roles.</p></div>
@@ -137,11 +148,14 @@ export function AdminUsersPage() {
         </div>
         {!tierConfig.teamAccounts ? <p className="muted">Team account management is available on premium and enterprise tiers.</p> : users.isLoading ? <LoadingState /> : users.isError ? <ErrorState error={users.error} onRetry={() => void users.refetch()} /> : !visibleUsers.length ? <EmptyState>No team users are registered.</EmptyState> : (
           <><p className="admin-users-scroll-hint">Scroll horizontally to see all account details and actions.</p>
-          <div className="table-wrap" role="region" aria-label="Team accounts table" tabIndex={0}><table className="admin-users-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Site</th><th scope="col">Role</th><th scope="col">Last active</th>{!isManager && <th scope="col">Actions</th>}</tr></thead><tbody>
-            {visibleUsers.map((user) => <tr key={user.id}><td>{user.name}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{user.site}</td><td>{user.role === 'admin' || isManager ? <span>{ROLE_LABELS[user.role]}</span> : <label className="field"><span className="sr-only">Role for {user.name}</span><select value={user.role} onChange={(event) => { const next = event.target.value as Exclude<Role, 'admin'>; if (next !== user.role && window.confirm(`Change ${user.name} from ${ROLE_LABELS[user.role]} to ${ROLE_LABELS[next]}?`)) mutation.mutate({ userId: user.id, role: next }); }}><option value="operator">Operator</option><option value="manager">Manager</option></select></label>}</td><td>{formatManilaDateTime(user.lastActive)} PHT</td>{!isManager && <td>{user.role === 'admin' ? '—' : <button type="button" className="button" disabled={removeAccount.isPending} onClick={() => {
+          <div role="region" aria-label="Team accounts table">
+          {[...groupedUsers].map(([name, members]) => <section className="admin-users-site" key={name}>
+          <h3>{name}</h3>
+          <div className="table-wrap" tabIndex={0} role="region" aria-label={`${name} accounts`}><table className="admin-users-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Role</th><th scope="col">Last active</th>{!isManager && <th scope="col">Actions</th>}</tr></thead><tbody>
+            {members.map((user) => <tr key={user.id}><td>{user.name}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{user.role === 'admin' || isManager ? <span>{ROLE_LABELS[user.role]}</span> : <label className="field"><span className="sr-only">Role for {user.name}</span><select value={user.role} onChange={(event) => { const next = event.target.value as Exclude<Role, 'admin'>; if (next !== user.role && window.confirm(`Change ${user.name} from ${ROLE_LABELS[user.role]} to ${ROLE_LABELS[next]}?`)) mutation.mutate({ userId: user.id, role: next }); }}><option value="operator">Operator</option><option value="manager">Manager</option></select></label>}</td><td>{formatManilaDateTime(user.lastActive)} PHT</td>{!isManager && <td>{user.role === 'admin' ? '—' : <button type="button" className="button" disabled={removeAccount.isPending} onClick={() => {
               if (window.confirm(`Remove the account for ${user.name}? This cannot be undone.`)) removeAccount.mutate(user.id);
             }}>Remove account</button>}</td>}</tr>)}
-          </tbody></table></div></>
+          </tbody></table></div></section>)}</div></>
         )}
           {mutation.isError && <ErrorState error={mutation.error} />}
           {removeAccount.isError && <ErrorState error={removeAccount.error} />}

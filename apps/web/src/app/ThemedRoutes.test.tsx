@@ -14,7 +14,7 @@ const routes = [
   ['/alerts', 'Alerts center'],
   ['/entries', 'Activity logs'],
   ['/reports', 'Reports'],
-  ['/calibration', 'Calibration'],
+  ['/calibration', 'Calibration & maintenance'],
   ['/validation', 'Validation view'],
   ['/admin/users', 'Users & roles'],
   ['/admin/logs', 'Audit & system logs'],
@@ -54,6 +54,22 @@ afterEach(() => {
 });
 
 describe('themed dashboard routes', () => {
+  it('displays the fetched profile site rather than a stale session assignment', async () => {
+    signInAs('operator');
+    vi.spyOn(authService, 'getProfileSite').mockResolvedValue('North Hatchery');
+    window.history.replaceState({}, '', '/profile');
+    render(<App />);
+    expect(await screen.findByText('North Hatchery')).toBeInTheDocument();
+  });
+
+  it('reports a profile site fetch failure', async () => {
+    signInAs('operator');
+    vi.spyOn(authService, 'getProfileSite').mockRejectedValue(new Error('Site lookup failed'));
+    window.history.replaceState({}, '', '/profile');
+    render(<App />);
+    expect(await screen.findByText('Site lookup failed', {}, { timeout: 5000 })).toBeInTheDocument();
+  });
+
   it.each(['operator', 'manager', 'admin'] as const)('exposes the %s role on the shell and sidebar', async (role) => {
     if (role !== 'admin') {
       const user = {
@@ -96,6 +112,8 @@ describe('themed dashboard routes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close navigation' }));
     fireEvent.click(screen.getByRole('button', { name: /Account menu for/ }));
     expect(screen.getByRole('menuitem', { name: 'My profile' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Alert preferences' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Appearance' })).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Select tank' })).toBeInTheDocument();
   });
 
@@ -145,8 +163,14 @@ describe('themed dashboard routes', () => {
       expect(screen.getByRole('button', { name: 'Reboot device' })).toBeDisabled();
       expect(screen.queryByRole('button', { name: 'Request calibration' })).not.toBeInTheDocument();
     }
-    if (role === 'admin') expect(screen.queryByRole('button', { name: 'Request a change' })).not.toBeInTheDocument();
-    else expect(screen.getByRole('button', { name: 'Request a change' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Request a change' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Choose how HydroSense appears on this device.')).not.toBeInTheDocument();
+    const appearance = screen.getByRole('region', { name: 'Appearance' });
+    expect(within(appearance).getAllByRole('radio').map((radio) => radio.getAttribute('value'))).toEqual(['system', 'light', 'dark']);
+    expect(within(appearance).getByRole('radio', { name: 'System' })).toHaveAccessibleDescription('Match your device setting');
+    expect(within(appearance).getByRole('radio', { name: 'Light' })).toHaveAccessibleDescription('Light background');
+    expect(within(appearance).getByRole('radio', { name: 'Dark' })).toHaveAccessibleDescription('Dark background, easier to read at night');
+    expect(screen.getAllByText(/Coming soon:/)).toHaveLength(3);
     const maintenance = screen.getByRole('region', { name: 'Device maintenance' });
     expect(await within(maintenance).findByText('Larval Tank A')).toBeInTheDocument();
     expect(within(maintenance).getByText('HS-MF-001')).toBeInTheDocument();
@@ -210,7 +234,15 @@ describe('themed dashboard routes', () => {
     expect(screen.getByRole('link', { name: 'Calibration' })).toBeInTheDocument();
   });
 
-  it('scrolls to profile hash targets on load and account-menu navigation', async () => {
+  it('guards the legacy thresholds route from operators', async () => {
+    signInAs('operator');
+    window.history.replaceState({}, '', '/settings/thresholds');
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Live monitor', level: 1 });
+    expect(window.location.pathname).toBe('/');
+  });
+
+  it('scrolls to profile hash targets on load', async () => {
     const scroll = vi.fn();
     const previous = HTMLElement.prototype.scrollIntoView;
     HTMLElement.prototype.scrollIntoView = scroll;
@@ -220,12 +252,6 @@ describe('themed dashboard routes', () => {
       await screen.findByRole('heading', { name: 'My profile', level: 1 });
       expect(scroll).toHaveBeenCalledTimes(1);
       expect(scroll.mock.instances[0]).toBe(document.getElementById('alerts'));
-      fireEvent.click(screen.getByRole('button', { name: /Account menu for/ }));
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Appearance' }));
-      expect(window.location.hash).toBe('#appearance');
-      expect(scroll).toHaveBeenCalledTimes(2);
-      expect(scroll.mock.instances[1]).toBe(document.getElementById('appearance'));
-      expect(screen.queryByRole('menuitem', { name: 'Appearance' })).not.toBeInTheDocument();
     } finally {
       HTMLElement.prototype.scrollIntoView = previous;
     }

@@ -33,9 +33,8 @@ describe('merged dashboard backgrounds', () => {
         expect(getComputedStyle(shell).getPropertyValue('--role-background-image')).toContain(image);
         expect(existsSync(resolve('public/assets/images', decodeURIComponent(image)))).toBe(true);
         expect(getComputedStyle(main).backgroundColor).toBe('rgba(0, 0, 0, 0)');
-        for (const selector of ['.sidebar', '.page-controls']) {
-          expect(getComputedStyle(document.querySelector<HTMLElement>(selector)!).backgroundColor).toBe('rgba(0, 0, 0, 0.45)');
-        }
+        expect(getComputedStyle(document.querySelector<HTMLElement>('.sidebar')!).backgroundColor).toBe('rgba(0, 0, 0, 0.45)');
+        expect(getComputedStyle(document.querySelector<HTMLElement>('.page-controls')!).backgroundColor).toBe('rgba(0, 0, 0, 0)');
         expect(getComputedStyle(document.querySelector<HTMLElement>('.card')!).backgroundColor).toBe('rgba(255, 255, 255, 0.04)');
       }
     },

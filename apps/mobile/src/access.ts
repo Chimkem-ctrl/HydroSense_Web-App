@@ -1,9 +1,10 @@
 import { canAccessRole } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
 
-const access: Record<'history' | 'validation' | 'admin' | 'canEditThresholds' | 'canExport' | 'canCalibrate', Role[]> = {
-  history: ['manager', 'admin'],
+const access: Record<'history' | 'validation' | 'users' | 'admin' | 'canEditThresholds' | 'canExport' | 'canCalibrate', Role[]> = {
+  history: ['operator', 'manager', 'admin'],
   validation: ['manager', 'admin'],
+  users: ['manager', 'admin'],
   admin: ['admin'],
   canEditThresholds: ['manager', 'admin'],
   canExport: ['manager', 'admin'],

@@ -10,6 +10,7 @@ import { uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
 
 export const BlurTargetContext = createContext<RefObject<ComponentRef<typeof View> | null> | null>(null);
+export const TabBarVisibleContext = createContext(false);
 const CardContext = createContext(false);
 // Android's default tint is 44% of intensity; 9 / 0.45 preserves a 20px blur with about 4% tint.
 const androidBlurIntensity = 9;
@@ -27,15 +28,16 @@ function glassBlur(blurTarget: RefObject<ComponentRef<typeof View> | null> | nul
     : <BlurView blurTarget={blurTarget ?? undefined} blurMethod="dimezisBlurView" tint={Platform.OS === 'ios' ? 'systemUltraThinMaterial' : 'default'} intensity={Platform.OS === 'android' ? androidBlurIntensity : 25} blurReductionFactor={androidBlurReduction} style={[StyleSheet.absoluteFill, styles.cardBlur]} pointerEvents="none" />;
 }
 
-export function Page({ children, auth = false, bottomPadding }: PropsWithChildren<{ auth?: boolean; bottomPadding?: number }>) {
+export function Page({ children, auth = false, bottomPadding, maxWidth }: PropsWithChildren<{ auth?: boolean; bottomPadding?: number; maxWidth?: number }>) {
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
+  const tabBarVisible = useContext(TabBarVisibleContext);
   const authBlurTarget = useRef<ComponentRef<typeof View> | null>(null);
   const styles = createStyles(colors);
   const content = <KeyboardAvoidingView style={styles.background} behavior={auth && Platform.OS === 'ios' ? 'padding' : undefined}>
-      <SafeAreaView style={styles.safe} edges={auth ? ['top', 'left', 'right', 'bottom'] : ['left', 'right', 'bottom']}>
+      <SafeAreaView style={styles.safe} edges={auth ? ['top', 'left', 'right', 'bottom'] : tabBarVisible ? ['left', 'right'] : ['left', 'right', 'bottom']}>
         <ScrollView style={styles.background} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, auth && styles.authScroll]}>
-          <View style={[styles.page, { paddingHorizontal: width >= 600 ? uiScale.spacing[6] : uiScale.spacing[4] }, bottomPadding !== undefined && { paddingBottom: bottomPadding }, auth && styles.authPage]}>{children}</View>
+          <View style={[styles.page, { paddingHorizontal: width >= 600 ? uiScale.spacing[6] : uiScale.spacing[4] }, bottomPadding !== undefined && { paddingBottom: bottomPadding }, auth && styles.authPage, maxWidth !== undefined && { maxWidth }]}>{children}</View>
         </ScrollView>
       </SafeAreaView>
     </KeyboardAvoidingView>;

@@ -3,24 +3,15 @@ import { useLocation } from 'react-router-dom';
 import { formatManilaDateTime } from '@hydrosense/shared';
 import { useAuth, useRole } from '../app/auth/RoleContext';
 import { ROLE_LABELS } from '../app/config';
-import { useTanks } from '../app/data/hooks';
+import { useProfileSite, useTanks } from '../app/data/hooks';
 import { useSelectedTank } from '../app/tank/TankContext';
-import { SUBSCRIBED_HATCHERIES } from '../services/authService';
+import { hatcheryLabel } from '../services/authService';
 import { isValidForSms } from '../services/phone';
 import { PageHeading } from '../components/common/PageHeading';
 import { EmptyState, ErrorState, LoadingState } from '../components/common/States';
 import { AppearancePanel } from '../components/settings/AppearancePanel';
 import ToggleSwitch from '../components/settings/ToggleSwitch';
 import '../styles/profile.css';
-
-function ComingSoonAction({ children, explanation }: { children: string; explanation: string }) {
-  return (
-    <div className="profile-action">
-      <div><button className="button" type="button" disabled>{children}</button> <small>Coming soon</small></div>
-      <p className="profile-note">{explanation}</p>
-    </div>
-  );
-}
 
 export default function ProfilePage() {
   const { hash } = useLocation();
@@ -29,9 +20,7 @@ export default function ProfilePage() {
   const { tankId } = useSelectedTank();
   const tanks = useTanks();
   const tank = tanks.data?.find((item) => item.id === tankId);
-  const hatcheryName = user?.hatcheryId
-    ? SUBSCRIBED_HATCHERIES.find((hatchery) => hatchery.id === user.hatcheryId)?.name ?? user.hatcheryId
-    : 'Not provided';
+  const site = useProfileSite();
 
   useEffect(() => {
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView?.();
@@ -63,7 +52,7 @@ export default function ProfilePage() {
                   <div><dt>Name</dt><dd>{userName.trim() || 'Not provided'}</dd></div>
                   <div><dt>Role</dt><dd>{ROLE_LABELS[role]}</dd></div>
                   <div><dt>Position</dt><dd>{user.position || 'Not provided'}</dd></div>
-                  <div><dt>Hatchery / site</dt><dd>{hatcheryName}</dd></div>
+                  <div><dt>Hatchery / site</dt><dd>{site.isLoading ? 'Loading...' : site.isError ? <ErrorState error={site.error} onRetry={() => void site.refetch()} /> : site.data?.trim() ? hatcheryLabel(site.data) : 'Not provided'}</dd></div>
                   <div><dt>Employee ID</dt><dd>{user.employeeId || 'Not provided'}</dd></div>
                 </dl>
               </section>
@@ -82,7 +71,6 @@ export default function ProfilePage() {
                 </dl>
               </section>
             </div>
-            {role !== 'admin' && <ComingSoonAction explanation="Profile change requests are not available yet.">Request a change</ComingSoonAction>}
           </>}
         </section>
 
@@ -91,14 +79,12 @@ export default function ProfilePage() {
           <div className="profile-alert-row">
             <ToggleSwitch id="sms-alerts" label="SMS alerts" checked={false} onChange={() => {}} disabled />
             <p className="profile-note">Phone on file: {user?.phone || 'Not provided'} <span className="profile-badge">{isValidForSms(user?.phone) ? 'Valid for SMS' : 'Not valid for SMS'}</span></p>
-            <p className="profile-note"><small>Coming soon</small> · SMS delivery preferences cannot be changed yet.</p>
           </div>
           <div className="profile-alert-row">
             <ToggleSwitch id="email-alerts" label="Email alerts" checked={false} onChange={() => {}} disabled />
             <p className="profile-note">Email on file: {user?.email || 'Not provided'}</p>
-            <p className="profile-note"><small>Coming soon</small> · Email delivery preferences cannot be changed yet.</p>
           </div>
-          <p className="profile-note">Critical alerts always appear in the Alerts center. Your delivery preferences will be saved to your account once available.</p>
+          <p className="profile-note">Coming soon: delivery preferences. Critical alerts always appear in the Alerts center.</p>
         </section>
 
         <AppearancePanel />
@@ -106,9 +92,11 @@ export default function ProfilePage() {
         <section id="security" className="card profile-preferences" aria-labelledby="security-title">
           <div className="profile-panel-heading"><h2 id="security-title">Security</h2></div>
           <p className="profile-note">Signed-in email: {user?.email || 'Not provided'}</p>
-          <p className="profile-note">Current session</p>
-          <ComingSoonAction explanation="Changing your password here is not available yet.">Change password</ComingSoonAction>
-          <ComingSoonAction explanation="Signing out other devices is not available yet.">Sign out other devices</ComingSoonAction>
+          <div className="profile-actions">
+            <button className="button" type="button" disabled>Change password</button>
+            <button className="button" type="button" disabled>Sign out other devices</button>
+          </div>
+          <p className="profile-note">Coming soon: password changes and signing out other devices.</p>
         </section>
 
         <section id="device-maintenance" className="card profile-preferences" aria-labelledby="device-maintenance-title">
@@ -119,11 +107,13 @@ export default function ProfilePage() {
               <div><dt>Device ID</dt><dd>{tank?.deviceId || 'Not provided'}</dd></div>
             </dl>
           )}
-          {role === 'operator' ? <>
-            <ComingSoonAction explanation="Calibration requests are not available yet.">Request calibration</ComingSoonAction>
-            <ComingSoonAction explanation="Reboot requests are not available yet.">Request reboot</ComingSoonAction>
-          </> : <ComingSoonAction explanation="Device reboot is not available yet.">Reboot device</ComingSoonAction>}
-          <p className="profile-note">Device actions are not connected yet. Nothing is sent to hardware.</p>
+          <div className="profile-actions">
+            {role === 'operator' ? <>
+              <button className="button" type="button" disabled>Request calibration</button>
+              <button className="button" type="button" disabled>Request reboot</button>
+            </> : <button className="button" type="button" disabled>Reboot device</button>}
+          </div>
+          <p className="profile-note">Coming soon: device actions. Nothing is sent to hardware yet.</p>
         </section>
       </div>
     </div>

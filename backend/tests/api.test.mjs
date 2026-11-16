@@ -165,6 +165,34 @@ test('only approved admins can review pending requests and assign any approval r
   assert.equal(legacy.tables.profiles[1].role, 'admin');
 });
 
+test('profile endpoint returns the signed-in profile and hatchery details', async () => {
+  const app = setup('manager');
+  Object.assign(app.tables.profiles[0], { site: 'site', phone: '123', employee_id: 'EMP-1' });
+  const response = await app.request('/v1/profile');
+  assert.equal(response.status, 200);
+  const profile = await response.json();
+  assert.equal(profile.id, 'actor');
+  assert.equal(profile.site, 'site');
+  assert.equal(profile.phone, '123');
+  assert.equal(profile.employeeId, 'EMP-1');
+  assert.equal((await setup('manager', 'pending').request('/v1/profile')).status, 403);
+});
+
+test('manager account list is restricted to approved non-admin users at their assigned site', async () => {
+  const app = setup('manager');
+  app.tables.profiles[0].site = 'site';
+  app.tables.profiles.push(
+    { id: 'outside', first_name: 'Outside', last_name: 'User', email: 'outside@example.test', role: 'operator', status: 'approved', site: 'other' },
+    { id: 'same-admin', first_name: 'Admin', last_name: 'User', email: 'same@example.test', role: 'admin', status: 'approved', site: 'site' },
+  );
+  const response = await app.request('/v1/admin/users');
+  const users = await response.json();
+  assert.deepEqual(users.map((user) => user.id).sort(), ['actor', 'member']);
+  app.tables.profiles[0].site = '';
+  assert.deepEqual(await (await app.request('/v1/admin/users')).json(), []);
+  assert.equal((await app.request('/v1/admin/users?status=pending')).status, 403);
+});
+
 test('approved-user role changes exclude admins and pending accounts', async () => {
   const app = setup();
   assert.equal((await app.request('/v1/admin/users/member/role', 'PUT', { role: 'manager' })).status, 200);

@@ -22,12 +22,12 @@ authenticated background covers the window behind the header and navigation,
 and changes with the account role and appearance. The native system background
 uses the appearance's canvas color while the image is loading. Rebuild native
 development builds after adding the system UI module.
-Appearance is available in Settings and the header account menu. Choose System,
+Appearance is available in My profile and Settings. Choose System,
 Light or Dark; the preference is saved on the device and System follows its
 current color scheme. The preference remains after signing out.
-The dashboard header offers role-filtered navigation, tank selection, alert
-access and account actions. Its connection indicator says `Polling` when no
-WebSocket stream is configured; this is not a live-stream status.
+The dashboard header offers role-filtered navigation and alert access. Tank
+selection and connection status are in the account menu. The indicator reports a live connection
+or a recent reading; a recent reading alone does not imply a WebSocket stream.
 
 The default is API mode, using the deployed Supabase API and publishable key
 also configured in the web app. Mobile sign-in and account requests use the
@@ -44,6 +44,11 @@ and restart Expo after changing it. For another backend set
 `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` to that project's publishable key. The
 API root is shared by sign-in and all data requests.
 `EXPO_PUBLIC_API_BASE_URL` remains supported as a legacy fallback.
+The profile screen reads the signed-in user's profile through Supabase REST,
+using the same row-level security as the web app. Its project URL is derived
+from an API root ending in `/functions/v1/api`; set `EXPO_PUBLIC_SUPABASE_URL`
+explicitly when that URL cannot be derived. Non-Supabase API backends without
+this setting must provide `GET /v1/profile`.
 For a local API use an address reachable from the device: `10.0.2.2` is the
 Android emulator host address; a physical device needs the computer's LAN
 address. Never put a service-role key or other secret in Expo public variables.
@@ -66,25 +71,26 @@ at the next sign-in; API authorization must remain enforced server-side.
 SecureStore is not available on web, so browser preview sessions and tokens are
 kept in memory only and require sign-in again after a page reload. Native
 notification handling is disabled in the browser preview.
-The current backend allows approved operators to call the readings endpoint
-directly, so hiding the History tab does not restrict historical data at the
-API. Enforcing the web's history restriction requires a backend change.
-
-API queries refresh every 30 seconds while active. Set `EXPO_PUBLIC_WS_URL`
+Most API queries refresh every 30 seconds while active; the alert feed, badge,
+and pending account requests refresh every 5 seconds in the foreground and on
+resume. The badge counts open alerts plus pending requests for admins, matching
+the web; it is not a per-user unread count. There is no notification read-state
+store or background push delivery yet. Set `EXPO_PUBLIC_WS_URL`
 only if a compatible live WebSocket service is available; the Supabase REST
 function does not itself provide that stream. Notification navigation is wired
 but push-token registration and delivery require backend integration.
 
-The Operator home supports monitoring, alerts, calibration and field entries.
-Managers additionally get history, threshold editing and a read-only validation
-review. Admins can approve or reject pending accounts in API mode and view an
-account/audit overview. Account review is unavailable in mobile demo mode.
-These are example mobile views, not complete web feature parity:
-other account management, tolerance editing, full reporting and other
-web features remain on the web. UI route restrictions are not a security
+Operators can access historical logs; calibration and validation are available
+to managers and admins. Managers can view approved users in their assigned
+hatchery. Admins can review requests, change non-admin roles, remove accounts,
+and view audit logs. Account review is unavailable in mobile demo mode.
+Some web features, including audit-log filtering and export, tolerance editing,
+and full reporting, remain on the web. UI route restrictions are not a security
 boundary; the backend must independently enforce every required permission.
 
-Deploy the updated Supabase API function before using the updated signup and
-approval flows; older deployments expect a requested role and a text address.
+Apply the profile manager-scope migration and deploy the updated Supabase API
+function to enforce manager hatchery isolation on both direct database and API
+access. The profile screen itself does not require the new API route when
+using Supabase REST.
 Addresses use the Philippine PSGC dataset, including region selections for
 independent areas, and are saved as a readable profile address.

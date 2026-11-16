@@ -59,7 +59,6 @@ export const ROLE_ACCESS: Record<string, Role[]> = {
   entries: ['operator', 'manager', 'admin'],
   reports: ['operator', 'manager', 'admin'],
   calibration: ['manager', 'admin'],
-  thresholds: ['manager', 'admin'],
   validation: ['manager', 'admin'],
   users: ['manager', 'admin'],
   logs: ['admin'],
