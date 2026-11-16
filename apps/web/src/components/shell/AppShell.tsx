@@ -19,7 +19,6 @@ import {
   Users,
   Waves,
   UserRound,
-  Wifi,
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -35,7 +34,6 @@ import { CriticalAlertModal } from './CriticalAlertModal';
 const icons: Record<string, LucideIcon> = {
   '/': LayoutDashboard,
   '/tanks': Waves,
-  '/health': Wifi,
   '/trends': Activity,
   '/history': Database,
   '/alerts': AlertTriangle,

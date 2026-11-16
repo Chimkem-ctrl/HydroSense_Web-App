@@ -7,7 +7,6 @@ import { PublicOnly, RequireAuth } from './auth/RouteGuards';
 import { AppShell } from '../components/shell/AppShell';
 import LiveMonitorPage from '../pages/LiveMonitorPage';
 import TankOverviewPage from '../pages/TankOverviewPage';
-import SystemHealthPage from '../pages/SystemHealthPage';
 import TrendsPage from '../pages/TrendsPage';
 import ProfilePage from '../pages/ProfilePage';
 import {
@@ -39,7 +38,7 @@ export default function AppRoutes() {
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route index element={<LiveMonitorPage />} />
         <Route path="tanks" element={<TankOverviewPage />} />
-        <Route path="health" element={<SystemHealthPage />} />
+        <Route path="health" element={<Navigate to="/tanks" replace />} />
         <Route path="trends" element={<TrendsPage />} />
         <Route path="history" element={<Guarded path="history"><HistoryPage /></Guarded>} />
         <Route path="alerts" element={<AlertsPage />} />

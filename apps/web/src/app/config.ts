@@ -52,7 +52,6 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const ROLE_ACCESS: Record<string, Role[]> = {
   live: ['operator', 'manager', 'admin'],
   tanks: ['operator', 'manager', 'admin'],
-  health: ['operator', 'manager', 'admin'],
   trends: ['operator', 'manager', 'admin'],
   history: ['operator', 'manager', 'admin'],
   alerts: ['operator', 'manager', 'admin'],
@@ -69,7 +68,6 @@ export const ROLE_ACCESS: Record<string, Role[]> = {
 export const NAV_ITEMS = [
   { path: '/', label: 'Live monitor', group: 'Monitor', roles: ROLE_ACCESS.live },
   { path: '/tanks', label: 'Tank overview', group: 'Monitor', roles: ROLE_ACCESS.tanks },
-  { path: '/health', label: 'System health', group: 'Monitor', roles: ROLE_ACCESS.health },
   { path: '/trends', label: 'Trends', group: 'Monitor', roles: ROLE_ACCESS.trends },
   { path: '/history', label: 'Historical logs', group: 'Records', roles: ROLE_ACCESS.history },
   { path: '/alerts', label: 'Alerts center', group: 'Monitor', roles: ROLE_ACCESS.alerts },

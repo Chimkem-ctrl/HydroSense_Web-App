@@ -7,14 +7,13 @@ import { authService } from '../services/authService';
 
 const routes = [
   ['/', 'Live monitor'],
-  ['/tanks', 'Tank overview'],
-  ['/health', 'System health'],
-  ['/trends', 'Trend charts'],
+  ['/tanks', 'Tank overview & system health'],
+  ['/trends', 'Trends'],
   ['/history', 'Historical logs'],
   ['/alerts', 'Alerts center'],
   ['/entries', 'Activity logs'],
   ['/reports', 'Reports'],
-  ['/calibration', 'Calibration'],
+  ['/calibration', 'Calibration & maintenance'],
   ['/validation', 'Validation view'],
   ['/admin/users', 'Users & roles'],
   ['/admin/logs', 'Audit & system logs'],
@@ -71,7 +70,7 @@ describe('themed dashboard routes', () => {
     }
     window.history.replaceState({}, '', '/tanks');
     const { container } = render(<App />);
-    await screen.findByRole('heading', { name: 'Tank overview', level: 1 });
+    await screen.findByRole('heading', { name: 'Tank overview & system health', level: 1 });
     expect(container.querySelector('.app-shell')?.getAttribute('data-role')).toBe(role);
     expect(screen.getByText(`Pilot workspace · ${role.toUpperCase()}`)).not.toBeNull();
   });
@@ -90,13 +89,20 @@ describe('themed dashboard routes', () => {
   it('keeps the navigation drawer and account controls available in the shared layout', async () => {
     window.history.replaceState({}, '', '/tanks');
     render(<App />);
-    await screen.findByRole('heading', { name: 'Tank overview', level: 1 });
+    await screen.findByRole('heading', { name: 'Tank overview & system health', level: 1 });
     fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
     expect(screen.getByRole('button', { name: 'Close navigation' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close navigation' }));
     fireEvent.click(screen.getByRole('button', { name: /Account menu for/ }));
     expect(screen.getByRole('menuitem', { name: 'My profile' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Select tank' })).toBeInTheDocument();
+  });
+
+  it('redirects the removed health page to the combined tank overview', async () => {
+    window.history.replaceState({}, '', '/health');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Tank overview & system health', level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/tanks');
   });
 
   it('groups the selected tank readings, advisories and device details', async () => {
@@ -188,7 +194,7 @@ describe('themed dashboard routes', () => {
     expect(screen.queryByLabelText('Tank ID')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Wi-Fi password')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('link', { name: 'Tank overview' }));
-    await screen.findByRole('heading', { name: 'Tank overview', level: 1 });
+    await screen.findByRole('heading', { name: 'Tank overview & system health', level: 1 });
     expect(screen.queryByLabelText('Tank ID')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Wi-Fi password')).not.toBeInTheDocument();
     expect(screen.queryByText('Active Sessions')).not.toBeInTheDocument();
