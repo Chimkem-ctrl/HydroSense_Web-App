@@ -499,16 +499,17 @@ export function FieldEntryScreen() {
 
 export function ExportScreen() {
   const { colors } = useTheme();
-  const { tankId } = useTankSelection();
+  const { tanks, tankId } = useTankSelection();
   const { user } = useSession();
+  const tankName = tanks.find((tank) => tank.id === tankId)?.name ?? tankId;
   const readings = useQuery({ queryKey: ['mobile-export-readings', tankId], queryFn: () => api.listReadings({ tankId }), enabled: Boolean(tankId) });
   const alerts = useQuery({ queryKey: ['mobile-export-alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
   const [sharing, setSharing] = useState(false);
   const csv = useMemo(() => {
     const header = ['Timestamp (ISO)', 'Tank', 'Temperature °C', 'DO mg/L', 'pH'];
-    const rows = (readings.data ?? []).map((row) => [row.timestamp, row.tankId, row.temperature, row.doMgL, row.ph]);
+    const rows = (readings.data ?? []).map((row) => [row.timestamp, tankName, row.temperature, row.doMgL, row.ph]);
     return toCsv([header, ...rows]);
-  }, [readings.data]);
+  }, [readings.data, tankName]);
   async function shareCsv() {
     setSharing(true);
     try {
@@ -527,7 +528,7 @@ export function ExportScreen() {
     <TankPicker />
     <Card title="CSV export">
       {readings.isLoading || alerts.isLoading ? <StateMessage message="Preparing export…" loading /> : readings.isError ? <StateMessage message="Could not load readings." /> : <>
-        <DataRow label="Tank" value={tankId} />
+        <DataRow label="Tank" value={tankName} />
         <DataRow label="Readings" value={`${readings.data?.length ?? 0}`} />
         <DataRow label="Alerts" value={`${alerts.data?.length ?? 0}`} />
         <Text style={{ color: colors.muted }}>The shared export includes formula-injection protection and preserves ISO timestamps.</Text>

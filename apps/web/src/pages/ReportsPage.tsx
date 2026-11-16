@@ -86,14 +86,15 @@ export default function ReportsPage() {
       generatedBy: { name: userName, role },
     }, dataQuery.data);
   }, [dataQuery.data, from, role, sections, selectedTankIds, tankId, to, userName]);
+  const tankNames = useMemo(() => new Map((model?.tanks ?? []).map((tank) => [tank.id, tank.name])), [model]);
   const rows = useMemo((): unknown[][] => {
     if (!model) return [];
-    if (type === 'readings') return model.rawReadings.map((row) => [row.timestamp, row.tankId, row.temperature, row.doMgL, row.ph]);
-    if (type === 'alerts') return model.alerts.map((row) => [row.createdAt, row.tankId, row.parameter, row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? '']);
-    if (type === 'activity') return model.activityLogs.map((row) => [row.occurredAt, row.kind, row.type, row.tankId, row.notes, row.operator]);
-    if (type === 'calibration') return model.calibrationLogs.map((row) => [row.date, row.tankId, row.parameter, row.standard, row.before, row.after, row.user, row.nextDue]);
+    if (type === 'readings') return model.rawReadings.map((row) => [row.timestamp, tankNames.get(row.tankId) ?? row.tankId, row.temperature, row.doMgL, row.ph]);
+    if (type === 'alerts') return model.alerts.map((row) => [row.createdAt, tankNames.get(row.tankId) ?? row.tankId, row.parameter, row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? '']);
+    if (type === 'activity') return model.activityLogs.map((row) => [row.occurredAt, row.kind, row.type, row.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(row.tankId) ?? row.tankId, row.notes, row.operator]);
+    if (type === 'calibration') return model.calibrationLogs.map((row) => [row.date, tankNames.get(row.tankId) ?? row.tankId, row.parameter, row.standard, row.before, row.after, row.user, row.nextDue]);
     return model.validationRows.map((row) => [row.parameter, row.hydrosenseMean, row.reference, row.error, row.pctError, row.tolerance, row.pass ? 'pass' : 'fail']);
-  }, [model, type]);
+  }, [model, tankNames, type]);
   const headers: Record<ExportType, string[]> = {
     readings: ['Timestamp (ISO)', 'Tank', 'Temperature °C', 'DO mg/L', 'pH'],
     alerts: ['Created (ISO)', 'Tank', 'Parameter', 'Value', 'Threshold', 'Severity', 'Status', 'Acknowledged by', 'Response note'],
