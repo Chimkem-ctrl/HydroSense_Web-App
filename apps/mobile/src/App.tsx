@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import type { ComponentRef } from 'react';
-import { ActivityIndicator, AppState, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationLightTheme, NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import type { LinkingOptions } from '@react-navigation/native';
@@ -41,6 +41,7 @@ import { HeaderToolbar } from './components/HeaderToolbar';
 import { AuditLogsScreen, ProfileScreen, UsersScreen } from './managementScreens';
 import { CriticalAlertModal } from './components/CriticalAlertModal';
 import { BlurTargetContext, TabBarVisibleContext } from './components/ui';
+import { SplashGate } from './splashScreen';
 import { api, liveClient } from './services/client';
 import { queryClient, queryPersister } from './services/queryClient';
 import { canAccess } from './access';
@@ -207,8 +208,7 @@ function AppNavigation() {
       console.error('Could not request notification permission.', error);
     });
   }, [user]);
-  if (!ready) return <View style={{ flex: 1, backgroundColor: colors.canvas, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.teal} /></View>;
-  return <View style={{ flex: 1, width: '100%', height: '100%', backgroundColor: colors.canvas }}>
+  return <SplashGate ready={ready}><View style={{ flex: 1, width: '100%', height: '100%', backgroundColor: colors.canvas }}>
     <BlurTargetView ref={blurTarget} style={[StyleSheet.absoluteFill, { backgroundColor: colors.canvas }]} pointerEvents="none">
       {user && <Image source={roleBackgrounds[user.role][mode]} resizeMode="cover" style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.15 }] }]} accessible={false} />}
     </BlurTargetView>
@@ -233,7 +233,7 @@ function AppNavigation() {
     <ConnectionNotice online={online} />
     {user && <CriticalAlertModal />}
     </BlurTargetContext.Provider>
-  </View>;
+  </View></SplashGate>;
 }
 
 export default function App() {

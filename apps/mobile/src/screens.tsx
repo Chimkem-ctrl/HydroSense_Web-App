@@ -17,7 +17,6 @@ import {
   buildReport,
   calculateParameterStatistics,
   can,
-  DEFAULT_ADVISORY_RULES,
   formatManilaDateTime,
   formatParameter,
   getManilaDateString,
@@ -32,10 +31,8 @@ import {
   DEFAULT_THRESHOLDS,
   validateAcknowledgeNote,
   validateActivityLog,
-  validateAdvisoryRules,
-  validateThresholds,
 } from '@hydrosense/shared';
-import type { ActivityLog, ActivityLogKind, AdvisoryRuleSettings, AlertItem, CalibrationLog, MeasuredParameter, Reading, ReportSection, Threshold } from '@hydrosense/shared';
+import type { ActivityLog, ActivityLogKind, AlertItem, CalibrationLog, MeasuredParameter, Reading, ReportSection, Threshold } from '@hydrosense/shared';
 import type { MainTabParamList, RootStackParamList } from './navigation';
 import { DATA_MODE, api, listPendingAccounts } from './services/client';
 import { canAccess } from './access';
@@ -81,8 +78,9 @@ const createLogScreenStyles = (colors: Palette) => StyleSheet.create({
   label: { color: colors.muted, fontSize: uiScale.type.caption },
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] },
   actions: { flexDirection: 'row', alignItems: 'stretch', gap: uiScale.spacing[3] },
-  stackedActions: { flexDirection: 'column' },
-  actionButton: { flex: 1 },
+  stackedActions: { flexDirection: 'column', alignItems: 'stretch' },
+  actionButton: { flex: 1, minHeight: 48 },
+  stackedActionButton: { flex: 0 },
   count: { color: colors.muted, fontSize: uiScale.type.caption },
   modalOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: uiScale.spacing[4] },
   modalScroll: { width: '100%', maxHeight: '90%' },
@@ -471,7 +469,6 @@ export function ActivityLogsScreen() {
   const { user } = useSession();
   const queryClient = useQueryClient();
   const tanks = useTankSelection();
-  const canExport = canAccess(user?.role ?? null, 'canExport');
   const logs = useQuery({ queryKey: ['activity-logs'], queryFn: () => api.listActivityLogs() });
   const [modalKind, setModalKind] = useState<'OPERATION' | 'ENVIRONMENT' | null>(null);
   const [scope, setScope] = useState(tankId);
@@ -547,8 +544,8 @@ export function ActivityLogsScreen() {
     <Title detail="Log operations and environmental events">Activity logs</Title>
     <TankPicker horizontal />
     <View style={[layout.actions, width < 360 && layout.stackedActions]}>
-      <Button style={layout.actionButton} label="Log operation" onPress={() => openLog('OPERATION')} />
-      <Button style={layout.actionButton} label="Log weather / event" onPress={() => openLog('ENVIRONMENT')} />
+      <Button style={[layout.actionButton, width < 360 && layout.stackedActionButton]} label="Log operation" onPress={() => openLog('OPERATION')} />
+      <Button style={[layout.actionButton, width < 360 && layout.stackedActionButton]} label="Log weather / event" onPress={() => openLog('ENVIRONMENT')} />
     </View>
     <View style={layout.cards}>
       <Card title="Filters">
@@ -605,22 +602,15 @@ export function CalibrationAndMaintenanceScreen() {
   const { user } = useSession();
   const queryClient = useQueryClient();
   const canCalibrate = canAccess(user?.role ?? null, 'canCalibrate');
-  const canEditThresholds = canAccess(user?.role ?? null, 'canEditThresholds');
   const [parameter, setParameter] = useState<CalibrationLog['parameter']>('ph');
   const [standard, setStandard] = useState('pH 7.00 buffer');
   const [before, setBefore] = useState('');
   const [after, setAfter] = useState('');
   const [date, setDate] = useState(getManilaDateString());
   const [nextDue, setNextDue] = useState(getManilaDateString(new Date(Date.now() + 30 * 86_400_000)));
-  const [thresholds, setThresholds] = useState<Threshold[]>([]);
-  const [rules, setRules] = useState<AdvisoryRuleSettings>(DEFAULT_ADVISORY_RULES);
-  const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState('');
   const calibrationQuery = useQuery({ queryKey: ['calibrations', tankId], queryFn: () => api.listCalibrationLogs(tankId), enabled: Boolean(tankId) && canCalibrate });
   const thresholdsQuery = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
-  const rulesQuery = useQuery({ queryKey: ['advisory-rules'], queryFn: () => api.getAdvisorySettings() });
-  useEffect(() => { if (thresholdsQuery.data) setThresholds(thresholdsQuery.data); }, [thresholdsQuery.data]);
-  useEffect(() => { if (rulesQuery.data) setRules(rulesQuery.data); }, [rulesQuery.data]);
   const calibrationMutation = useMutation({
     mutationFn: () => api.createCalibrationLog({
       tankId,
@@ -639,26 +629,6 @@ export function CalibrationAndMaintenanceScreen() {
       await queryClient.invalidateQueries({ queryKey: ['calibrations'] });
     },
   });
-  const thresholdMutation = useMutation({
-    mutationFn: async () => {
-      const mapped = Object.fromEntries(['temperature', 'do', 'ph'].map((parameter) => {
-        const item = thresholds.find((threshold) => threshold.parameter === parameter as MeasuredParameter);
-        return [parameter, { min: item?.min, max: item?.max }];
-      })) as Record<MeasuredParameter, { min?: number; max?: number }>;
-      const errors = [...validateThresholds(mapped), ...validateAdvisoryRules(rules)];
-      if (errors.length) throw new Error(errors[0].message);
-      const [savedThresholds, savedRules] = await Promise.all([
-        api.updateThresholds(thresholds, user?.name ?? 'Mobile user'),
-        api.updateAdvisorySettings(rules, user?.name ?? 'Mobile user'),
-      ]);
-      return { savedThresholds, savedRules };
-    },
-    onSuccess: async () => {
-      setConfirm(false);
-      await queryClient.invalidateQueries({ queryKey: ['thresholds'] });
-      await queryClient.invalidateQueries({ queryKey: ['advisory-rules'] });
-    },
-  });
   function submitCalibration() {
     if (!tankId || !standard.trim() || !Number.isFinite(Number(before)) || !Number.isFinite(Number(after)) ||
         !before || !after || !date || !nextDue || new Date(`${nextDue}T00:00:00`) <= new Date(`${date}T00:00:00`)) {
@@ -667,16 +637,6 @@ export function CalibrationAndMaintenanceScreen() {
     }
     setError('');
     calibrationMutation.mutate();
-  }
-  function updateThreshold(parameter: MeasuredParameter, key: 'min' | 'max', value: string) {
-    if (canEditThresholds) {
-      setThresholds((current) => {
-        const existing = current.find((item) => item.parameter === parameter) ?? { parameter };
-        const number = value === '' ? undefined : Number(value);
-        const updated = { ...existing, [key]: number };
-        return [...current.filter((item) => item.parameter !== parameter), updated];
-      });
-    }
   }
   return <Page>
     <Title detail="Calibration logs and measurement thresholds">Calibration & maintenance</Title>
@@ -706,40 +666,19 @@ export function CalibrationAndMaintenanceScreen() {
       </Card>
     )}
     <Card title="Measurement thresholds">
+      <Text style={{ color: colors.muted }}>Reference values only. Use Log calibration to record sensor calibration.</Text>
       {thresholdsQuery.isLoading ? <StateMessage message="Loading thresholds…" loading /> : thresholdsQuery.isError ? <><StateMessage message="Could not load thresholds." /><Button label="Retry" secondary onPress={() => void thresholdsQuery.refetch()} /></> : (['temperature', 'do', 'ph'] as const).map((param) => {
-        const item = thresholds.find((threshold) => threshold.parameter === param);
+        const item = thresholdsQuery.data?.find((threshold) => threshold.parameter === param);
+        const unit = param === 'temperature' ? '°C' : param === 'do' ? 'mg/L' : 'pH';
         return <View key={param} style={{ gap: 8, marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
           <Text style={{ color: colors.muted, fontWeight: '700' }}>{param === 'do' ? 'Dissolved oxygen (mg/L)' : param === 'temperature' ? 'Temperature (°C)' : 'pH'}</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}><Text style={{ color: colors.muted, fontSize: 12 }}>Minimum</Text><Text style={{ color: colors.ink }}>{item?.min ?? 'Not set'}</Text></View>
-            <View style={{ flex: 1 }}><Text style={{ color: colors.muted, fontSize: 12 }}>Maximum</Text><Text style={{ color: colors.ink }}>{item?.max ?? 'Not set'}</Text></View>
+            <View style={{ flex: 1, gap: 4 }}><Text style={{ color: colors.muted, fontWeight: '700' }}>Minimum</Text><Text style={{ color: item?.min === undefined ? colors.muted : colors.ink }}>{item?.min === undefined ? 'Not set' : `${item.min} ${unit}`}</Text></View>
+            <View style={{ flex: 1, gap: 4 }}><Text style={{ color: colors.muted, fontWeight: '700' }}>Maximum</Text><Text style={{ color: item?.max === undefined ? colors.muted : colors.ink }}>{item?.max === undefined ? 'Not set' : `${item.max} ${unit}`}</Text></View>
           </View>
-          {canEditThresholds && (
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TextInput placeholder="Min" keyboardType="numeric" value={item?.min === undefined ? '' : String(item.min)} onChangeText={(value) => updateThreshold(param, 'min', value)} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8, color: colors.ink }} placeholderTextColor={colors.muted} />
-              <TextInput placeholder="Max" keyboardType="numeric" value={item?.max === undefined ? '' : String(item.max)} onChangeText={(value) => updateThreshold(param, 'max', value)} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8, color: colors.ink }} placeholderTextColor={colors.muted} />
-            </View>
-          )}
         </View>;
       })}
     </Card>
-    {canEditThresholds && (
-      <Button label="Review and save thresholds" onPress={() => setConfirm(true)} />
-    )}
-    {confirm && (
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-        <View style={{ width: '90%' }}>
-          <Card>
-            <Text style={{ color: colors.ink, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Confirm rule changes</Text>
-            <Text style={{ color: colors.muted, marginBottom: 16 }}>These thresholds change how measured data is labeled and alerts are evaluated. No equipment will be controlled.</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Button label="Cancel" secondary onPress={() => setConfirm(false)} />
-              <Button label="Confirm changes" disabled={thresholdMutation.isPending} onPress={() => thresholdMutation.mutate()} />
-            </View>
-          </Card>
-        </View>
-      </View>
-    )}
   </Page>;
 }
 

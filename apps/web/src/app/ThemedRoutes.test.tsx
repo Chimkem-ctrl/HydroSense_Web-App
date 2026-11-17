@@ -1,9 +1,17 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render as renderBase, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactElement } from 'react';
 import App from '../App';
 import { queryClient } from './query';
 import { api } from './api';
 import { authService } from '../services/authService';
+
+function render(ui: ReactElement) {
+  const result = renderBase(ui);
+  const getStarted = screen.queryByRole('button', { name: 'Get Started' });
+  if (getStarted) fireEvent.click(getStarted);
+  return result;
+}
 
 const routes = [
   ['/', 'Live monitor'],

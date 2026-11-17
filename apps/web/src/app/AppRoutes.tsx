@@ -1,8 +1,10 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { useCallback, useRef, useState } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { ROLE_ACCESS } from './config';
 import { RoleGuard } from './auth/RoleGuard';
 import { PublicOnly, RequireAuth } from './auth/RouteGuards';
+import { useAuth } from './auth/RoleContext';
 import { AppShell } from '../components/shell/AppShell';
 import LiveMonitorPage from '../pages/LiveMonitorPage';
 import TankOverviewPage from '../pages/TankOverviewPage';
@@ -21,19 +23,46 @@ import SignInPage from '../pages/auth/SignInPage';
 import SignUpPage from '../pages/auth/SignUpPage';
 import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
 import PendingApprovalPage from '../pages/auth/PendingApprovalPage';
+import SplashScreen from '../pages/auth/SplashScreen';
 
 function Guarded({ path, children }: { path: keyof typeof ROLE_ACCESS; children: ReactNode }) {
   return <RoleGuard roles={ROLE_ACCESS[path]}>{children}</RoleGuard>;
 }
 
+function SplashRoute({ onSeen }: { onSeen: () => void }) {
+  const navigate = useNavigate();
+  const user = useAuth();
+  const completed = useRef(false);
+  const continueToApp = useCallback(() => {
+    if (completed.current) return;
+    completed.current = true;
+    onSeen();
+    navigate(user?.role ? '/' : '/signin', { replace: true });
+  }, [navigate, onSeen, user]);
+
+  return <SplashScreen onGetStarted={continueToApp} />;
+}
+
+function ProtectedAppShell({ splashSeen }: { splashSeen: boolean }) {
+  const location = useLocation();
+  if (location.pathname === '/' && !splashSeen) {
+    return <Navigate to="/splash" replace />;
+  }
+  return <RequireAuth><AppShell /></RequireAuth>;
+}
+
 export default function AppRoutes() {
+  const [splashSeen, setSplashSeen] = useState(false);
+  const markSplashSeen = useCallback(() => setSplashSeen(true), []);
+
   return (
     <Routes>
+      <Route path="/splash" element={<SplashRoute onSeen={markSplashSeen} />} />
       <Route path="/signin" element={<PublicOnly><SignInPage /></PublicOnly>} />
       <Route path="/signup" element={<PublicOnly><SignUpPage /></PublicOnly>} />
       <Route path="/forgot-password" element={<PublicOnly><ForgotPasswordPage /></PublicOnly>} />
       <Route path="/pending-approval" element={<PendingApprovalPage />} />
-      <Route element={<RequireAuth><AppShell /></RequireAuth>}>
+      <Route element={<ProtectedAppShell splashSeen={splashSeen} />}>
         <Route index element={<LiveMonitorPage />} />
         <Route path="tanks" element={<TankOverviewPage />} />
         <Route path="health" element={<Navigate to="/tanks" replace />} />

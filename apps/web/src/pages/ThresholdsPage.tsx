@@ -7,6 +7,7 @@ import { useRole } from '../app/auth/RoleContext';
 import { ErrorState, LoadingState } from '../components/common/States';
 
 const parameterNames: Record<MeasuredParameter, string> = { temperature: 'Temperature (°C)', do: 'Dissolved oxygen (mg/L)', ph: 'pH' };
+const parameterUnits: Record<MeasuredParameter, string> = { temperature: '°C', do: 'mg/L', ph: 'pH' };
 const parameters: MeasuredParameter[] = ['temperature', 'do', 'ph'];
 
 interface ThresholdsPanelProps {
@@ -17,7 +18,7 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
   const { userName } = useRole();
   const queryClient = useQueryClient();
   const thresholdsQuery = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
-  const rulesQuery = useQuery({ queryKey: ['advisory-rules'], queryFn: () => api.getAdvisorySettings() });
+  const rulesQuery = useQuery({ queryKey: ['advisory-rules'], queryFn: () => api.getAdvisorySettings(), enabled: !readOnly });
   const [thresholds, setThresholds] = useState<Threshold[]>([]);
   const [rules, setRules] = useState<AdvisoryRuleSettings>(DEFAULT_ADVISORY_RULES);
   const [confirm, setConfirm] = useState(false);
@@ -42,11 +43,11 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
     },
   });
   useEffect(() => {
-    if (!thresholdsQuery.data || !rulesQuery.data) return;
+    if (!thresholdsQuery.data || (!readOnly && !rulesQuery.data)) return;
     setThresholds(thresholdsQuery.data);
-    setRules(rulesQuery.data);
+    if (rulesQuery.data) setRules(rulesQuery.data);
     setSettingsLoaded(true);
-  }, [thresholdsQuery.data, rulesQuery.data]);
+  }, [thresholdsQuery.data, rulesQuery.data, readOnly]);
   useEffect(() => {
     if (!confirm) return undefined;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -79,7 +80,7 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
   }
 
   if (thresholdsQuery.isError) return <ErrorState error={thresholdsQuery.error} onRetry={() => void thresholdsQuery.refetch()} />;
-  if (rulesQuery.isError) return <ErrorState error={rulesQuery.error} onRetry={() => void rulesQuery.refetch()} />;
+  if (!readOnly && rulesQuery.isError) return <ErrorState error={rulesQuery.error} onRetry={() => void rulesQuery.refetch()} />;
   if (!settingsLoaded) return <LoadingState label="Loading threshold settings..." />;
 
   const changes: Array<{ label: string; before: number | undefined; after: number | undefined }> = [];
@@ -105,8 +106,9 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
       <section className="card stack dash-threshold-card">
         <header className="dash-card-header">
           <h2 className="card-title">Measured parameter thresholds</h2>
+          {readOnly && <p className="small muted dash-subtitle">Reference values only. Calibration is logged above.</p>}
         </header>
-        <div className="threshold-grid" role="table" aria-label="Measured parameter thresholds">
+        <div className={`threshold-grid${readOnly ? ' threshold-grid-readonly' : ''}`} role="table" aria-label="Measured parameter thresholds">
           <div className="threshold-grid-header" role="row">
             <span role="columnheader">Parameter</span>
             <span role="columnheader">Minimum</span>
@@ -117,8 +119,8 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
             return (
               <div className="threshold-grid-row" role="row" key={parameter}>
                 <strong role="rowheader">{parameterNames[parameter]}</strong>
-                <div role="cell"><label className="field threshold-grid-field"><span className="sr-only">Minimum</span><input type="number" step="0.1" disabled={readOnly} value={item?.min ?? ''} onChange={(event) => updateThreshold(parameter, 'min', event.target.value)} /></label></div>
-                <div role="cell"><label className="field threshold-grid-field"><span className="sr-only">Maximum</span><input type="number" step="0.1" disabled={readOnly} value={item?.max ?? ''} onChange={(event) => updateThreshold(parameter, 'max', event.target.value)} /></label></div>
+                <div role="cell" data-label={readOnly ? 'Minimum' : undefined}>{readOnly ? item?.min === undefined ? <span className="muted">Not set</span> : `${item.min} ${parameterUnits[parameter]}` : <label className="field threshold-grid-field"><span className="sr-only">Minimum</span><input type="number" step="0.1" value={item?.min ?? ''} onChange={(event) => updateThreshold(parameter, 'min', event.target.value)} /></label>}</div>
+                <div role="cell" data-label={readOnly ? 'Maximum' : undefined}>{readOnly ? item?.max === undefined ? <span className="muted">Not set</span> : `${item.max} ${parameterUnits[parameter]}` : <label className="field threshold-grid-field"><span className="sr-only">Maximum</span><input type="number" step="0.1" value={item?.max ?? ''} onChange={(event) => updateThreshold(parameter, 'max', event.target.value)} /></label>}</div>
               </div>
             );
           })}

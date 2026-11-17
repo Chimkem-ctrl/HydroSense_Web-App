@@ -1,5 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render as renderBase, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactElement } from 'react';
 import type { AuditLog, DashboardUser } from '@hydrosense/shared';
 import { DEFAULT_ADVISORY_RULES, DEFAULT_THRESHOLDS } from '@hydrosense/shared';
 import App from '../App';
@@ -19,6 +20,13 @@ const team: DashboardUser[] = [
   { id: 'u3', name: 'Local Admin', email: 'local-admin@example.com', role: 'admin', site: hatchery.name, active: true, lastActive: '2026-01-01T00:00:00Z' },
   { id: 'u4', name: 'Other Operator', email: 'other-op@example.com', role: 'operator', site: 'Other hatchery', active: true, lastActive: '2026-01-01T00:00:00Z' },
 ];
+
+function render(ui: ReactElement) {
+  const result = renderBase(ui);
+  const getStarted = screen.queryByRole('button', { name: 'Get Started' });
+  if (getStarted) fireEvent.click(getStarted);
+  return result;
+}
 
 function signIn(role: 'operator' | 'manager' | 'admin', hatcheryId?: string) {
   const user = { id: 'test-user', firstName: 'Test', lastName: 'User', email: 'user@example.com', role, requestedRole: role === 'admin' ? null : role, status: 'approved', hatcheryId, createdAt: '2026-01-01T00:00:00Z' };
@@ -163,33 +171,20 @@ describe('users and roles', () => {
 });
 
 describe('threshold review', () => {
-  it('shows before and after values and prevents unchanged confirmation', async () => {
+  it('shows calibration thresholds as read-only reference values', async () => {
     signIn('admin');
-    vi.spyOn(api, 'listThresholds').mockResolvedValue(DEFAULT_THRESHOLDS.map((item) => ({ ...item })));
+    vi.spyOn(api, 'listThresholds').mockResolvedValue(DEFAULT_THRESHOLDS.map((item) => item.parameter === 'do' ? { ...item, max: undefined } : { ...item }));
     vi.spyOn(api, 'getAdvisorySettings').mockResolvedValue({ ...DEFAULT_ADVISORY_RULES });
-    const update = vi.spyOn(api, 'updateThresholds');
-    window.history.replaceState({}, '', '/settings/thresholds');
+    window.history.replaceState({}, '', '/calibration');
     render(<App />);
-    const saveButton = await screen.findByRole('button', { name: 'Review and save' });
-    await waitFor(() => expect(screen.getAllByLabelText('Minimum')[0]).toHaveValue(DEFAULT_THRESHOLDS.find((item) => item.parameter === 'temperature')?.min));
-    fireEvent.click(saveButton);
-    expect(window.location.pathname).toBe('/calibration');
-    let dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Confirm changes' })).toBeDisabled();
-    expect(screen.queryByText(/Last changed by/)).not.toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    const field = screen.getByLabelText('Salinity watch temperature (°C)');
-    const previous = (field as HTMLInputElement).value;
-    fireEvent.change(field, { target: { value: String(Number(previous) - 1) } });
-    const phField = screen.getByLabelText('Ammonia high pH');
-    const previousPh = (phField as HTMLInputElement).value;
-    fireEvent.change(phField, { target: { value: String(Number(previousPh) + 0.1) } });
-    fireEvent.click(screen.getByRole('button', { name: 'Review and save' }));
-    dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText(`Salinity watch temperature (°C): ${previous} → ${Number(previous) - 1}`)).toBeInTheDocument();
-    expect(within(dialog).getByText(`Ammonia high pH: ${previousPh} → ${Number(previousPh) + 0.1}`)).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Confirm changes' })).toBeEnabled();
-    expect(update).not.toHaveBeenCalled();
+    const heading = await screen.findByRole('heading', { name: 'Measured parameter thresholds' });
+    expect(await screen.findByText('Reference values only. Calibration is logged above.')).toBeInTheDocument();
+    expect(screen.getByText('Reference values only. Calibration is logged above.').parentElement).toBe(heading.parentElement);
+    expect(screen.getByRole('row', { name: 'Temperature (°C) 26 °C 30 °C' })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: 'Dissolved oxygen (mg/L) 4 mg/L Not set' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Minimum')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Maximum')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Review and save' })).not.toBeInTheDocument();
   });
 });
 

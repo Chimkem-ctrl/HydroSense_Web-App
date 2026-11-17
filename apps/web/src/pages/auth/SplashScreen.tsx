@@ -1,21 +1,20 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import AuthLayout from '../../components/auth/AuthLayout';
+import '../../styles/splash.css';
 import Logo from '../../components/common/Logo';
 
-export default function SplashScreen() {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => navigate('/welcome', { replace: true }), 2000);
-    return () => window.clearTimeout(timer);
-  }, [navigate]);
-
+export default function SplashScreen({ onGetStarted }: { onGetStarted: () => void }) {
   return (
-    <AuthLayout>
-      <div className="splash-mark" aria-label="HydroSense loading">
-        <Logo size={80} />
+    <main className="splash-page">
+      <div className="splash-content">
+        <div className="splash-logo" aria-label="HydroSense logo">
+          <Logo size={80} />
+        </div>
+        <h1 className="splash-title">HYDROSENSE</h1>
+        <div className="splash-divider" aria-hidden="true" />
+        <p className="splash-tagline">REAL-TIME WATER QUALITY MONITORING</p>
+        <button className="splash-cta" type="button" onClick={onGetStarted}>
+          Get Started
+        </button>
       </div>
-    </AuthLayout>
+    </main>
   );
 }

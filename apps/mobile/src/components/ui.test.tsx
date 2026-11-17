@@ -103,6 +103,13 @@ describe('page background layers', () => {
       expect(flattenStyle(findElement(nested, 'View')?.props.style).backgroundColor).toBe('transparent');
     });
 
+    it('uses a solid background when an Android card has no blur target', () => {
+      vi.mocked(useContext).mockReturnValueOnce(null).mockReturnValueOnce(false);
+      const card = Card({ children: 'Content' });
+      expect(findElement(card, 'blur-view')).toBeUndefined();
+      expect(flattenStyle(findElement(card, 'View')?.props.style).backgroundColor).toBe('#ffffff');
+    });
+
     it('uses the web backdrop filter without an extra tint and falls back when unsupported', () => {
       themeState.platform = 'web';
       vi.stubGlobal('CSS', { supports: () => true });

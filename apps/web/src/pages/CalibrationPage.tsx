@@ -6,7 +6,7 @@ import { api } from '../app/api';
 import { useRole } from '../app/auth/RoleContext';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { PageHeading } from '../components/common/PageHeading';
-import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
+import { ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 import { ThresholdsPanel } from './ThresholdsPage';
 
 const maintenanceItems = [
@@ -80,7 +80,7 @@ export default function CalibrationPage() {
       </div>
       {!isOperator && (
         <>
-          <div className="dash-calibration-side">
+          <div className="dash-calibration-top">
             <section className="card dash-card dash-stat dash-calibration-summary">
               <header className="dash-card-header">
                 <h2 className="card-title">Calibration status</h2>
@@ -94,87 +94,69 @@ export default function CalibrationPage() {
                   </strong>
                   {soonestDue && !hasOverdueCalibration && <span className="dash-stat-unit">days</span>}
                 </div>
-                <p className="small muted dash-stat-caption">{soonestDueDate ? `Next due ${soonestDueDate}` : 'No scheduled due date'}</p>
+                <p className="small muted dash-stat-caption">{soonestDueDate ? `Next due ${soonestDueDate}` : 'No calibration logged yet'}</p>
               </div>
             </section>
-            <section className="card stack dash-card dash-calibration-checklist">
-              <header className="dash-card-header">
-                <h2 className="card-title">Maintenance checklist</h2>
-                <p className="small muted dash-subtitle">Complete these informational maintenance steps.</p>
-              </header>
-              <div className="dash-list">
-                {maintenanceItems.map((item) => <label key={item} className="check-row"><input type="checkbox" checked={checked.includes(item)} onChange={(event) => setChecked((current) => event.target.checked ? [...current, item] : current.filter((value) => value !== item))} /><span>{item}</span></label>)}
-              </div>
-              <div className="dash-checklist-progress">
-                <strong>{checked.length} / {maintenanceItems.length} complete</strong>
-                <div className="dash-checklist-meter" role="progressbar" aria-label="Checklist progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={checklistProgress}>
-                  <span style={{ width: `${checklistProgress}%` }} />
-                </div>
-              </div>
-            </section>
-          </div>
-          <div className="dash-calibration-main">
             <form className="card stack dash-card dash-calibration-form" onSubmit={submit}>
               <header className="dash-card-header">
                 <h2 className="card-title">Log calibration</h2>
                 <p className="small muted dash-subtitle">Record reference readings and the next scheduled calibration.</p>
               </header>
+              {error && <p className="state-error" role="alert">{error}</p>}
+              {mutation.isError && <ErrorState error={mutation.error} />}
               <div className="form-grid dash-calibration-fields">
-                <label className="field">Parameter<select value={parameter} onChange={(event) => {
+                <label className="field dash-calibration-field-wide">Parameter<select value={parameter} onChange={(event) => {
                   const next = event.target.value as CalibrationLog['parameter'];
                   setParameter(next);
                   setStandard(next === 'ph' ? 'pH 7.00 buffer' : 'Air-saturated water');
                 }}><option value="ph">pH</option><option value="do">Dissolved oxygen</option></select></label>
-                <label className="field">Calibration standard<input value={standard} onChange={(event) => setStandard(event.target.value)} required /></label>
+                <label className="field dash-calibration-field-wide">Calibration standard<input value={standard} onChange={(event) => setStandard(event.target.value)} required /></label>
+                <label className="field">Before<input type="number" step="0.01" value={before} onChange={(event) => setBefore(event.target.value)} required /></label>
+                <label className="field">After<input type="number" step="0.01" value={after} onChange={(event) => setAfter(event.target.value)} required /></label>
+                <label className="field">Calibration date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>
+                <label className="field">Next due<input type="date" value={nextDue} onChange={(event) => setNextDue(event.target.value)} required /></label>
+                <button className="button button-primary dash-save-button" type="submit" disabled={mutation.isPending}>Save calibration log</button>
               </div>
-              <div className="dash-subgrid">
-                <section className="dash-form-group">
-                  <header className="dash-card-header">
-                    <h3 className="card-title">Readings</h3>
-                    <p className="small muted dash-subtitle">Compare sensor values with the reference.</p>
-                  </header>
-                  <div className="dash-subcard-fields">
-                    <label className="field">Before<input type="number" step="0.01" value={before} onChange={(event) => setBefore(event.target.value)} required /></label>
-                    <label className="field">After<input type="number" step="0.01" value={after} onChange={(event) => setAfter(event.target.value)} required /></label>
-                  </div>
-                </section>
-                <section className="dash-form-group">
-                  <header className="dash-card-header">
-                    <h3 className="card-title">Schedule</h3>
-                    <p className="small muted dash-subtitle">Set the calibration and due dates.</p>
-                  </header>
-                  <div className="dash-subcard-fields">
-                    <label className="field">Calibration date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>
-                    <label className="field">Next due<input type="date" value={nextDue} onChange={(event) => setNextDue(event.target.value)} required /></label>
-                  </div>
-                </section>
-              </div>
-              {error && <p className="state-error" role="alert">{error}</p>}
-              {mutation.isError && <ErrorState error={mutation.error} />}
-              <button className="button button-primary dash-save-button" type="submit" disabled={mutation.isPending}>Save calibration log</button>
             </form>
-            <section className="card stack dash-card dash-calibration-due">
-              <header className="dash-card-header">
-                <h2 className="card-title">Calibration due dates</h2>
-                <p className="small muted dash-subtitle">Review scheduled calibration dates and overdue records.</p>
-              </header>
-              <div className="dash-calibration-due-content">
-                {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data?.length ? <EmptyState>No calibration records are available.</EmptyState> : (
-                  <div className="table-wrap"><table><thead><tr><th>Parameter</th><th>Standard</th><th>Before</th><th>After</th><th>Date (PHT)</th><th>Next due</th><th>Technician</th></tr></thead><tbody>
-                    {query.data.map((log) => {
-                      const overdue = new Date(log.nextDue).getTime() < now;
-                      return <tr key={log.id}><td>{log.parameter.toUpperCase()}</td><td>{log.standard}</td><td className="table-numeric">{log.before}</td><td className="table-numeric">{log.after}</td><td>{formatManilaDateTime(log.date)}</td><td className={overdue ? 'row-overdue' : ''}>{formatManilaDateTime(log.nextDue)}{overdue ? ' · OVERDUE' : ''}</td><td>{log.user}</td></tr>;
-                    })}
-                  </tbody></table></div>
-                )}
-              </div>
-            </section>
           </div>
+          <section className="card stack dash-card dash-calibration-due">
+            <header className="dash-card-header">
+              <h2 className="card-title">Calibration due dates</h2>
+              <p className="small muted dash-subtitle">Review scheduled calibration dates and overdue records.</p>
+            </header>
+            <div className="dash-calibration-due-content">
+              {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data?.length ? <p className="dash-calibration-empty" role="status">No calibration records are available.</p> : (
+                <div className="table-wrap"><table><thead><tr><th>Parameter</th><th>Standard</th><th>Before</th><th>After</th><th>Date (PHT)</th><th>Next due</th><th>Technician</th></tr></thead><tbody>
+                  {query.data.map((log) => {
+                    const overdue = new Date(log.nextDue).getTime() < now;
+                    return <tr key={log.id}><td>{log.parameter.toUpperCase()}</td><td>{log.standard}</td><td className="table-numeric">{log.before}</td><td className="table-numeric">{log.after}</td><td>{formatManilaDateTime(log.date)}</td><td className={overdue ? 'row-overdue' : ''}>{formatManilaDateTime(log.nextDue)}{overdue ? ' · OVERDUE' : ''}</td><td>{log.user}</td></tr>;
+                  })}
+                </tbody></table></div>
+              )}
+            </div>
+          </section>
         </>
       )}
       <div className="dash-after-grid stack">
-        <ThresholdsPanel readOnly={isOperator} />
+        <ThresholdsPanel readOnly />
       </div>
+      {!isOperator && (
+        <section className="card stack dash-card dash-calibration-checklist">
+          <header className="dash-card-header">
+            <h2 className="card-title">Maintenance checklist</h2>
+            <p className="small muted dash-subtitle">Complete these informational maintenance steps.</p>
+          </header>
+          <div className="dash-list">
+            {maintenanceItems.map((item) => <label key={item} className="check-row"><input type="checkbox" checked={checked.includes(item)} onChange={(event) => setChecked((current) => event.target.checked ? [...current, item] : current.filter((value) => value !== item))} /><span>{item}</span></label>)}
+          </div>
+          <div className="dash-checklist-progress">
+            <strong>{checked.length} / {maintenanceItems.length} complete</strong>
+            <div className="dash-checklist-meter" role="progressbar" aria-label="Checklist progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={checklistProgress}>
+              <span style={{ width: `${checklistProgress}%` }} />
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

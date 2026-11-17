@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { buildReport, can, formatManilaDateTime, getManilaDateString, toCsv } from '@hydrosense/shared';
 import type { ReportData, ReportSection } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
@@ -10,18 +12,18 @@ import { PageHeading } from '../components/common/PageHeading';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 
 type ExportType = 'readings' | 'alerts' | 'activity' | 'calibration' | 'validation';
+type FilterPopoverPosition = { top: number; left: number; width: number; maxHeight: number };
 
 const reportSections: Array<{ value: ReportSection; label: string }> = [
   { value: 'summary', label: 'Executive summary' },
-  { value: 'thresholds', label: 'Thresholds' },
   { value: 'statistics', label: 'Statistics' },
-  { value: 'alerts', label: 'Alerts' },
-  { value: 'advisories', label: 'Advisories' },
   { value: 'activity', label: 'Activity logs' },
-  { value: 'calibration', label: 'Calibration' },
   { value: 'validation', label: 'Validation' },
-  { value: 'data-quality', label: 'Data quality' },
   { value: 'raw-readings', label: 'Raw readings' },
+  { value: 'thresholds', label: 'Thresholds' },
+  { value: 'alerts', label: 'Alerts' },
+  { value: 'calibration', label: 'Calibration' },
+  { value: 'data-quality', label: 'Data quality' },
 ];
 
 function manilaStart(date: string) {
@@ -40,15 +42,45 @@ export default function ReportsPage() {
   const canViewCalibration = can(role, 'calibration');
   const [type, setType] = useState<ExportType>('readings');
   const [selectedTankIds, setSelectedTankIds] = useState<string[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filterPosition, setFilterPosition] = useState<FilterPopoverPosition | null>(null);
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - Math.min(7, tierConfig.retentionDays) * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
   const minimumDate = getManilaDateString(new Date(Date.now() - Math.max(0, tierConfig.retentionDays - 1) * 86_400_000));
   const maximumDate = getManilaDateString();
   const [sections, setSections] = useState<ReportSection[]>(() => reportSections.filter(({ value }) => (value !== 'validation' || canViewValidation) && (value !== 'calibration' || canViewCalibration)).map(({ value }) => value));
   const [notice, setNotice] = useState('');
+  const filterActionsRef = useRef<HTMLDivElement>(null);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const filterPanelRef = useRef<HTMLDivElement>(null);
+  const filterPanelId = useId();
+  const availableReportSections = reportSections.filter(({ value }) => (value !== 'validation' || canViewValidation) && (value !== 'calibration' || canViewCalibration));
+  const selectedReportSectionCount = availableReportSections.filter(({ value }) => sections.includes(value)).length;
   useEffect(() => {
     if (tankId) setSelectedTankIds([tankId]);
   }, [tankId]);
+  useEffect(() => {
+    if (!filtersOpen) return undefined;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (event.target instanceof Node && !filterActionsRef.current?.contains(event.target) && !filterPanelRef.current?.contains(event.target)) {
+        setFiltersOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setFiltersOpen(false);
+        filterButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    filterPanelRef.current?.querySelector<HTMLInputElement>('input:not(:disabled)')?.focus();
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [filtersOpen]);
   const dataQuery = useQuery({
     queryKey: ['report-data', role],
     queryFn: async (): Promise<ReportData> => {
@@ -62,13 +94,12 @@ export default function ReportsPage() {
         api.listDeviceStatuses(),
       ]);
       const validationRows = canViewValidation ? await api.listValidationRows() : [];
-      const advisoryRows = await Promise.all(tanks.map(async (tank) => [tank.id, await api.listAdvisories(tank.id)] as const));
       return {
         tanks,
         readings,
         alerts,
         thresholds,
-        advisories: Object.fromEntries(advisoryRows),
+        advisories: {},
         activityLogs,
         calibrationLogs,
         validationRows,
@@ -76,6 +107,41 @@ export default function ReportsPage() {
       };
     },
   });
+  useLayoutEffect(() => {
+    if (!filtersOpen) return;
+    const reposition = () => {
+      const trigger = filterButtonRef.current?.getBoundingClientRect();
+      const panel = filterPanelRef.current;
+      if (!trigger || !panel) return;
+      const margin = 16;
+      const gap = 8;
+      const narrow = window.innerWidth <= 900;
+      const width = narrow ? window.innerWidth - margin * 2 : Math.min(560, window.innerWidth * 0.9);
+      const left = narrow
+        ? margin
+        : Math.max(margin, Math.min(trigger.right - width, window.innerWidth - width - margin));
+      const maxViewportHeight = window.innerHeight * 0.7;
+      const contentHeight = panel.scrollHeight;
+      const requiredHeight = Math.min(contentHeight, maxViewportHeight);
+      const availableBelow = Math.max(0, window.innerHeight - trigger.bottom - gap - margin);
+      const availableAbove = Math.max(0, trigger.top - gap - margin);
+      const opensAbove = availableBelow < requiredHeight && availableAbove > 0;
+      const availableHeight = opensAbove ? availableAbove : availableBelow;
+      const maxHeight = Math.min(maxViewportHeight, availableHeight);
+      const height = Math.min(contentHeight, maxHeight);
+      const top = opensAbove ? trigger.top - gap - height : trigger.bottom + gap;
+      setFilterPosition((current) => current && current.top === top && current.left === left && current.width === width && current.maxHeight === maxHeight
+        ? current
+        : { top, left, width, maxHeight });
+    };
+    reposition();
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [filtersOpen, dataQuery.data]);
   const model = useMemo(() => {
     if (!dataQuery.data || !tankId) return null;
     return buildReport({
@@ -102,6 +168,15 @@ export default function ReportsPage() {
     calibration: ['Date (ISO)', 'Tank', 'Parameter', 'Standard', 'Before', 'After', 'User', 'Next due (ISO)'],
     validation: ['Parameter', 'HydroSense mean', 'Reference', 'Error', '% error', 'Tolerance', 'Result'],
   };
+
+  function toggleFilters() {
+    if (filtersOpen) {
+      setFiltersOpen(false);
+      return;
+    }
+    setFilterPosition(null);
+    setFiltersOpen(true);
+  }
 
   function downloadCsv() {
     const csv = toCsv([headers[type], ...rows]);
@@ -131,45 +206,33 @@ export default function ReportsPage() {
             <label className="field">From<input type="date" value={from} min={minimumDate} max={to} onChange={(event) => setFrom(event.target.value)} /></label>
             <label className="field">To<input type="date" value={to} min={from} max={maximumDate} onChange={(event) => setTo(event.target.value)} /></label>
           </div>
+          <p className="small muted dash-report-scope-note">The dataset applies to CSV export; the date range applies to CSV and the report.</p>
           <div className="dash-report-toolbar">
             <div className="dash-report-result">
               <span className="small muted">Records matched</span>
               <strong>{rows.length}</strong>
               <span className="small muted">{from} → {to} · Asia/Manila</span>
             </div>
-            <div className="dash-report-actions">
+            <div className="dash-report-actions" ref={filterActionsRef}>
               {!dataQuery.isLoading && !dataQuery.isError && !rows.length && <p className="small muted">No records match this dataset and date range.</p>}
               {notice && <p role="status">{notice}</p>}
-              {canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError && <button className="button button-primary" type="button" onClick={downloadCsv}>Download CSV</button>}
+              <div className={`dash-report-action-buttons${canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError ? ' has-csv' : ''}`}>
+                {canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError && <button className="button button-primary" type="button" onClick={downloadCsv}>Download CSV</button>}
+                <button
+                  ref={filterButtonRef}
+                  className="button dash-report-filter-button"
+                  type="button"
+                  aria-expanded={filtersOpen}
+                  aria-haspopup="dialog"
+                  aria-controls={filtersOpen ? filterPanelId : undefined}
+                  onClick={toggleFilters}
+                >
+                  <span>Filters</span>
+                  <span className="dash-report-filter-count">{selectedReportSectionCount}/{availableReportSections.length}</span>
+                  <ChevronDown size={16} aria-hidden="true" />
+                </button>
+              </div>
             </div>
-          </div>
-        </section>
-        <section className="card stack dash-card dash-report-tanks" aria-labelledby="report-tanks-title">
-          <header className="dash-card-header">
-            <h2 id="report-tanks-title" className="card-title">Tanks</h2>
-            <p className="small muted dash-subtitle">Select the tanks to include.</p>
-          </header>
-          <div className="dash-list">
-            {(dataQuery.data?.tanks ?? []).map((tank) => (
-              <label className="check-row" key={tank.id}>
-                <input type="checkbox" checked={selectedTankIds.includes(tank.id)} disabled={selectedTankIds.length === 1 && selectedTankIds.includes(tank.id)} onChange={(event) => setSelectedTankIds((current) => event.target.checked ? [...current, tank.id] : current.filter((id) => id !== tank.id))} />
-                <span>{tank.name}</span>
-              </label>
-            ))}
-          </div>
-        </section>
-        <section className="card stack dash-card dash-report-sections" aria-labelledby="report-sections-title">
-          <header className="dash-card-header">
-            <h2 id="report-sections-title" className="card-title">Report sections</h2>
-            <p className="small muted dash-subtitle">Choose the sections to include in the report.</p>
-          </header>
-          <div className="dash-list dash-list-checks">
-            {reportSections.filter(({ value }) => (value !== 'validation' || canViewValidation) && (value !== 'calibration' || canViewCalibration)).map(({ value, label }) => (
-              <label className="check-row" key={value}>
-                <input type="checkbox" checked={sections.includes(value)} onChange={(event) => setSections((current) => event.target.checked ? [...current, value] : current.filter((section) => section !== value))} />
-                <span>{label}</span>
-              </label>
-            ))}
           </div>
         </section>
         <section className="card stack dash-card dash-report-preview print-preview" aria-labelledby="report-preview-title">
@@ -179,10 +242,12 @@ export default function ReportsPage() {
           </div>
           {dataQuery.isLoading ? <LoadingState label="Preparing report..." /> : dataQuery.isError ? <ErrorState error={dataQuery.error} onRetry={() => void dataQuery.refetch()} /> : !model ? <EmptyState>Select a tank to generate the report.</EmptyState> : (
             <div className="dash-report-body">
-              <div className="dash-report-meta">
-                <p>Report {model.id} · {model.tanks.map((tank) => tank.name).join(', ')} · {from} to {to} PHT</p>
-                <p>Prepared by {model.generatedBy.name} ({model.generatedBy.role}) · generated {formatManilaDateTime(model.generatedAt)} PHT</p>
-              </div>
+              <dl className="dash-report-meta">
+                <div><dt>Report ID</dt><dd className="dash-report-id">{model.id}</dd></div>
+                <div><dt>Tanks / period</dt><dd>{model.tanks.map((tank) => tank.name).join(', ')} · {from} to {to} PHT</dd></div>
+                <div><dt>Prepared by</dt><dd>{model.generatedBy.name} ({model.generatedBy.role})</dd></div>
+                <div><dt>Generated</dt><dd>{formatManilaDateTime(model.generatedAt)} PHT</dd></div>
+              </dl>
               {sections.includes('summary') && <p className="dash-report-summary">{model.summary}</p>}
               {sections.includes('statistics') && <div className="table-wrap"><table><thead><tr><th>Parameter</th><th>Min</th><th>Max</th><th>Mean</th><th>Std dev</th><th>In range</th><th>Excursions</th><th>Longest (h)</th></tr></thead><tbody>
                 {model.statistics.map((row) => <tr key={row.parameter}><td>{row.parameter}</td><td className="table-numeric">{row.min?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.max?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.mean?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.standardDeviation?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.percentInRange?.toFixed(1) ?? '—'}%</td><td className="table-numeric">{row.excursions}</td><td className="table-numeric">{row.longestExcursionHours.toFixed(1)}</td></tr>)}
@@ -191,18 +256,61 @@ export default function ReportsPage() {
                 {sections.includes('alerts') && <p className="dash-report-fact"><strong>Alerts:</strong> {model.alertCounts.critical} critical, {model.alertCounts.warning} warning · {model.alertCounts.open} open, {model.alertCounts.acknowledged} acknowledged, {model.alertCounts.resolved} resolved.</p>}
                 {sections.includes('data-quality') && <p className="dash-report-fact"><strong>Expected readings:</strong> {model.dataQuality.expectedReadings} · Received: {model.dataQuality.receivedReadings} ({model.dataQuality.receivedPercent.toFixed(1)}%).</p>}
                 {sections.includes('thresholds') && <p className="dash-report-fact"><strong>Thresholds used:</strong> {model.thresholds.map((threshold) => `${threshold.parameter} ${threshold.min ?? '—'}–${threshold.max ?? '—'}`).join(' · ')}</p>}
-                {sections.includes('advisories') && model.tanks.map((tank) => <p className="dash-report-fact" key={tank.id}><strong>Current advisories for {tank.name}:</strong> {(model.advisories[tank.id] ?? []).map((item) => `${item.kind} ${item.level}`).join(', ') || 'none'}.</p>)}
                 {sections.includes('activity') && <p className="dash-report-fact"><strong>Activity logs included:</strong> {model.activityLogs.length}.</p>}
                 {sections.includes('calibration') && <p className="dash-report-fact"><strong>Calibration records included:</strong> {model.calibrationLogs.length}.</p>}
                 {sections.includes('validation') && <p className="dash-report-fact"><strong>Validation comparisons included:</strong> {model.validationRows.length}.</p>}
               </div>
               {sections.includes('raw-readings') && <div className="dash-report-raw-readings">{model.rawReadings.slice(0, 10).map((row) => <p className="small" key={row.id}>{formatManilaDateTime(row.timestamp)} PHT · {row.tankId} · {row.temperature} °C · {row.doMgL} mg/L · pH {row.ph}</p>)}</div>}
-              <p className="small muted dash-report-disclaimer">Monitoring and alert system only. Salinity and ammonia are rule-based advisories, not measurements.</p>
               {!canExport && <p className="small muted">Operators may view reports; export is available to managers and administrators.</p>}
             </div>
           )}
         </section>
       </div>
+      {filtersOpen && createPortal(
+        <div
+          ref={filterPanelRef}
+          id={filterPanelId}
+          className="dash-report-filter-popover"
+          style={{
+            top: filterPosition?.top ?? 0,
+            left: filterPosition?.left ?? 0,
+            width: filterPosition?.width ?? 'min(560px, 90vw)',
+            maxHeight: filterPosition?.maxHeight ?? '70vh',
+            visibility: filterPosition ? 'visible' : 'hidden',
+          }}
+          role="dialog"
+          aria-label="Report filters"
+        >
+          <div className="dash-report-filter-area">
+            <p className="small muted dash-report-filter-note">Tanks and sections apply to the report preview and PDF.</p>
+            <div className="dash-report-filter-groups">
+              <fieldset className="dash-report-filter-group">
+                <legend>Tanks</legend>
+                <div className="dash-report-options dash-report-tank-options">
+                  {(dataQuery.data?.tanks ?? []).map((tank) => (
+                    <label className="dash-report-option" key={tank.id}>
+                      <input type="checkbox" checked={selectedTankIds.includes(tank.id)} disabled={selectedTankIds.length === 1 && selectedTankIds.includes(tank.id)} onChange={(event) => setSelectedTankIds((current) => event.target.checked ? [...current, tank.id] : current.filter((id) => id !== tank.id))} />
+                      <span>{tank.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="dash-report-filter-group">
+                <legend>Report sections</legend>
+                <div className="dash-report-options dash-report-section-options">
+                  {availableReportSections.map(({ value, label }) => (
+                    <label className="dash-report-option" key={value}>
+                      <input type="checkbox" checked={sections.includes(value)} onChange={(event) => setSections((current) => event.target.checked ? [...current, value] : current.filter((section) => section !== value))} />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </>
   );
 }

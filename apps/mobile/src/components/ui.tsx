@@ -74,8 +74,7 @@ export function Card({ children, title, action }: { children: ReactNode; title?:
   const blurTarget = useContext(BlurTargetContext);
   const nested = useContext(CardContext);
   const styles = createStyles(colors);
-  const solidFallback = needsSolidFallback(reduceTransparency);
-  if (Platform.OS === 'android' && !blurTarget && !nested && !solidFallback) throw new Error('Card requires a blur target.');
+  const solidFallback = needsSolidFallback(reduceTransparency) || (Platform.OS === 'android' && !blurTarget && !nested);
   return <CardContext.Provider value>
     <View style={[styles.card, nested && styles.nestedCard, solidFallback && !nested && { backgroundColor: colors.surface }]}>
       {!nested && !solidFallback && glassBlur(blurTarget, styles)}

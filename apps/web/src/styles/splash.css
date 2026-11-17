@@ -1,0 +1,128 @@
+:root {
+  /* Recommended: desktop 2560x1440+, mobile 1170x2532+; JPG/WebP under 400KB. */
+  --splash-bg-image-desktop: url('/assets/images/welcome-page-web.jpg');
+  --splash-bg-image-mobile: url('/assets/images/welcome-page-mobile.jpg');
+  --splash-bg-position: center 40%;
+  --splash-overlay-top: 0.15;
+  --splash-overlay-bottom: 0.45;
+  --splash-scrim: 0.45;
+  --splash-overlays:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, var(--splash-scrim)) 0%, rgba(0, 0, 0, 0) 65%),
+    linear-gradient(to bottom, rgba(0, 0, 0, var(--splash-overlay-top)), rgba(0, 0, 0, var(--splash-overlay-bottom)));
+}
+
+.splash-page {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: clamp(24px, 6vw, 80px);
+  color: #f5f7fb;
+  background-color: #0b1118;
+  background-image: var(--splash-overlays), var(--splash-bg-image-desktop);
+  background-size: cover;
+  background-position: var(--splash-bg-position);
+  background-repeat: no-repeat;
+  background-attachment: scroll;
+}
+
+.splash-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(20px, 3.2vh, 32px);
+  width: min(100%, 980px);
+  text-align: center;
+  animation: splash-fade-in 600ms ease-out both;
+}
+
+.splash-logo {
+  display: flex;
+  justify-content: center;
+}
+
+.splash-title {
+  margin: 0;
+  color: #f5f7fb;
+  font-size: clamp(2.2rem, 7vw, 5.5rem);
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  line-height: 1.1;
+  text-indent: 0.3em;
+  text-shadow: 0 0 24px rgba(255, 255, 255, 0.18);
+}
+
+.splash-divider {
+  width: clamp(80px, 8vw, 120px);
+  height: 1px;
+  background-color: rgba(245, 247, 251, 0.55);
+}
+
+.splash-tagline {
+  max-width: 34ch;
+  margin: 0;
+  color: #b6c4d2;
+  font-size: clamp(0.65rem, 1.3vw, 0.82rem);
+  letter-spacing: 0.2em;
+  line-height: 1.8;
+}
+
+.splash-cta {
+  border: 1px solid rgba(245, 247, 251, 0.7);
+  border-radius: 999px;
+  padding: 13px 34px;
+  color: #f5f7fb;
+  background: transparent;
+  font: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.splash-cta:hover,
+.splash-cta:focus-visible {
+  border-color: #fff;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.splash-cta:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 4px;
+}
+
+@keyframes splash-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 768px), (orientation: portrait) {
+  .splash-page {
+    background-image: var(--splash-overlays), var(--splash-bg-image-mobile);
+  }
+}
+
+@media (max-width: 600px) {
+  .splash-title {
+    font-size: clamp(2rem, 11vw, 3rem);
+    letter-spacing: 0.14em;
+    text-indent: 0.14em;
+  }
+
+  .splash-tagline {
+    max-width: 25ch;
+    letter-spacing: 0.16em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-content {
+    animation: none;
+  }
+
+  .splash-cta {
+    transition: none;
+  }
+}
