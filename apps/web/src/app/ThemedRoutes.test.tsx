@@ -38,6 +38,7 @@ function signInAs(role: 'operator' | 'manager' | 'admin', phone?: string) {
     role,
     requestedRole: role === 'admin' ? null : role,
     status: 'approved',
+    hatcheryId: 'camiguin-sagay',
     phone,
     createdAt: '2026-01-01T00:00:00.000Z',
   };
@@ -118,8 +119,14 @@ describe('themed dashboard routes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
     expect(screen.getByRole('button', { name: 'Close navigation' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close navigation' }));
-    fireEvent.click(screen.getByRole('button', { name: /Account menu for/ }));
+    const accountButton = screen.getByRole('button', { name: /Account menu for/ });
+    expect(accountButton).not.toHaveTextContent('DM');
+    fireEvent.click(accountButton);
     expect(screen.getByRole('menuitem', { name: 'My profile' })).toBeInTheDocument();
+    const identity = screen.getByText('Dario Minoza').closest('.account-menu-identity');
+    if (!identity) throw new Error('Account identity header is missing.');
+    expect(identity).toHaveTextContent('Admin');
+    expect(identity.compareDocumentPosition(screen.getByRole('menuitem', { name: 'My profile' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'Alert preferences' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Appearance' })).not.toBeInTheDocument();
     expect(within(screen.getByLabelText('Dashboard controls')).queryByRole('combobox', { name: 'Select tank' })).not.toBeInTheDocument();
@@ -321,6 +328,10 @@ describe('themed dashboard routes', () => {
 
   it.each(['operator', 'manager', 'admin'] as const)('shows the five profile cards and unavailable actions for %s', async (role) => {
     signInAs(role, '+639175550100');
+    vi.spyOn(api, 'listTanks').mockResolvedValue([
+      { id: 'tank-one-id', name: 'Tank 01', site: 'Camiguin, Sagay Multispecies Hatchery', rearingStartDate: '2026-01-01', deviceId: 'HS-001' },
+      { id: 'tank-two-id', name: 'Tank 02', site: 'Camiguin, Sagay Multispecies Hatchery', rearingStartDate: '2026-01-01', deviceId: 'HS-002' },
+    ]);
     window.history.replaceState({}, '', '/profile');
     const { container } = render(<App />);
     await screen.findByRole('heading', { name: 'My profile', level: 1 });
@@ -331,9 +342,11 @@ describe('themed dashboard routes', () => {
     }
     expect(screen.getByRole('switch', { name: 'SMS alerts' })).toBeDisabled();
     expect(screen.getByRole('switch', { name: 'Email alerts' })).toBeDisabled();
-    expect(screen.getByText('Valid for SMS')).toBeInTheDocument();
-    expect(screen.getByText(/Email on file:.*@example.com/)).toBeInTheDocument();
-    for (const name of ['Change password', 'Sign out other devices']) expect(screen.getByRole('button', { name })).toBeDisabled();
+    expect(screen.queryByText(/valid for sms/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Phone on file:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Email on file:/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change password' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Sign out other devices' })).not.toBeInTheDocument();
     if (role === 'operator') {
       expect(screen.getByRole('button', { name: 'Request calibration' })).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Request reboot' })).toBeDisabled();
@@ -345,35 +358,52 @@ describe('themed dashboard routes', () => {
     expect(screen.queryByRole('button', { name: 'Request a change' })).not.toBeInTheDocument();
     expect(screen.queryByText('Choose how HydroSense appears on this device.')).not.toBeInTheDocument();
     const appearance = screen.getByRole('region', { name: 'Appearance' });
-    expect(within(appearance).getAllByRole('radio').map((radio) => radio.getAttribute('value'))).toEqual(['system', 'light', 'dark']);
-    expect(within(appearance).getByRole('radio', { name: 'System' })).toHaveAccessibleDescription('Match your device setting');
-    expect(within(appearance).getByRole('radio', { name: 'Light' })).toHaveAccessibleDescription('Light background');
-    expect(within(appearance).getByRole('radio', { name: 'Dark' })).toHaveAccessibleDescription('Dark background, easier to read at night');
-    expect(screen.getAllByText(/Coming soon:/)).toHaveLength(3);
+    expect(within(appearance).getAllByRole('radio').map((radio) => radio.getAttribute('value'))).toEqual(['light', 'dark']);
+    expect(within(appearance).queryByRole('radio', { name: 'System' })).not.toBeInTheDocument();
+    expect(within(appearance).getByRole('radio', { name: 'Light' })).not.toHaveAccessibleDescription();
+    expect(within(appearance).getByRole('radio', { name: 'Dark' })).not.toHaveAccessibleDescription();
+    expect(within(appearance).queryByText(/background/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Coming soon:/)).not.toBeInTheDocument();
     const maintenance = screen.getByRole('region', { name: 'Device maintenance' });
-    expect(await within(maintenance).findByText('Larval Tank A')).toBeInTheDocument();
-    expect(within(maintenance).getByText('HS-MF-001')).toBeInTheDocument();
+    if (role === 'admin') {
+      fireEvent.change(await within(maintenance).findByLabelText('Hatchery'), { target: { value: 'Camiguin, Sagay Multispecies Hatchery' } });
+    }
+    const tankSelect = await within(maintenance).findByLabelText('Tank');
+    fireEvent.change(tankSelect, { target: { value: 'tank-one-id' } });
+    expect(tankSelect).toHaveValue('tank-one-id');
+    expect(within(maintenance).queryByText('tank-one-id')).not.toBeInTheDocument();
+    expect(within(maintenance).queryByText('HS-001')).not.toBeInTheDocument();
+    expect(within(maintenance).queryByText(/reboot action/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Active Sessions')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: /Light/ }));
     expect(document.documentElement).toHaveAttribute('data-theme', 'light');
   });
 
-  it.each(['not a phone', ''] as const)('marks invalid or missing SMS numbers', async (phone) => {
+  it.each(['not a phone', ''] as const)('does not show SMS validation text for %s', async (phone) => {
     signInAs('operator', phone);
     window.history.replaceState({}, '', '/profile');
     render(<App />);
-    expect(await screen.findByText('Not valid for SMS')).toBeInTheDocument();
+    await screen.findByRole('region', { name: 'Alert notifications' });
+    expect(screen.queryByText(/valid for sms/i)).not.toBeInTheDocument();
   });
 
-  it('updates device details when the selected tank changes', async () => {
-    window.history.replaceState({}, '', '/');
+  it('offers only the backend Tank 01 for maintenance selection', async () => {
+    signInAs('admin');
+    vi.spyOn(api, 'listTanks').mockResolvedValue([
+      { id: 'tank-one-id', name: 'Tank 01', site: 'Camiguin, Sagay Multispecies Hatchery', rearingStartDate: '2026-01-01', deviceId: 'HS-001' },
+      { id: 'tank-two-id', name: 'Tank 02', site: 'Camiguin, Sagay Multispecies Hatchery', rearingStartDate: '2026-01-01', deviceId: 'HS-002' },
+    ]);
+    window.history.replaceState({}, '', '/profile');
     render(<App />);
-    const switcher = await screen.findByRole('group', { name: 'Select tank' });
-    fireEvent.click(within(switcher).getByRole('button', { name: 'Larval Tank B' }));
-    fireEvent.click(screen.getByRole('link', { name: 'My profile' }));
     const maintenance = await screen.findByRole('region', { name: 'Device maintenance' });
-    expect(await within(maintenance).findByText('Larval Tank B')).toBeInTheDocument();
-    expect(within(maintenance).getByText('HS-MF-002')).toBeInTheDocument();
+    fireEvent.change(await within(maintenance).findByLabelText('Hatchery'), { target: { value: 'Camiguin, Sagay Multispecies Hatchery' } });
+    const tankSelect = await within(maintenance).findByLabelText('Tank');
+    expect(tankSelect.querySelector('option[value="tank-one-id"]')).toHaveTextContent('Tank 01');
+    expect(tankSelect.querySelector('option[value="tank-one-id"]')).not.toHaveTextContent('tank-one-id');
+    expect(tankSelect.querySelector('option[value="tank-two-id"]')).toBeNull();
+    fireEvent.change(tankSelect, { target: { value: 'tank-one-id' } });
+    expect(tankSelect).toHaveValue('tank-one-id');
+    expect(within(maintenance).queryByText('HS-001')).not.toBeInTheDocument();
   });
 
   it.each(['/settings', '/settings/notifications'])('redirects %s to profile', async (path) => {
@@ -437,7 +467,7 @@ describe('themed dashboard routes', () => {
     }
   });
 
-  it('keeps pending review and team role controls accessible', async () => {
+  it('keeps pending review and team accounts accessible', async () => {
     const request = {
       id: 'pending-test', firstName: 'Test', lastName: 'User', email: 'test@example.com',
       role: null, requestedRole: null, status: 'pending', createdAt: '2026-01-01T00:00:00Z',
@@ -448,30 +478,32 @@ describe('themed dashboard routes', () => {
     render(<App />);
     const pending = await screen.findByRole('region', { name: 'Pending requests' });
     expect(await within(pending).findByText('1 pending')).toBeInTheDocument();
-    const approveButton = within(pending).getByRole('button', { name: 'Approve' });
-    expect(approveButton).toBeDisabled();
-    fireEvent.change(within(pending).getByRole('combobox', { name: 'Approval role for Test User' }), { target: { value: 'manager' } });
-    fireEvent.click(approveButton);
+    fireEvent.change(within(pending).getByRole('combobox', { name: 'Review role for Test User' }), { target: { value: 'manager' } });
+    fireEvent.click(within(pending).getByRole('button', { name: 'Approve Test User' }));
+    const confirmation = screen.getByRole('dialog', { name: 'Approve account request?' });
+    expect(approve).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Approve request' }));
     await waitFor(() => expect(approve).toHaveBeenCalledWith('pending-test', 'manager'));
     const team = screen.getByRole('region', { name: 'Team accounts' });
-    expect(await within(team).findByRole('combobox', { name: 'Role for Juan Dela Cruz' })).toBeInTheDocument();
+    expect(await within(team).findByText('Juan Dela Cruz')).toBeInTheDocument();
+    expect(within(team).queryByRole('combobox', { name: 'Role for Juan Dela Cruz' })).not.toBeInTheDocument();
   });
 
-  it('preserves role updates and account removal confirmation', async () => {
-    const updateRole = vi.spyOn(api, 'updateUserRole').mockRejectedValue(new Error('Role update failed'));
+  it('confirms account removal by name', async () => {
     const remove = vi.spyOn(authService, 'removeAccount').mockRejectedValue(new Error('Removal failed'));
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true).mockReturnValue(false);
     window.history.replaceState({}, '', '/admin/users');
     render(<App />);
-    const role = await screen.findByRole('combobox', { name: 'Role for Juan Dela Cruz' });
-    fireEvent.change(role, { target: { value: 'manager' } });
-    await waitFor(() => expect(updateRole).toHaveBeenCalledWith(expect.any(String), 'manager', expect.any(String)));
-    expect(await screen.findByText('Role update failed')).toBeInTheDocument();
-    const row = role.closest('tr');
+    const accountName = await screen.findByText('Juan Dela Cruz');
+    const row = accountName.closest('tr');
     expect(row).not.toBeNull();
-    fireEvent.click(within(row!).getByRole('button', { name: 'Remove account' }));
-    expect(confirm).toHaveBeenCalled();
+    const removeButton = within(row!).getByRole('button', { name: 'Remove account' });
+    fireEvent.click(removeButton);
+    const confirmation = screen.getByRole('dialog', { name: 'Remove account?' });
+    expect(within(confirmation).getByText('Are you sure you want to remove "Juan Dela Cruz"?')).toBeInTheDocument();
     expect(remove).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Remove account' }));
+    await waitFor(() => expect(remove).toHaveBeenCalled());
+    expect(await screen.findByText('Removal failed')).toBeInTheDocument();
   });
 
   it.each(['admin', 'manager'] as const)('does not show enterprise features for %s', async (role) => {
