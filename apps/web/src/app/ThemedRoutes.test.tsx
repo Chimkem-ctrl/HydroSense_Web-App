@@ -114,7 +114,7 @@ describe('themed dashboard routes', () => {
     expect(screen.getByRole('menuitem', { name: 'My profile' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Alert preferences' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Appearance' })).not.toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Select tank' })).toBeInTheDocument();
+    expect(within(screen.getByLabelText('Dashboard controls')).queryByRole('combobox', { name: 'Select tank' })).not.toBeInTheDocument();
   });
 
   it('combines tank readings and device health in one table', async () => {
@@ -188,12 +188,14 @@ describe('themed dashboard routes', () => {
   });
 
   it('shows alert summary and response history in the Alerts Center', async () => {
-    window.history.replaceState({}, '', '/alerts');
+    window.history.replaceState({}, '', '/');
     render(<App />);
+    const switcher = await screen.findByRole('group', { name: 'Select tank' });
+    fireEvent.click(within(switcher).getByRole('button', { name: 'Larval Tank B' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Alerts center' }));
     expect(await screen.findByRole('heading', { name: 'Alerts center', level: 1 })).toBeInTheDocument();
     expect(await screen.findByRole('region', { name: 'Alert summary' })).toBeInTheDocument();
     expect(screen.getByText('Median time to acknowledge')).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Select tank' }), { target: { value: 'tank-b' } });
     fireEvent.click(await screen.findByRole('tab', { name: 'Acknowledged (1)' }));
     expect(await screen.findByRole('columnheader', { name: 'Date and time (PHT)' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'pH' })).toBeInTheDocument();
@@ -356,12 +358,13 @@ describe('themed dashboard routes', () => {
   });
 
   it('updates device details when the selected tank changes', async () => {
-    window.history.replaceState({}, '', '/profile');
+    window.history.replaceState({}, '', '/');
     render(<App />);
+    const switcher = await screen.findByRole('group', { name: 'Select tank' });
+    fireEvent.click(within(switcher).getByRole('button', { name: 'Larval Tank B' }));
+    fireEvent.click(screen.getByRole('link', { name: 'My profile' }));
     const maintenance = await screen.findByRole('region', { name: 'Device maintenance' });
-    await within(maintenance).findByText('HS-MF-001');
-    fireEvent.change(screen.getByRole('combobox', { name: 'Select tank' }), { target: { value: 'tank-b' } });
-    expect(within(maintenance).getByText('Larval Tank B')).toBeInTheDocument();
+    expect(await within(maintenance).findByText('Larval Tank B')).toBeInTheDocument();
     expect(within(maintenance).getByText('HS-MF-002')).toBeInTheDocument();
   });
 

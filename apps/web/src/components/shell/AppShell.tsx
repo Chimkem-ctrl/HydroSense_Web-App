@@ -27,8 +27,7 @@ import { NAV_ITEMS } from '../../app/config';
 import { useRole } from '../../app/auth/RoleContext';
 import { signOut } from '../../services/authService';
 import { useSelectedTank } from '../../app/tank/TankContext';
-import { useLatestReading, useOpenAlerts, usePendingRequests, useTanks } from '../../app/data/hooks';
-import { ErrorState, LoadingState } from '../common/States';
+import { useLatestReading, useOpenAlerts, usePendingRequests } from '../../app/data/hooks';
 import { CriticalAlertModal } from './CriticalAlertModal';
 
 const icons: Record<string, LucideIcon> = {
@@ -50,8 +49,7 @@ const icons: Record<string, LucideIcon> = {
 
 export function AppShell() {
   const { role, userName } = useRole();
-  const { tankId, setTankId } = useSelectedTank();
-  const tanks = useTanks();
+  const { tankId } = useSelectedTank();
   const latestReading = useLatestReading(tankId);
   const alerts = useOpenAlerts();
   const pendingRequests = usePendingRequests();
@@ -133,13 +131,6 @@ export function AppShell() {
         <main className="page-content glass-screen">
           <div className="page-controls" aria-label="Dashboard controls">
             <button type="button" className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMenuOpen(true)}><Menu size={19} /></button>
-            {tanks.isLoading ? <LoadingState label="Loading tanks" /> : tanks.isError ? <ErrorState error={tanks.error} /> : (
-              <label className="inline small" aria-label="Selected tank">
-                <select className="select-control" aria-label="Select tank" value={tankId} onChange={(event) => setTankId(event.target.value)}>
-                  {(tanks.data ?? []).map((tank) => <option value={tank.id} key={tank.id}>{tank.name}</option>)}
-                </select>
-              </label>
-            )}
             <span className={`connection-pill ${displayConnection === 'connected' ? 'connection-online' : 'connection-offline'}`} aria-label={`Connection ${displayConnection}`}>
               <span aria-hidden="true">●</span><span>{displayConnection === 'connected' ? 'Live' : displayConnection === 'connecting' ? 'Connecting' : 'Offline'}</span>
             </span>
