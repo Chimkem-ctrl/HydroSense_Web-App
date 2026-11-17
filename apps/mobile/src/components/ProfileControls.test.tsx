@@ -18,19 +18,22 @@ function elements(node: ReactNode, type: string): ReactElement<Record<string, un
 
 describe('profile placeholder controls', () => {
   it('shows disabled notification switches', () => {
-    const switches = elements(AlertPreferenceControls({ phone: '123', email: 'a@example.test' }), 'Switch');
+    const controls = AlertPreferenceControls();
+    const switches = elements(controls, 'Switch');
     expect(switches.map((item) => item.props.accessibilityLabel)).toEqual(['SMS alerts', 'Email alerts']);
     expect(switches.every((item) => item.props.disabled === true && item.props.value === false)).toBe(true);
-    const wrappers = elements(AlertPreferenceControls({}), 'View').filter((item) => {
+    const wrappers = elements(controls, 'View').filter((item) => {
       const style = item.props.style;
       return typeof style === 'object' && style !== null && 'borderColor' in style && style.borderColor === '#c4d2e880';
     });
     expect(wrappers).toHaveLength(2);
+    expect(elements(controls, 'Text').map((item) => item.props.children)).not.toContain('Phone on file:');
+    expect(elements(controls, 'Text').map((item) => item.props.children)).not.toContain('Email on file:');
   });
 
   it('shows disabled security buttons', () => {
-    const buttons = elements(SecurityControls({}), 'Button');
-    expect(buttons.map((item) => item.props.label)).toEqual(['Change password', 'Sign out other devices']);
+    const buttons = elements(SecurityControls(), 'Button');
+    expect(buttons.map((item) => item.props.label)).toEqual(['Change password']);
     expect(buttons.every((item) => item.props.disabled === true)).toBe(true);
   });
 

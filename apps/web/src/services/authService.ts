@@ -21,6 +21,10 @@ export const SUBSCRIBED_HATCHERIES = [
     id: 'camiguin-sagay',
     name: 'Camiguin, Sagay Multispecies Hatchery',
   },
+  {
+    id: 'camiguin-benoni',
+    name: 'Camiguin, Benoni Experimental Station',
+  },
 ] as const;
 
 export function hatcheryLabel(site?: string | null): string {
@@ -125,7 +129,7 @@ async function updateApiProfile(userId: string, status: AccountStatus, role: Rol
 }
 
 function isRequestedRole(value: unknown): value is RequestedRole {
-  return value === 'operator' || value === 'manager';
+  return value === 'operator' || value === 'manager' || value === 'admin';
 }
 
 async function removeApiAccount(userId: string): Promise<void> {
@@ -454,6 +458,7 @@ export const authService = {
           emergencyContactName: values.emergencyContactName.trim(),
           emergencyContactPhone: values.emergencyContactPhone.trim(),
           hatcheryId: values.hatcheryId,
+          requestedRole: values.requestedRole,
         }),
       });
       const result = await response.json();
@@ -484,7 +489,7 @@ export const authService = {
       lastName: values.lastName.trim(),
       email: normalizedEmail,
       role: null,
-      requestedRole: null,
+      requestedRole: values.requestedRole,
       status: 'pending',
       employeeId: values.employeeId.trim(),
       phone: values.phone.trim(),

@@ -4,26 +4,48 @@
 .admin-users-heading h2 { margin: 0; font-size: 18px; font-weight: 700; }
 .admin-users-heading p { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
 .admin-users-count { display: inline-flex; align-items: center; min-height: 30px; padding: 3px 10px; border: 1px solid var(--control-border); border-radius: var(--radius-pill); color: var(--text-secondary); background: var(--control-fill); font-size: 12px; font-weight: 700; white-space: nowrap; }
-.admin-users-page .admin-users-scroll-hint { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.admin-users-count--pending { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 42%, var(--control-border)); background: color-mix(in srgb, var(--critical) 9%, var(--control-fill)); }
+.admin-users-count--accounts { color: var(--normal); border-color: color-mix(in srgb, var(--normal) 42%, var(--control-border)); background: color-mix(in srgb, var(--normal) 9%, var(--control-fill)); }
 .admin-users-page .table-wrap { position: relative; min-width: 0; }
 .admin-users-page .admin-users-site { min-width: 0; margin-bottom: 20px; }
 .admin-users-page .admin-users-site:last-child { margin-bottom: 0; }
 .admin-users-page .admin-users-site h3 { margin: 0 0 10px; font-size: 16px; overflow-wrap: anywhere; }
+.admin-users-page .admin-users-site-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .admin-users-page .admin-users-table { width: 100%; min-width: 900px; table-layout: auto; }
-.admin-users-page .admin-requests-table { min-width: 1200px; }
+.admin-users-page .admin-requests-table { min-width: 1250px; }
 .admin-users-page .admin-users-table th { white-space: nowrap; }
 .admin-users-page .admin-users-table th:nth-child(1) { min-width: 140px; }
 .admin-users-page .admin-users-table th:nth-child(2) { min-width: 200px; }
 .admin-users-page .admin-users-table th:nth-child(3) { min-width: 160px; }
 .admin-users-page .admin-requests-table th:nth-child(4) { min-width: 125px; }
-.admin-users-page .admin-requests-table th:nth-child(5) { min-width: 140px; }
-.admin-users-page .admin-requests-table th:nth-child(6) { min-width: 165px; }
-.admin-users-page .admin-requests-table th:nth-child(7) { min-width: 235px; }
+.admin-users-page .admin-requests-table th:nth-child(5) { min-width: 165px; }
+.admin-users-page .admin-requests-table th:nth-child(6) { min-width: 95px; }
+.admin-users-page .admin-requests-table th:nth-child(7) { min-width: 175px; }
+.admin-users-page .admin-requests-table th:nth-child(8) { min-width: 160px; }
 .admin-users-page .admin-users-table th, .admin-users-page .admin-users-table td { padding: 12px; vertical-align: middle; }
 .admin-users-page .admin-users-table td { overflow-wrap: anywhere; }
 .admin-users-page .admin-users-table td:first-child { font-weight: 700; }
 .admin-users-page .admin-users-table tr:last-child td { border-bottom: 0; }
 .admin-users-page .admin-users-table .field select { min-width: 120px; }
-.admin-users-page .admin-review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.admin-request-action-buttons { display: flex; align-items: center; gap: 8px; }
+.admin-users-page .admin-request-icon-button { display: inline-flex; width: 42px; height: 42px; align-items: center; justify-content: center; border: 1px solid; border-radius: 50%; background: var(--surface); transition: background-color 150ms ease, transform 150ms ease; }
+.admin-users-page .admin-request-icon-button:hover:not(:disabled) { transform: translateY(-1px); }
+.admin-users-page .admin-request-icon-button:disabled { cursor: not-allowed; opacity: .45; }
+.admin-users-page .admin-request-icon-button--approve { border-color: color-mix(in srgb, var(--normal) 55%, var(--border)); color: var(--normal); }
+.admin-users-page .admin-request-icon-button--approve:hover:not(:disabled) { background: color-mix(in srgb, var(--normal) 13%, var(--surface)); }
+.admin-users-page .admin-request-icon-button--reject { border-color: color-mix(in srgb, var(--critical) 55%, var(--border)); color: var(--critical); }
+.admin-users-page .admin-request-icon-button--reject:hover:not(:disabled) { background: color-mix(in srgb, var(--critical) 13%, var(--surface)); }
 .admin-users-page .admin-users-table .button { white-space: nowrap; }
+.admin-users-page .button-danger { border-color: var(--critical); background: color-mix(in srgb, var(--critical) 10%, var(--surface)); color: var(--critical); }
+.admin-users-page .button-danger:hover:not(:disabled) { border-color: var(--critical); background: color-mix(in srgb, var(--critical) 16%, var(--surface)); }
+.admin-users-status { color: var(--critical); font-weight: 700; }
 .admin-users-page .admin-users-panel > .muted { margin: 0; }
+.admin-users-confirmation-backdrop { z-index: 80; }
+.admin-users-confirmation { width: min(440px, 100%); }
+.admin-users-confirmation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.admin-users-confirmation-heading h2 { margin: 0; font-size: 19px; }
+.admin-users-confirmation > p { margin: 0; color: var(--text-secondary); line-height: 1.55; }
+.admin-users-confirmation-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+.admin-users-confirmation-actions .button { min-width: 120px; }
+.admin-users-confirmation-actions .admin-users-confirm-approve { border-color: var(--normal); background: var(--normal); color: #fff; }
+.admin-users-confirmation-actions .admin-users-confirm-approve:hover:not(:disabled) { background: color-mix(in srgb, var(--normal) 85%, black); }

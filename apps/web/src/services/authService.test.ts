@@ -17,11 +17,12 @@ function signupValues(overrides: Partial<SignUpValues> = {}): SignUpValues {
   return {
     firstName: 'Taylor',
     lastName: 'Rivera',
-    employeeId: 'EMP-001',
+    employeeId: 'EMP-123',
     phone: '+63 917 555 0100',
     email: 'taylor@example.com',
     password: 'TestPass!2026',
     hatcheryId: SUBSCRIBED_HATCHERIES[0].id,
+    requestedRole: 'operator',
     address: { country: 'PH', province: '1001800000', city: '1001805000', barangay: '1001805001', street: 'Main Street' },
     emergencyContactName: 'Alex Rivera',
     emergencyContactPhone: '+63 917 555 0101',
@@ -88,6 +89,18 @@ describe('authService', () => {
     expect(window.localStorage.getItem(SESSION_KEY)).toBeNull();
   });
 
+  it('stores the requested role, selected hatchery, and employee ID', async () => {
+    const values = signupValues({ hatcheryId: SUBSCRIBED_HATCHERIES[1].id, requestedRole: 'admin' });
+    await authService.signUp(values);
+    await signInAsAdmin();
+    const [request] = await authService.listPendingRequests();
+    expect(request).toMatchObject({
+      requestedRole: 'admin',
+      hatcheryId: 'camiguin-benoni',
+    });
+    expect(request.employeeId).toBe('EMP-123');
+  });
+
   it('blocks rejected accounts after verifying the password', async () => {
     const userId = await createPendingRequest();
     await signInAsAdmin();
@@ -107,7 +120,7 @@ describe('authService', () => {
     signOut();
 
     await expect(authService.signIn('taylor@example.com', 'TestPass!2026'))
-      .resolves.toMatchObject({ status: 'approved', user: { role: 'manager', requestedRole: null } });
+      .resolves.toMatchObject({ status: 'approved', user: { role: 'manager', requestedRole: 'operator' } });
     expect(getCurrentUser()?.role).toBe('manager');
 
     const accounts = JSON.parse(window.localStorage.getItem(ACCOUNT_KEY) ?? '[]');

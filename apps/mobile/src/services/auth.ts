@@ -10,10 +10,10 @@ export interface AuthenticatedUser {
 export interface SignUpValues {
   firstName: string;
   lastName: string;
-  employeeId: string;
   phone: string;
   email: string;
   hatcheryId: string;
+  requestedRole: Role;
   address: SignupAddress;
   emergencyContactName: string;
   emergencyContactPhone: string;
@@ -23,6 +23,10 @@ export interface SignUpValues {
 }
 
 export const HATCHERY = { id: 'camiguin-sagay', name: 'Camiguin, Sagay Multispecies Hatchery' } as const;
+export const HATCHERIES = [
+  HATCHERY,
+  { id: 'camiguin-benoni', name: 'Camiguin, Benoni Experimental Station' },
+] as const;
 
 function validateEmail(email: string): string | null {
   if (!email.trim()) return 'Email is required.';
@@ -41,12 +45,11 @@ export function validateSignUp(values: SignUpValues): string | null {
   const phone = /^[+()\d\s.-]{7,20}$/;
   if (!values.firstName.trim()) return 'First name is required.';
   if (!values.lastName.trim()) return 'Last name is required.';
-  if (!values.employeeId.trim()) return 'Staff or employee ID is required.';
   if (!values.phone.trim()) return 'Contact number is required.';
   if (!phone.test(values.phone.trim())) return 'Enter a valid contact number.';
   if (!values.email.trim()) return 'Email is required.';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) return 'Enter a valid email address.';
-  if (values.hatcheryId !== HATCHERY.id) return 'Select your subscribed hatchery.';
+  if (!HATCHERIES.some((hatchery) => hatchery.id === values.hatcheryId)) return 'Select your subscribed hatchery.';
   if (!formatSignupAddress(values.address)) return 'Select a valid country, province, city and barangay, and enter a street address.';
   if (!values.emergencyContactName.trim()) return 'Emergency contact name is required.';
   if (!values.emergencyContactPhone.trim()) return 'Emergency contact number is required.';
@@ -108,12 +111,12 @@ export async function requestAccount(baseUrl: string, apiKey: string | undefined
     password: values.password,
     firstName: values.firstName.trim(),
     lastName: values.lastName.trim(),
-    employeeId: values.employeeId.trim(),
     phone: values.phone.trim(),
     address: values.address,
     emergencyContactName: values.emergencyContactName.trim(),
     emergencyContactPhone: values.emergencyContactPhone.trim(),
     hatcheryId: values.hatcheryId,
+    requestedRole: values.requestedRole,
   });
   if (typeof result !== 'object' || result === null || !('status' in result) || result.status !== 'pending') {
     throw new Error('The server did not confirm a pending account request.');

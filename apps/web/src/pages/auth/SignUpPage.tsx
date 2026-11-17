@@ -22,6 +22,7 @@ const initialValues: SignUpValues = {
   phone: '',
   email: '',
   hatcheryId: '',
+  requestedRole: 'operator',
   address: EMPTY_SIGNUP_ADDRESS,
   emergencyContactName: '',
   emergencyContactPhone: '',
@@ -35,7 +36,7 @@ function validate(values: SignUpValues, phoneCountry: PhoneCountryCode, emergenc
 
   if (!values.firstName.trim()) errors.firstName = 'First name is required.';
   if (!values.lastName.trim()) errors.lastName = 'Last name is required.';
-  if (!values.employeeId.trim()) errors.employeeId = 'Staff or employee ID is required.';
+  if (!values.employeeId.trim()) errors.employeeId = 'Employee / staff ID is required.';
   if (!values.phone.trim()) errors.phone = 'Contact number is required.';
   else if (!formatSignupPhone(phoneCountry, values.phone)) errors.phone = 'Enter a valid national contact number for the selected country.';
   if (!values.email.trim()) errors.email = 'Email is required.';
@@ -89,7 +90,7 @@ export default function SignUpPage() {
         <GlassPanel className="auth-panel signup-panel operator-signup-panel">
           <h1>Request an account</h1>
           <p className="operator-signup-intro">
-            Submit your staff details for administrator approval. An administrator will assign your role.
+            Submit your details and requested role for administrator review.
           </p>
           <form onSubmit={form.handleSubmit} noValidate>
             <div className="operator-signup-grid">
@@ -113,16 +114,6 @@ export default function SignUpPage() {
                 value={form.values.lastName}
                 onChange={(event: ChangeEvent<HTMLInputElement>) => form.setField('lastName', event.target.value)}
                 error={form.errors.lastName}
-                required
-              />
-              <FormInput
-                label="Employee / staff ID"
-                name="employeeId"
-                type="text"
-                placeholder="e.g. SAG-OP-014"
-                value={form.values.employeeId}
-                onChange={(event: ChangeEvent<HTMLInputElement>) => form.setField('employeeId', event.target.value)}
-                error={form.errors.employeeId}
                 required
               />
               <PhoneField
@@ -161,6 +152,15 @@ export default function SignUpPage() {
                   ))}
                 </select>
                 {form.errors.hatcheryId && <span className="field-error" role="alert">{form.errors.hatcheryId}</span>}
+              </div>
+              <div className="form-field operator-signup-wide">
+                <label className="form-label" htmlFor="requestedRole">Requested role</label>
+                <select id="requestedRole" className="form-control" value={form.values.requestedRole}
+                  onChange={(event) => form.setField('requestedRole', event.target.value as SignUpValues['requestedRole'])} required>
+                  <option value="admin">Admin</option>
+                  <option value="manager">Manager</option>
+                  <option value="operator">Operator</option>
+                </select>
               </div>
               {([
                 { key: 'country', label: 'Country', options: [{ id: 'PH', name: 'Philippines' }], disabled: false },
@@ -223,6 +223,20 @@ export default function SignUpPage() {
                 required
               />
             </div>
+            <div className="signup-temporary-fields">
+              <p className="signup-temporary-field-note">To be removed</p>
+              <FormInput
+                label="Employee / staff ID"
+                name="employeeId"
+                type="text"
+                placeholder="Employee / staff ID"
+                autoComplete="off"
+                value={form.values.employeeId}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => form.setField('employeeId', event.target.value)}
+                error={form.errors.employeeId}
+                required
+              />
+            </div>
             <div className="terms-field">
               <div className="terms-row">
                 <input
@@ -249,7 +263,6 @@ export default function SignUpPage() {
           <AuthFooter>
             Already registered? <Link to="/signin">Sign In</Link>
           </AuthFooter>
-          <p className="auth-demo-disclaimer">Demo only: account details are stored in this browser, not sent to a server. Do not use a real password.</p>
         </GlassPanel>
       </div>
       {showTerms && (

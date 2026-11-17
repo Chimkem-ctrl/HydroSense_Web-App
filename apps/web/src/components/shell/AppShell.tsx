@@ -23,7 +23,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { canAccessRole } from '@hydrosense/shared';
 import { liveClient } from '../../app/api';
-import { NAV_ITEMS } from '../../app/config';
+import { NAV_ITEMS, ROLE_LABELS } from '../../app/config';
 import { useRole } from '../../app/auth/RoleContext';
 import { signOut } from '../../services/authService';
 import { useSelectedTank } from '../../app/tank/TankContext';
@@ -140,10 +140,14 @@ export function AppShell() {
               {role === 'admin' && pendingRequests.isLoading && <span aria-hidden="true">…</span>}
             </Link>
             <div className="account-menu">
-               <button type="button" className="icon-button" aria-haspopup="menu" aria-expanded={accountMenuOpen} aria-label={`Account menu for ${userName}`} title={userName} onClick={() => setAccountMenuOpen((open) => !open)}>
-                <span aria-hidden="true">{userName.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>
-                </button>              {accountMenuOpen && <div className="account-menu-popover" role="menu" aria-label="Account options">
-                
+              <button type="button" className="icon-button" aria-haspopup="menu" aria-expanded={accountMenuOpen} aria-label={`Account menu for ${userName}`} title={userName} onClick={() => setAccountMenuOpen((open) => !open)}>
+                <UserRound size={19} aria-hidden="true" />
+              </button>
+              {accountMenuOpen && <div className="account-menu-popover" role="menu" aria-label="Account options">
+                <div className="account-menu-identity" role="presentation">
+                  <strong>{userName.trim() || 'User'}</strong>
+                  <span>{ROLE_LABELS[role]}</span>
+                </div>
                 <Link to="/profile" role="menuitem"><UserRound size={15} />My profile</Link>
                 <Link to="/signin" role="menuitem" onClick={signOut}><LogOut size={15} />Sign out</Link>
               </div>}

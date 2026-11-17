@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Check, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatManilaDateTime, getManilaDateString, toCsv } from '@hydrosense/shared';
 import type { DashboardUser, Role } from '@hydrosense/shared';
@@ -7,7 +8,6 @@ import { DATA_MODE, ROLE_LABELS, tierConfig } from '../app/config';
 import { useAuth, useRole } from '../app/auth/RoleContext';
 import { usePendingRequests, useProfileSite } from '../app/data/hooks';
 import { authService, hatcheryLabel } from '../services/authService';
-import { isValidForSms } from '../services/phone';
 import { downloadCsv } from '../services/downloadCsv';
 import type { AuditLog } from '@hydrosense/shared';
 import { PageHeading } from '../components/common/PageHeading';
@@ -15,11 +15,15 @@ import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../compon
 import '../styles/admin-users.css';
 
 function PhoneCell({ phone }: { phone?: string }) {
-  return phone?.trim() ? <>{phone} <span className="admin-users-count">{isValidForSms(phone) ? 'Valid for SMS' : 'Not valid for SMS'}</span></> : <>—</>;
+  return phone?.trim() || '—';
 }
 
+type UserConfirmation =
+  | { action: 'approve'; userId: string; name: string; role: Role }
+  | { action: 'reject' | 'remove'; userId: string; name: string };
+
 export function AdminUsersPage() {
-  const { userName, role } = useRole();
+  const { role } = useRole();
   const currentUser = useAuth();
   const isManager = role === 'manager';
   const site = useProfileSite();
@@ -52,18 +56,7 @@ export function AdminUsersPage() {
   });
   const pendingRequests = usePendingRequests();
   const [selectedRoles, setSelectedRoles] = useState<Record<string, Role | undefined>>({});
-  const mutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: Exclude<Role, 'admin'> }) => {
-      if (userId.startsWith('account-')) {
-        return authService.updateApprovedUserRole(userId, role);
-      }
-      return api.updateUserRole(userId, role, userName);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['admin-users'] });
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs'] });
-    },
-  });
+  const [confirmation, setConfirmation] = useState<UserConfirmation | null>(null);
   const approveRequest = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: Role }) => authService.approveRequest(userId, role),
     onSuccess: async () => {
@@ -84,9 +77,18 @@ export function AdminUsersPage() {
       await queryClient.invalidateQueries({ queryKey: ['audit-logs'] });
     },
   });
+  function confirmUserAction() {
+    if (!confirmation) return;
+    const current = confirmation;
+    setConfirmation(null);
+    if (current.action === 'approve') approveRequest.mutate({ userId: current.userId, role: current.role });
+    else if (current.action === 'reject') rejectRequest.mutate(current.userId);
+    else removeAccount.mutate(current.userId);
+  }
   // The backend must enforce hatchery scope; these filters only limit the display.
   const visibleRequests = (pendingRequests.data ?? []).filter((request) => !isManager || Boolean(hatchery && hatcheryLabel(request.hatcheryId) === hatchery));
-  const visibleUsers = (users.data ?? []).filter((user) => !isManager || Boolean(hatchery && hatcheryLabel(user.site) === hatchery && user.role !== 'admin'));
+  const visibleUsers = (users.data ?? []).filter((user) => user.role !== 'admin' && (!isManager || Boolean(hatchery && hatcheryLabel(user.site) === hatchery)));
+  const visibleAdminUsers = (users.data ?? []).filter((user) => !isManager && user.role === 'admin');
   const groupedRequests = new Map<string, typeof visibleRequests>();
   for (const request of visibleRequests) {
     const name = hatcheryLabel(request.hatcheryId);
@@ -97,43 +99,62 @@ export function AdminUsersPage() {
     const name = hatcheryLabel(user.site);
     groupedUsers.set(name, [...(groupedUsers.get(name) ?? []), user]);
   }
+  const confirmationDetails = confirmation && {
+    title: confirmation.action === 'approve' ? 'Approve account request?' : confirmation.action === 'reject' ? 'Reject account request?' : 'Remove account?',
+    message: confirmation.action === 'approve'
+      ? `Approve ${confirmation.name} as ${ROLE_LABELS[confirmation.role]}?`
+      : confirmation.action === 'reject'
+        ? `Are you sure you want to reject "${confirmation.name}"?`
+        : `Are you sure you want to remove "${confirmation.name}"?`,
+    buttonLabel: confirmation.action === 'approve' ? 'Approve request' : confirmation.action === 'reject' ? 'Reject request' : 'Remove account',
+  };
+  const confirmationBusy = confirmation?.action === 'approve' ? approveRequest.isPending
+    : confirmation?.action === 'reject' ? rejectRequest.isPending
+      : confirmation?.action === 'remove' ? removeAccount.isPending : false;
   return (
     <div className="stack admin-users-page">
-      <PageHeading title="Users & roles" description={isManager ? 'Review operator accounts for your hatchery.' : `Manage team accounts · node limit ${tierConfig.nodeLimit}.`} />
+      <PageHeading title="Users & roles" description={isManager ? 'Review operator accounts for your hatchery.' : 'Review account requests and view accounts by hatchery.'} />
       {isManager && site.isLoading ? <LoadingState label="Loading hatchery assignment" /> : isManager && site.isError ? <ErrorState error={site.error} onRetry={() => void site.refetch()} /> : isManager && !hatchery ? <EmptyState>No hatchery is assigned to your account. Contact an administrator.</EmptyState> : <>
       <StaleQueryState updatedAt={users.dataUpdatedAt} />
       {!isManager && <section className="card admin-users-panel" aria-labelledby="pending-requests-title">
         <div className="admin-users-heading">
           <div><h2 id="pending-requests-title">Pending requests</h2><p>Review new account requests and assign a role.</p></div>
-          {!pendingRequests.isLoading && !pendingRequests.isError && pendingRequests.data && <span className="admin-users-count">{visibleRequests.length} pending</span>}
+          {!pendingRequests.isLoading && !pendingRequests.isError && pendingRequests.data && <span className="admin-users-count admin-users-count--pending">{visibleRequests.length} pending</span>}
         </div>
         {pendingRequests.isLoading ? <LoadingState /> : pendingRequests.isError ? <ErrorState error={pendingRequests.error} onRetry={() => void pendingRequests.refetch()} /> : !visibleRequests.length ? <EmptyState>No account requests are awaiting review.</EmptyState> : (
-          <><p className="admin-users-scroll-hint">Scroll horizontally to see all request details and actions.</p>
+          <>
           <div role="region" aria-label="Pending requests table">
           {[...groupedRequests].map(([name, requests]) => <section className="admin-users-site" key={name}>
           <h3>{name}</h3>
-          <div className="table-wrap" role="region" aria-label={`${name} pending requests`} tabIndex={0}><table className="admin-users-table admin-requests-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Employee ID</th><th scope="col">Requested role</th><th scope="col">Date</th><th scope="col">Review</th></tr></thead><tbody>
+          <div className="table-wrap" role="region" aria-label={`${name} pending requests`} tabIndex={0}><table className="admin-users-table admin-requests-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Requested role</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Review Role</th><th scope="col">Action</th></tr></thead><tbody>
             {requests.map((request) => (
               <tr key={request.id}>
                 <td>{request.firstName} {request.lastName}</td>
                 <td>{request.email}</td>
                 <td><PhoneCell phone={request.phone} /></td>
-                <td>{request.employeeId ?? '—'}</td>
                 <td>{request.requestedRole ? ROLE_LABELS[request.requestedRole] : '—'}</td>
                 <td>{formatManilaDateTime(request.createdAt)} PHT</td>
-                <td>
-                  <div className="admin-review-actions">
-                    {isManager ? <><span>Operator</span><span><button type="button" className="button button-primary" disabled>Approve</button> <small>Coming soon</small></span><span><button type="button" className="button" disabled>Reject</button> <small>Coming soon</small></span><p className="small muted">Manager approvals are not connected yet.</p></> : <><label className="field"><span className="sr-only">Approval role for {request.firstName} {request.lastName}</span>
-                      <select value={selectedRoles[request.id] ?? ''} onChange={(event) => setSelectedRoles((roles) => ({ ...roles, [request.id]: (event.target.value || undefined) as Role | undefined }))}>
-                        <option value="">Select role</option><option value="operator">Operator</option><option value="manager">Manager</option>
-                      </select>
-                    </label>
-                    <button type="button" className="button button-primary" disabled={approveRequest.isPending || rejectRequest.isPending || !selectedRoles[request.id]} onClick={() => { const role = selectedRoles[request.id]; if (role) approveRequest.mutate({ userId: request.id, role }); }}>Approve</button>
-                    <button type="button" className="button" disabled={approveRequest.isPending || rejectRequest.isPending} onClick={() => {
-                      if (window.confirm(`Reject the account request for ${request.firstName} ${request.lastName}?`)) rejectRequest.mutate(request.id);
-                    }}>Reject</button></>}
-                  </div>
-                </td>
+                <td><span className="admin-users-status">Pending</span></td>
+                <td><label className="field"><span className="sr-only">Review role for {request.firstName} {request.lastName}</span>
+                  <select value={selectedRoles[request.id] ?? request.requestedRole ?? ''} onChange={(event) => {
+                    const nextRole = event.target.value;
+                    if (nextRole === 'admin' || nextRole === 'operator' || nextRole === 'manager') setSelectedRoles((roles) => ({ ...roles, [request.id]: nextRole }));
+                    else setSelectedRoles((roles) => ({ ...roles, [request.id]: undefined }));
+                  }}>
+                    <option value="">Select role</option><option value="admin">Admin</option><option value="manager">Manager</option><option value="operator">Operator</option>
+                  </select>
+                </label></td>
+                <td><div className="admin-request-action-buttons">
+                  <button type="button" className="admin-request-icon-button admin-request-icon-button--approve" aria-label={`Approve ${request.firstName} ${request.lastName}`} title="Approve request"
+                    disabled={approveRequest.isPending || rejectRequest.isPending || !(selectedRoles[request.id] ?? request.requestedRole)}
+                    onClick={() => {
+                      const reviewRole = selectedRoles[request.id] ?? request.requestedRole;
+                      if (reviewRole) setConfirmation({ action: 'approve', userId: request.id, name: `${request.firstName} ${request.lastName}`, role: reviewRole });
+                    }}><Check size={18} aria-hidden="true" /></button>
+                  <button type="button" className="admin-request-icon-button admin-request-icon-button--reject" aria-label={`Reject ${request.firstName} ${request.lastName}`} title="Reject request"
+                    disabled={approveRequest.isPending || rejectRequest.isPending}
+                    onClick={() => setConfirmation({ action: 'reject', userId: request.id, name: `${request.firstName} ${request.lastName}` })}><X size={18} aria-hidden="true" /></button>
+                </div></td>
               </tr>
             ))}
           </tbody></table></div></section>)}</div></>
@@ -141,25 +162,47 @@ export function AdminUsersPage() {
         {approveRequest.isError && <ErrorState error={approveRequest.error} />}
         {rejectRequest.isError && <ErrorState error={rejectRequest.error} />}
       </section>}
+      {!isManager && <section className="card admin-users-panel" aria-labelledby="admin-accounts-title">
+        <div className="admin-users-heading">
+          <div><h2 id="admin-accounts-title">Admin accounts</h2><p>Administrator accounts with system-wide access.</p></div>
+          {tierConfig.teamAccounts && !users.isLoading && !users.isError && <span className="admin-users-count admin-users-count--accounts">{visibleAdminUsers.length} {visibleAdminUsers.length === 1 ? 'account' : 'accounts'}</span>}
+        </div>
+        {!tierConfig.teamAccounts ? null : users.isLoading ? <LoadingState /> : users.isError ? <ErrorState error={users.error} onRetry={() => void users.refetch()} /> : !visibleAdminUsers.length ? <EmptyState>No administrator accounts are registered.</EmptyState> :
+          <div className="table-wrap" role="region" aria-label="Admin accounts table"><table className="admin-users-table"><thead><tr><th scope="col">Name</th><th scope="col">ID</th><th scope="col">Email</th><th scope="col">Phone number</th><th scope="col">Role</th><th scope="col">Hatchery / site</th><th scope="col">Last active</th></tr></thead><tbody>
+            {visibleAdminUsers.map((user) => <tr key={user.id}><td>{user.name}</td><td>{user.employeeId || '—'}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{ROLE_LABELS[user.role]}</td><td>{hatcheryLabel(user.site)}</td><td>{formatManilaDateTime(user.lastActive)} PHT</td></tr>)}
+          </tbody></table></div>}
+      </section>}
       <section className="card admin-users-panel" aria-labelledby="team-accounts-title">
         <div className="admin-users-heading">
-          <div><h2 id="team-accounts-title">Team accounts</h2><p>View team members and manage their roles.</p></div>
-          {tierConfig.teamAccounts && !users.isLoading && !users.isError && users.data && <span className="admin-users-count">{visibleUsers.length} {visibleUsers.length === 1 ? 'account' : 'accounts'}</span>}
+          <div><h2 id="team-accounts-title">Team accounts</h2><p>View team members grouped by hatchery.</p></div>
+          {tierConfig.teamAccounts && !users.isLoading && !users.isError && users.data && <span className="admin-users-count admin-users-count--accounts">{visibleUsers.length} {visibleUsers.length === 1 ? 'account' : 'accounts'}</span>}
         </div>
         {!tierConfig.teamAccounts ? <p className="muted">Team account management is available on premium and enterprise tiers.</p> : users.isLoading ? <LoadingState /> : users.isError ? <ErrorState error={users.error} onRetry={() => void users.refetch()} /> : !visibleUsers.length ? <EmptyState>No team users are registered.</EmptyState> : (
-          <><p className="admin-users-scroll-hint">Scroll horizontally to see all account details and actions.</p>
+          <>
           <div role="region" aria-label="Team accounts table">
           {[...groupedUsers].map(([name, members]) => <section className="admin-users-site" key={name}>
-          <h3>{name}</h3>
-          <div className="table-wrap" tabIndex={0} role="region" aria-label={`${name} accounts`}><table className="admin-users-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Role</th><th scope="col">Last active</th>{!isManager && <th scope="col">Actions</th>}</tr></thead><tbody>
-            {members.map((user) => <tr key={user.id}><td>{user.name}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{user.role === 'admin' || isManager ? <span>{ROLE_LABELS[user.role]}</span> : <label className="field"><span className="sr-only">Role for {user.name}</span><select value={user.role} onChange={(event) => { const next = event.target.value as Exclude<Role, 'admin'>; if (next !== user.role && window.confirm(`Change ${user.name} from ${ROLE_LABELS[user.role]} to ${ROLE_LABELS[next]}?`)) mutation.mutate({ userId: user.id, role: next }); }}><option value="operator">Operator</option><option value="manager">Manager</option></select></label>}</td><td>{formatManilaDateTime(user.lastActive)} PHT</td>{!isManager && <td>{user.role === 'admin' ? '—' : <button type="button" className="button" disabled={removeAccount.isPending} onClick={() => {
-              if (window.confirm(`Remove the account for ${user.name}? This cannot be undone.`)) removeAccount.mutate(user.id);
-            }}>Remove account</button>}</td>}</tr>)}
+          <h3 className="admin-users-site-heading" aria-label={name}><span>{name}</span><span className="admin-users-count admin-users-count--accounts">{members.length} {members.length === 1 ? 'account' : 'accounts'}</span></h3>
+          <div className="table-wrap" tabIndex={0} role="region" aria-label={`${name} accounts`}><table className="admin-users-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Employee ID</th><th scope="col">Role</th><th scope="col">Last active</th>{!isManager && <th scope="col">Actions</th>}</tr></thead><tbody>
+            {members.map((user) => <tr key={user.id}><td>{user.name}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{user.employeeId || '—'}</td><td><span>{ROLE_LABELS[user.role]}</span></td><td>{formatManilaDateTime(user.lastActive)} PHT</td>{!isManager && <td><button type="button" className="button button-danger" disabled={removeAccount.isPending} onClick={() => setConfirmation({ action: 'remove', userId: user.id, name: user.name })}>Remove account</button></td>}</tr>)}
           </tbody></table></div></section>)}</div></>
         )}
-          {mutation.isError && <ErrorState error={mutation.error} />}
           {removeAccount.isError && <ErrorState error={removeAccount.error} />}
       </section>
+      {confirmation && confirmationDetails && <div className="dialog-backdrop admin-users-confirmation-backdrop" role="presentation" onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !confirmationBusy) setConfirmation(null);
+      }}>
+        <section className="dialog card stack admin-users-confirmation" role="dialog" aria-modal="true" aria-labelledby="admin-users-confirmation-title">
+          <header className="admin-users-confirmation-heading">
+            <h2 id="admin-users-confirmation-title">{confirmationDetails.title}</h2>
+            <button type="button" className="icon-button" aria-label="Close confirmation" disabled={confirmationBusy} onClick={() => setConfirmation(null)}><X size={18} /></button>
+          </header>
+          <p>{confirmationDetails.message}</p>
+          <div className="admin-users-confirmation-actions">
+            <button type="button" className="button" disabled={confirmationBusy} onClick={() => setConfirmation(null)}>Cancel</button>
+            <button type="button" className={`button ${confirmation.action === 'approve' ? 'admin-users-confirm-approve' : 'button-danger'}`} disabled={confirmationBusy} onClick={confirmUserAction}>{confirmationDetails.buttonLabel}</button>
+          </div>
+        </section>
+      </div>}
       </>}
     </div>
   );
@@ -195,7 +238,7 @@ export function AdminLogsPage() {
   }
   return (
     <div className="stack">
-      <PageHeading title="Audit & system logs" description="Review admin actions and operational events (Asia/Manila)." />
+      <PageHeading title="Audit & system logs" description="Review admin actions and operational events." />
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
       {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data?.length ? <EmptyState>No audit or system logs are available.</EmptyState> : (
         <section className="card stack">

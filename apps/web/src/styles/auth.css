@@ -230,6 +230,21 @@
   min-width: 0;
 }
 
+.signup-temporary-fields {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed color-mix(in srgb, var(--critical) 55%, transparent);
+  border-radius: 10px;
+}
+
+.signup-temporary-field-note {
+  margin: 0 0 6px;
+  color: var(--critical);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: left;
+}
+
 .signup-panel .signup-phone-field {
   display: flex;
   align-items: stretch;

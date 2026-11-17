@@ -52,24 +52,17 @@ beforeEach(() => {
   state.setTankId.mockClear();
 });
 
-describe('account dashboard controls', () => {
-  it('places tank selection and connection status inside the account panel', () => {
+describe('account profile controls', () => {
+  it('shows connection status without dashboard or tank selection controls', () => {
     state.panel = 'account';
     const root = HeaderToolbar(props);
-    const selector = elements(root, 'Pressable').find((item) => item.props.accessibilityLabel === 'Select tank: Tank 01');
-    expect(selector).toBeDefined();
+    expect(elements(root, 'Pressable').some((item) => String(item.props.accessibilityLabel).startsWith('Select tank:'))).toBe(false);
+    const accountButton = elements(root, 'Pressable').find((item) => String(item.props.accessibilityLabel).startsWith('Account menu for'));
+    expect(accountButton).toBeDefined();
+    expect(elements(accountButton, 'UserRound')).toHaveLength(1);
+    expect(elements(accountButton, 'Text').map((item) => item.props.children)).not.toContain('TE');
+    expect(elements(root, 'Text').some((item) => item.props.children === 'DASHBOARD')).toBe(false);
     expect(elements(root, 'View').some((item) => item.props.accessibilityLabel === 'Connection Offline')).toBe(true);
-    (selector?.props.onPress as () => void)();
-    expect(state.setPanel).toHaveBeenCalledWith('tanks');
-  });
-
-  it('selects a tank and returns to the account panel', () => {
-    state.panel = 'tanks';
-    const root = HeaderToolbar(props);
-    const tank = elements(root, 'Pressable').find((item) => item.props.accessibilityRole === 'radio');
-    expect(tank?.props.accessibilityState).toEqual({ checked: true });
-    (tank?.props.onPress as () => void)();
-    expect(state.setTankId).toHaveBeenCalledWith('1');
-    expect(state.setPanel).toHaveBeenCalledWith('account');
+    expect(elements(root, 'WifiOff')[0].props.color).toBe('#c00');
   });
 });

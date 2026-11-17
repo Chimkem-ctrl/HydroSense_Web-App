@@ -33,14 +33,14 @@ describe('mobile API sign-in', () => {
 });
 
 const signup: SignUpValues = {
-  firstName: ' Jane ', lastName: ' Smith ', employeeId: ' S-123 ', phone: '+63 912 345 6789',
-  email: ' Jane@Example.test ', hatcheryId: HATCHERY.id,
+  firstName: ' Jane ', lastName: ' Smith ', phone: '+63 912 345 6789',
+  email: ' Jane@Example.test ', hatcheryId: HATCHERY.id, requestedRole: 'operator',
   address: { country: 'PH', province: '1001800000', city: '1001805000', barangay: '1001805001', street: 'Address' }, emergencyContactName: ' Contact ', emergencyContactPhone: '+63 912 345 6789',
   password: 'TestPass123', confirmPassword: 'TestPass123', termsAccepted: true,
 };
 
 describe('mobile account request', () => {
-  it('sends the web signup fields to the backend without form-only values', async () => {
+  it('sends the signup fields to the backend without the removed employee ID', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'pending', user: { id: '123' } }), { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);
     await expect(requestAccount('https://example.test/functions/v1/api/', 'key', signup)).resolves.toBeUndefined();
@@ -48,9 +48,9 @@ describe('mobile account request', () => {
       method: 'POST',
       body: JSON.stringify({
         email: 'jane@example.test', password: 'TestPass123',
-        firstName: 'Jane', lastName: 'Smith', employeeId: 'S-123',
+        firstName: 'Jane', lastName: 'Smith',
         phone: '+63 912 345 6789', address: signup.address, emergencyContactName: 'Contact',
-        emergencyContactPhone: '+63 912 345 6789', hatcheryId: HATCHERY.id,
+        emergencyContactPhone: '+63 912 345 6789', hatcheryId: HATCHERY.id, requestedRole: 'operator',
       }),
     }));
   });
@@ -91,6 +91,10 @@ describe('mobile account request', () => {
         .rejects.toThrow('Select your subscribed hatchery.');
     }
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts the Benoni hatchery selection', () => {
+    expect(validateSignUp({ ...signup, hatcheryId: 'camiguin-benoni' })).toBeNull();
   });
 
   it('rejects incomplete or mismatched address selections', async () => {

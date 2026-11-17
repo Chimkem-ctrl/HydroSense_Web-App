@@ -26,6 +26,7 @@ export interface PendingAccount {
   firstName: string;
   lastName: string;
   email: string;
+  requestedRole: Role | null;
   employeeId: string | null;
   site: string | null;
   phone: string | null;
@@ -37,6 +38,7 @@ export interface AccountProfile {
   name: string;
   email: string;
   role: Role;
+  requestedRole: Role | null;
   status: string;
   site: string | null;
   createdAt: string | null;
@@ -96,7 +98,7 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile>
     if (typeof profile.first_name !== 'string' || typeof profile.last_name !== 'string') throw new Error('The profile name is invalid.');
     result = {
       id: profile.id, name: `${profile.first_name} ${profile.last_name}`.trim(), email: profile.email,
-      role: profile.role, status: profile.status, site: profile.site, createdAt: profile.created_at,
+      role: profile.role, requestedRole: profile.requested_role, status: profile.status, site: profile.site, createdAt: profile.created_at,
       employeeId: profile.employee_id, phone: profile.phone, position: profile.position, address: profile.address,
       emergencyContactName: profile.emergency_contact_name, emergencyContactPhone: profile.emergency_contact_phone,
     };
@@ -117,8 +119,14 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile>
     if (typeof field !== 'string') throw new Error(`The profile field ${key} is invalid.`);
     return field;
   };
+  const requestedRole = 'requestedRole' in result ? result.requestedRole : null;
+  if (requestedRole !== null && requestedRole !== undefined &&
+      requestedRole !== 'admin' && requestedRole !== 'manager' && requestedRole !== 'operator') {
+    throw new Error('The profile field requestedRole is invalid.');
+  }
   return {
     id: result.id, name: result.name, email: result.email, role: result.role, status: result.status,
+    requestedRole: requestedRole === 'admin' || requestedRole === 'manager' || requestedRole === 'operator' ? requestedRole : null,
     site: optionalString('site'), createdAt: optionalString('createdAt'), employeeId: optionalString('employeeId'),
     phone: optionalString('phone'), position: optionalString('position'), address: optionalString('address'),
     emergencyContactName: optionalString('emergencyContactName'), emergencyContactPhone: optionalString('emergencyContactPhone'),
@@ -130,7 +138,10 @@ export async function listPendingAccounts(): Promise<PendingAccount[]> {
   if (!Array.isArray(result) || !result.every((item) => item && typeof item.id === 'string' && typeof item.firstName === 'string' && typeof item.lastName === 'string' && typeof item.email === 'string')) {
     throw new Error('The server returned an invalid account list.');
   }
-  return result;
+  return result.map((item) => ({
+    ...item,
+    requestedRole: item.requestedRole === 'admin' || item.requestedRole === 'manager' || item.requestedRole === 'operator' ? item.requestedRole : null,
+  }));
 }
 
 export async function reviewPendingAccount(id: string, role: Role | null): Promise<void> {
