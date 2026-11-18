@@ -57,7 +57,7 @@ describe('splash routing', () => {
 
     expect(await screen.findByRole('heading', { name: 'HYDROSENSE' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Get Started' }));
-    expect(await screen.findByRole('heading', { name: 'Live monitor', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Live Monitor', level: 1 })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
   });
 });

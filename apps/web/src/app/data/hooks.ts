@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AdvisoryState, DeviceStatus, Reading, Tank } from '@hydrosense/shared';
+import type { DeviceStatus, Reading, Tank } from '@hydrosense/shared';
 import { api, liveClient } from '../api';
 import { DATA_MODE, tierConfig } from '../config';
 import { useAuth } from '../auth/RoleContext';
@@ -73,14 +73,6 @@ export function usePendingRequests(allowManager = false) {
     queryFn: () => authService.listPendingRequests(),
     enabled: user?.role === 'admin' || (allowManager && user?.role === 'manager' && Boolean(user.hatcheryId)),
     refetchInterval: tierConfig.refreshIntervalMs,
-  });
-}
-
-export function useAdvisories(tankId: string) {
-  return useQuery<AdvisoryState[]>({
-    queryKey: ['advisories', tankId],
-    queryFn: () => api.listAdvisories(tankId),
-    enabled: Boolean(tankId),
   });
 }
 

@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Dialog } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatManilaDateTime } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
-import { Check, X } from 'lucide-react-native';
+import { Check, Search, X } from 'lucide-react-native';
 import { canAccess } from './access';
 import { Button, Card, GlassDialog, Page, StateMessage, Title } from './components/ui';
 import { AlertPreferenceControls, DeviceMaintenanceControls, SecurityControls } from './components/ProfileControls';
@@ -39,6 +39,17 @@ function sameHatchery(left: string, right: string) {
   return hatcheryLabel(left).trim().toLowerCase() === hatcheryLabel(right).trim().toLowerCase();
 }
 
+function ChangePasswordRow() {
+  const { colors } = useTheme();
+  const [hover, setHover] = useState(false);
+  return <View style={{ paddingVertical: 6, gap: 3 }}>
+    <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18, fontWeight: '600' }}>Change Password</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="Change password" accessibilityState={{ disabled: true }} disabled onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} style={{ height: 24, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: hover ? colors.ink : colors.border, backgroundColor: hover ? `${colors.ink}14` : 'transparent' }}>
+      <Text style={{ color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: '600' }}>Change password</Text>
+    </Pressable>
+  </View>;
+}
+
 function ProfileRow({ label, text, detail }: { label: string; text: string; detail?: string }) {
   const { colors } = useTheme();
   return <View style={{ paddingVertical: 6, gap: 3 }}>
@@ -66,18 +77,16 @@ export function ProfileScreen() {
     <Title detail="View your account, role, hatchery, and alert preferences.">My profile</Title>
     {DATA_MODE === 'api' && profile.isLoading ? <Card><StateMessage message="Loading profile..." loading /></Card> :
       DATA_MODE === 'api' && profile.isError ? <Card><StateMessage message={`Could not load profile: ${profile.error.message}`} /><Button label="Retry profile" secondary onPress={() => void profile.refetch()} /></Card> : <>
-        <Card title="Contact details">
+        <Card title="Contact details & assignment">
+          <ProfileRow label="Name" text={value(profile.data?.name ?? user?.name)} />
+          <ProfileRow label="Role" text={value(profile.data?.role ?? user?.role)} />
+          <ProfileRow label="Employee ID" text={value(profile.data?.employeeId)} />
+          {user?.role !== 'admin' && <ProfileRow label="Hatchery / site" text={profile.data?.site?.trim() ? hatcheryLabel(profile.data.site) : 'Not provided'} />}
+          <ProfileRow label="Position" text={value(profile.data?.position)} />
           <ProfileRow label="Email" text={value(profile.data?.email)} />
           <ProfileRow label="Phone" text={value(profile.data?.phone)} />
           <ProfileRow label="Address" text={value(profile.data?.address)} />
-        </Card>
-        <Card title="Role & assignment">
-          <ProfileRow label="Name" text={value(profile.data?.name ?? user?.name)} />
-          <ProfileRow label="Role" text={value(profile.data?.role ?? user?.role)} />
-          <ProfileRow label="Requested role" text={value(profile.data?.requestedRole)} />
-          <ProfileRow label="Position" text={value(profile.data?.position)} />
-          <ProfileRow label="Hatchery / site" text={profile.data?.site?.trim() ? hatcheryLabel(profile.data.site) : 'Not provided'} />
-          <ProfileRow label="Employee ID" text={value(profile.data?.employeeId)} />
+          <ChangePasswordRow />
         </Card>
         <Card title="Emergency contact">
           <ProfileRow label="Name" text={value(profile.data?.emergencyContactName)} />
@@ -90,7 +99,6 @@ export function ProfileScreen() {
       </>}
     <Card title="Alert notifications"><AlertPreferenceControls /></Card>
     <Card title="Appearance"><AppearanceOptions /></Card>
-    <Card title="Security"><SecurityControls /></Card>
     <Card title="Device maintenance">
       {isLoading ? <StateMessage message="Loading selected tank..." loading /> : error ? <><StateMessage message={`Could not load tank: ${error.message}`} /><Button label="Retry" secondary onPress={refetch} /></> : <>
         {user?.role === 'admin' && <View style={{ gap: 8 }}>
@@ -123,6 +131,8 @@ export function UsersScreen() {
   const allowed = canAccess(user?.role ?? null, 'users');
   const admin = user?.role === 'admin';
   const profile = useProfile();
+  const [requestSearch, setRequestSearch] = useState('');
+  const [teamSearch, setTeamSearch] = useState<Record<string, string>>({});
   const [selectedRoles, setSelectedRoles] = useState<Record<string, Role | undefined>>({});
   const [confirmation, setConfirmation] = useState<UserConfirmation | null>(null);
   const users = useQuery({ queryKey: ['admin-users', user?.id], queryFn: () => api.listUsers(), enabled: allowed && (admin || DATA_MODE === 'mock' || Boolean(profile.data?.site?.trim())) });
@@ -154,18 +164,26 @@ export function UsersScreen() {
     buttonLabel: confirmation.action === 'approve' ? 'Approve request' : confirmation.action === 'reject' ? 'Reject request' : 'Remove account',
   };
   const confirmationBusy = review.isPending || remove.isPending;
+  const matches = (query: string, fields: Array<string | null | undefined>) => {
+    const needle = query.trim().toLowerCase();
+    return !needle || fields.some((field) => field?.toLowerCase().includes(needle));
+  };
+  const filteredPending = (pending.data ?? []).filter((account) => matches(requestSearch, [account.firstName, account.lastName, ` ${account.lastName}`, account.email, account.phone, account.requestedRole, account.site, account.createdAt ? formatManilaDateTime(account.createdAt) : '']));
   return <Page maxWidth={680}>
     <Title detail={admin ? 'Manage team accounts and review requests.' : 'Review accounts for your hatchery.'}>Users & roles</Title>
     {!admin && DATA_MODE === 'api' && profile.isLoading ? <StateMessage message="Loading hatchery assignment..." loading /> :
       !admin && DATA_MODE === 'api' && profile.isError ? <Card><StateMessage message={`Could not load hatchery: ${profile.error.message}`} /><Button label="Retry" secondary onPress={() => void profile.refetch()} /></Card> :
       !admin && DATA_MODE === 'api' && !profile.data?.site?.trim() ? <StateMessage message="No hatchery is assigned to your account. Contact an administrator." /> : <>
-      {admin && <Card title="Pending requests" action={pending.data && <Text style={styles.pendingCount}>{pending.data.length} pending</Text>}>
+      {admin && <Card title="Pending requests" action={pending.data && <View style={{ flex: 1, minWidth: 150, maxWidth: 260, gap: 6, alignItems: 'stretch' }}>
+        {pending.data.length > 0 && <SearchBox label="Search pending requests" value={requestSearch} onChange={setRequestSearch} colors={colors} />}
+        <Text style={styles.pendingCount}>{pending.data.length} pending</Text>
+      </View>}>
         <Text style={styles.intro}>Review new account requests and assign a role.</Text>
         {DATA_MODE === 'mock' ? <StateMessage message="Account review is unavailable in demo mode." /> : pending.isLoading ? <StateMessage message="Loading requests..." loading /> :
           pending.isError ? <><StateMessage message={`Could not load requests: ${pending.error.message}`} /><Button label="Retry requests" secondary onPress={() => void pending.refetch()} /></> :
-          !pending.data?.length ? <StateMessage message="No account requests are awaiting review." /> :
-          [...groupByHatchery(pending.data, (item) => item.site)].map(([site, accounts]) => <View key={site} style={styles.group}>
+          !pending.data?.length ? <StateMessage message="No account requests are awaiting review." /> : [...groupByHatchery(pending.data, (item) => item.site)].map(([site, allRequests]) => { const accounts = allRequests.filter((account) => filteredPending.includes(account)); return <View key={site} style={styles.group}>
             <Text style={styles.site}>{site}</Text>
+            {!accounts.length && <StateMessage message="No pending requests match your search." />}
             {accounts.map((account) => <View key={account.id} style={styles.account}>
               <View style={styles.requestHeader}><Text style={styles.name}>{account.firstName} {account.lastName}</Text><Text style={styles.pendingBadge}>Status: Pending</Text></View>
               <Text style={styles.detail}>{account.email}</Text>
@@ -187,7 +205,7 @@ export function UsersScreen() {
                 <Pressable accessibilityRole="button" accessibilityLabel={`Reject ${account.firstName} ${account.lastName}`} disabled={review.isPending} onPress={() => setConfirmation({ action: 'reject', id: account.id, name: `${account.firstName} ${account.lastName}` })} style={[styles.requestActionButton, styles.rejectAction]}><X size={19} color={colors.critical} /></Pressable>
               </View>
             </View>)}
-          </View>)}
+          </View>; })}
         {review.isError && <StateMessage message={`Could not review request: ${review.error.message}`} />}
       </Card>}
       {admin && <Card title="Admin accounts">
@@ -205,8 +223,12 @@ export function UsersScreen() {
         <Text style={styles.intro}>View team accounts grouped by hatchery.</Text>
         {users.isLoading ? <StateMessage message="Loading accounts..." loading /> : users.isError ? <><StateMessage message={`Could not load accounts: ${users.error.message}`} /><Button label="Retry accounts" secondary onPress={() => void users.refetch()} /></> :
           !visibleUsers.length ? <StateMessage message="No team users are registered." /> :
-          accountsByHatchery.map(([site, accounts]) => <View key={site} style={styles.group}>
-            <View style={styles.siteHeader}><Text style={styles.site}>{site}</Text><Text style={styles.accountCount}>{accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}</Text></View>
+          accountsByHatchery.map(([site, allAccounts]) => { const query = teamSearch[site] ?? ''; const accounts = allAccounts.filter((account) => matches(query, [account.name, account.email, account.phone, account.employeeId, account.role, account.lastActive ? formatManilaDateTime(account.lastActive) : ''])); return <View key={site} style={styles.group}>
+            <View style={styles.siteHeader}><Text style={styles.site}>{site}</Text>
+              <View style={{ flexGrow: 1, minWidth: 180 }}><SearchBox label={`Search accounts in ${site}`} value={query} onChange={(next) => setTeamSearch((current) => ({ ...current, [site]: next }))} colors={colors} /></View>
+              <Text style={styles.accountCount}>{accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}</Text>
+            </View>
+            {!accounts.length && <StateMessage message="No accounts match your search." />}
             {accounts.map((account) => <View key={account.id} style={styles.account}>
               <View style={styles.accountHeading}><Text style={styles.name}>{account.name || account.email}</Text><View style={styles.roleBadge}><Text style={styles.roleBadgeText}>{account.role}</Text></View></View>
               <Text style={styles.detail}>{account.email}</Text>
@@ -215,7 +237,7 @@ export function UsersScreen() {
               {account.lastActive && <Text style={styles.detail}>Last active: {formatManilaDateTime(account.lastActive)} PHT</Text>}
               {admin && account.role !== 'admin' && DATA_MODE === 'api' && <Pressable accessibilityRole="button" disabled={remove.isPending} onPress={() => setConfirmation({ action: 'remove', id: account.id, name: account.name || account.email })} style={styles.removeButton}><Text style={styles.removeButtonText}>Remove account</Text></Pressable>}
             </View>)}
-          </View>)}
+          </View>; })}
         {remove.isError && <StateMessage message={`Could not remove account: ${remove.error.message}`} />}
       </Card>
     </>}
@@ -232,6 +254,13 @@ export function UsersScreen() {
   </Page>;
 }
 
+function SearchBox({ label, value, onChange, colors }: { label: string; value: string; onChange: (text: string) => void; colors: Palette }) {
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 46, paddingHorizontal: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.65)', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.06)' }}>
+    <Search size={17} color={colors.muted} />
+    <TextInput accessibilityLabel={label} placeholder="Search name, email, ID, role or date" placeholderTextColor={colors.muted} value={value} onChangeText={onChange} autoCapitalize="none" autoCorrect={false} style={{ flex: 1, color: colors.ink, fontSize: 14, paddingVertical: 8 }} />
+  </View>;
+}
+
 type UserConfirmation =
   | { action: 'approve'; id: string; name: string; role: Role }
   | { action: 'reject' | 'remove'; id: string; name: string };
@@ -241,11 +270,11 @@ const createManagementStyles = (colors: Palette) => StyleSheet.create({
   group: { gap: 10, marginTop: 4 },
   site: { color: colors.teal, fontSize: 15, lineHeight: 21, fontWeight: '700' },
   siteHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
-  accountCount: { color: colors.normal, fontSize: 12, fontWeight: '700' },
+  accountCount: { color: colors.normal, fontSize: 12, fontWeight: '700', backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: uiScale.radius.pill, overflow: 'hidden' },
   account: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 14, gap: 8, backgroundColor: 'transparent' },
   requestHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
   pendingBadge: { color: colors.critical, fontSize: 12, fontWeight: '700' },
-  pendingCount: { color: colors.critical, fontSize: 12, fontWeight: '700' },
+  pendingCount: { color: colors.critical, fontSize: 12, fontWeight: '700', backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: uiScale.radius.pill, overflow: 'hidden' },
   requestActions: { flexDirection: 'row', gap: 10 },
   requestActionButton: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: uiScale.radius.pill },
   approveAction: { borderColor: colors.normal, backgroundColor: `${colors.normal}12` },

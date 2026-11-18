@@ -679,7 +679,7 @@
 .parameter-icon--orange { color: #f3bb68; background: rgba(245, 183, 94, 0.12); }
 .summary-icon--critical { color: #f17e76; background: rgba(244, 119, 113, 0.12); }
 .summary-icon--violet,
-.parameter-icon--violet { color: #c3a2f5; background: rgba(172, 133, 233, 0.12); }
+.parameter-icon--violet { color: rgb(var(--overlay-accent, 119, 114, 176)); background: rgba(var(--overlay-accent, 119, 114, 176), 0.12); }
 
 .summary-copy {
   display: grid;
@@ -928,8 +928,8 @@
 }
 
 .parameter-icon--violet {
-  color: #c3a2f5;
-  background: rgba(172, 133, 233, 0.12);
+  color: rgb(var(--overlay-accent, 119, 114, 176));
+  background: rgba(var(--overlay-accent, 119, 114, 176), 0.12);
 }
 
 .parameter-card .dashboard-eyebrow {

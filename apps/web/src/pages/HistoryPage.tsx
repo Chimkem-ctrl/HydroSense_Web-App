@@ -7,6 +7,7 @@ import { api } from '../app/api';
 import { tierConfig } from '../app/config';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { PageHeading } from '../components/common/PageHeading';
+import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState, StaleState } from '../components/common/States';
 
 type SortKey = 'timestamp' | MeasuredParameter;
@@ -56,11 +57,11 @@ export default function HistoryPage() {
 
   return (
     <div className="stack history-page">
-      <PageHeading title="Historical logs" />
+      <PageHeading title="Historical Logs" />
       <section className="card inline history-filters" aria-label="History filters">
         <label className="field">From<input type="date" value={from} min={minimumDate} max={to} onChange={(event) => { setFrom(event.target.value); setPage(0); }} /></label>
         <label className="field">To<input type="date" value={to} min={from} max={maximumDate} onChange={(event) => { setTo(event.target.value); setPage(0); }} /></label>
-        <label className="field">Parameter<select value={parameter} onChange={(event) => { setParameter(event.target.value as MeasuredParameter | 'all'); setPage(0); }}><option value="all">All measured</option><option value="temperature">Temperature</option><option value="do">Dissolved oxygen</option><option value="ph">pH</option></select></label>
+        <label className="field">Parameter<Select value={parameter === 'all' ? '' : parameter} clearable placeholder="Parameter" onChange={(event) => { setParameter((event.target.value || 'all') as MeasuredParameter | 'all'); setPage(0); }}><option value="temperature">Temperature</option><option value="do">Dissolved oxygen</option><option value="ph">pH</option></Select></label>
       </section>
       {query.dataUpdatedAt && Date.now() - query.dataUpdatedAt > 3 * 3_600_000 && <StaleState updatedAt={query.dataUpdatedAt} />}
       {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : rows.length === 0 ? <EmptyState>No readings match the selected date range and parameter.</EmptyState> : (

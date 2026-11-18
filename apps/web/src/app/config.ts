@@ -66,16 +66,16 @@ export const ROLE_ACCESS: Record<string, Role[]> = {
 };
 
 export const NAV_ITEMS = [
-  { path: '/', label: 'Live monitor', group: 'Monitor', roles: ROLE_ACCESS.live },
-  { path: '/tanks', label: 'Tanks & system health', group: 'Monitor', roles: ROLE_ACCESS.tanks },
+  { path: '/', label: 'Live Monitor', group: 'Monitor', roles: ROLE_ACCESS.live },
+  { path: '/tanks', label: 'Tanks & System Health', group: 'Monitor', roles: ROLE_ACCESS.tanks },
   { path: '/trends', label: 'Trends', group: 'Monitor', roles: ROLE_ACCESS.trends },
-  { path: '/history', label: 'Historical logs', group: 'Records', roles: ROLE_ACCESS.history },
-  { path: '/alerts', label: 'Alerts center', group: 'Monitor', roles: ROLE_ACCESS.alerts },
-  { path: '/entries', label: 'Activity logs', group: 'Records', roles: ROLE_ACCESS.entries },
+  { path: '/history', label: 'Historical Logs', group: 'Records', roles: ROLE_ACCESS.history },
+  { path: '/alerts', label: 'Alerts Center', group: 'Monitor', roles: ROLE_ACCESS.alerts },
+  { path: '/entries', label: 'Activity Logs', group: 'Records', roles: ROLE_ACCESS.entries },
   { path: '/calibration', label: 'Calibration', group: 'Records', roles: ROLE_ACCESS.calibration },
   { path: '/reports', label: 'Reports', group: 'Records', roles: ROLE_ACCESS.reports },
   { path: '/validation', label: 'Validation', group: 'Records', roles: ROLE_ACCESS.validation },
-  { path: '/admin/users', label: 'Users & roles', group: 'Manage', roles: ROLE_ACCESS.users },
-  { path: '/admin/logs', label: 'Audit & system logs', group: 'Manage', roles: ROLE_ACCESS.logs },
-  { path: '/profile', label: 'My profile', group: 'Manage', roles: ROLE_ACCESS.profile },
+  { path: '/admin/users', label: 'Users & Roles', group: 'Manage', roles: ROLE_ACCESS.users },
+  { path: '/admin/logs', label: 'Audit & System Logs', group: 'Manage', roles: ROLE_ACCESS.logs },
+  { path: '/profile', label: 'My Profile', group: 'Manage', roles: ROLE_ACCESS.profile },
 ] as const;

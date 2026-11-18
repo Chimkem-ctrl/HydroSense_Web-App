@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Brush, CartesianGrid, Line, LineChart, ReferenceArea, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { can, DEFAULT_THRESHOLDS, formatManilaDateTime, getManilaDateString, getRaisingDay, isValidMeasurement, toCsv } from '@hydrosense/shared';
-import type { AdvisoryState, AlertItem, ManualEntry, MeasuredParameter, Reading, Tank } from '@hydrosense/shared';
+import type { AlertItem, MeasuredParameter, Reading, Tank } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
 import { tierConfig } from '../app/config';
 import { api } from '../app/api';
@@ -27,11 +27,6 @@ const defaultParameters: ChartParameter[] = [
   { key: 'temperature', title: 'Temperature', unit: '°C', color: 'var(--accent)', safeMin: 26, safeMax: 30 },
   { key: 'do', title: 'Dissolved oxygen', unit: 'mg/L', color: 'var(--chart-do)', safeMin: 4 },
   { key: 'ph', title: 'pH', unit: 'pH', color: 'var(--chart-ph)', safeMin: 6, safeMax: 8 },
-] as const;
-
-const advisoryKinds = [
-  { kind: 'salinity', title: 'Salinity', type: 'refractometer_salinity', unit: 'ppt' },
-  { kind: 'ammonia', title: 'Ammonia', type: 'ammonia_test_kit', unit: 'mg/L' },
 ] as const;
 
 function isInRange(value: number, parameter: ChartParameter) {
@@ -65,11 +60,6 @@ function validReadings(rows: Reading[], parameter: MeasuredParameter) {
     const value = metricValue(row, parameter);
     return isValidMeasurement(parameter, value);
   });
-}
-
-function latestEntry(entries: ManualEntry[], type: typeof advisoryKinds[number]['type']) {
-  return entries.filter((entry) => entry.type === type && entry.value !== undefined)
-    .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))[0];
 }
 
 function renderNumber(value: number | null | undefined, digits = 2) {
@@ -124,14 +114,6 @@ export default function TrendsPage() {
   const alertsQuery = useQuery({ queryKey: ['trend-alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) && tierConfig.analytics });
   const tanksQuery = useQuery({ queryKey: ['tanks'], queryFn: () => api.listTanks(), enabled: Boolean(tankId) && tierConfig.analytics });
   const manualEntriesQuery = useQuery({ queryKey: ['trend-manual-entries', tankId], queryFn: () => api.listManualEntries(tankId), enabled: Boolean(tankId) && tierConfig.analytics });
-  const advisoriesQuery = useQuery({
-    queryKey: ['trend-advisories', tankId],
-    queryFn: () => {
-      if (!tankId) throw new Error('Select a tank to load advisory status.');
-      return api.listAdvisories(tankId);
-    },
-    enabled: Boolean(tankId) && tierConfig.analytics,
-  });
   const thresholdsQuery = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
   const parameters = defaultParameters.map((parameter) => {
     const threshold = thresholdsQuery.data?.find((item) => item.parameter === parameter.key)
@@ -160,30 +142,14 @@ export default function TrendsPage() {
     ...counts,
   }));
   const selectedTank = (tanksQuery.data ?? []).find((tank: Tank) => tank.id === tankId);
-  const manualEntries = manualEntriesQuery.data ?? [];
-  const advisoryStates = advisoriesQuery.data ?? [];
   const from = dates.from.getTime();
   const to = dates.to.getTime();
   const chartZoomKey = `${tankId ?? ''}:${queryDates.from}:${queryDates.to}`;
-  const advisoryTimeline = [
-    ...manualEntries.filter((entry) => Date.parse(entry.timestamp) >= from && Date.parse(entry.timestamp) <= to).map((entry) => ({
-      id: entry.id,
-      timestamp: entry.timestamp,
-      title: entry.type === 'refractometer_salinity' ? 'Salinity check' : entry.type === 'ammonia_test_kit' ? 'Ammonia check' : entry.type === 'rain_event' ? 'Rain event' : 'Freshwater dosing',
-      detail: entry.value === undefined ? entry.note ?? entry.type : `${entry.value} ${entry.unit ?? ''}`,
-    })),
-    ...advisoryStates.filter((state: AdvisoryState) => Date.parse(state.updatedAt) >= from && Date.parse(state.updatedAt) <= to).map((state: AdvisoryState) => ({
-      id: `advisory-${state.kind}-${state.updatedAt}`,
-      timestamp: state.updatedAt,
-      title: `${state.kind === 'salinity' ? 'Salinity' : 'Ammonia'} advisory updated`,
-      detail: `${state.level} · ${state.firedRule}`,
-    })),
-  ].sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
   const xTicks = range === '24h' || (range === 'custom' && to - from <= 2 * 86_400_000)
     ? threeHourTicks(from, to)
     : dailyTicks(from, to);
-  const loading = readingsQuery.isLoading || alertsQuery.isLoading || tanksQuery.isLoading || manualEntriesQuery.isLoading || advisoriesQuery.isLoading || thresholdsQuery.isLoading;
-  const errorQuery = [readingsQuery, alertsQuery, tanksQuery, manualEntriesQuery, advisoriesQuery, thresholdsQuery].find((item) => item.isError);
+  const loading = readingsQuery.isLoading || alertsQuery.isLoading || tanksQuery.isLoading || manualEntriesQuery.isLoading || thresholdsQuery.isLoading;
+  const errorQuery = [readingsQuery, alertsQuery, tanksQuery, manualEntriesQuery, thresholdsQuery].find((item) => item.isError);
   const dateFormatter = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false });
 
   async function exportChart(parameter: MeasuredParameter | 'alert-frequency') {
@@ -289,7 +255,7 @@ export default function TrendsPage() {
       {exportMessage && <p className="trends-export-message" role="status">{exportMessage}</p>}
       {!tierConfig.analytics ? <section className="card glass"><h2 className="card-title">Analytics requires an upgrade</h2><p className="muted">Trend charts are available on premium and enterprise tiers.</p></section> :
         loading ? <LoadingState /> : errorQuery ? <ErrorState error={errorQuery.error} onRetry={() => {
-          void Promise.all([readingsQuery.refetch(), alertsQuery.refetch(), tanksQuery.refetch(), manualEntriesQuery.refetch(), advisoriesQuery.refetch(), thresholdsQuery.refetch()]);
+          void Promise.all([readingsQuery.refetch(), alertsQuery.refetch(), tanksQuery.refetch(), manualEntriesQuery.refetch(), thresholdsQuery.refetch()]);
         }} /> : (
           <>
             <section className="trends-kpis" aria-label="Latest sensor readings and advisory status">
@@ -301,16 +267,6 @@ export default function TrendsPage() {
                   <p className="trends-kpi-label">{parameter.title}</p>
                   <p className="trends-kpi-value">{renderNumber(statistic.latest)} <span>{parameter.unit}</span></p>
                   <p className="trends-kpi-detail">{latestRow ? `Latest valid · ${formatManilaDateTime(new Date(latestRow.timestamp))} PHT` : 'No valid sensor reading in this period'}</p>
-                </article>;
-              })}
-              {advisoryKinds.map((advisory) => {
-                const entry = latestEntry(manualEntries.filter((item) => Date.parse(item.timestamp) >= from && Date.parse(item.timestamp) <= to), advisory.type);
-                const status = advisoryStates.find((item: AdvisoryState) => item.kind === advisory.kind);
-                return <article className="card glass trends-kpi-card trends-advisory-kpi" key={advisory.kind}>
-                  <p className="trends-kpi-label">{advisory.title} <span>Advisory</span></p>
-                  <p className="trends-kpi-value trends-risk-value">{status ? status.level[0].toUpperCase() + status.level.slice(1) : '—'}</p>
-                  <span className={`trends-risk-badge trends-risk-${status?.level ?? 'unknown'}`}>{status ? `${status.level === 'low' ? 'Low risk' : status.level === 'watch' ? 'Check needed' : 'High risk'}` : 'No advisory status'}</span>
-                  <p className="trends-kpi-detail">{entry ? `${renderNumber(entry.value)} ${entry.unit ?? advisory.unit} · ${formatManilaDateTime(new Date(entry.timestamp))} PHT` : `No ${advisory.title.toLowerCase()} reading in this period`}</p>
                 </article>;
               })}
             </section>
@@ -487,18 +443,7 @@ export default function TrendsPage() {
             </section>
 
             <section className="trends-secondary-grid">
-              <article className="card glass trends-advisory-panel">
-                <h2 className="card-title">Advisory evidence timeline</h2>
-                <p className="small muted">Manual salinity and ammonia checks, plus logged environmental events.</p>
-                {advisoryTimeline.length === 0
-                  ? <EmptyState>No advisory evidence or environmental entries in this range.</EmptyState>
-                  : <ol className="trends-timeline">{advisoryTimeline.map((event) => <li key={event.id}>
-                      <time>{formatManilaDateTime(new Date(event.timestamp))} PHT</time>
-                      <strong>{event.title}</strong>
-                      <span>{event.detail}</span>
-                    </li>)}</ol>}
-              </article>
-              <article className="card glass">
+              <article className="card glass trends-alert-frequency-card">
                 <header className="trends-section-heading">
                   <div><h2 className="card-title">Alert frequency</h2><p>Alerts per day · selected range</p></div>
                   {canExport && <div className="trends-inline-actions"><button type="button" className="button trends-chart-export" disabled={!alertFrequency.length} onClick={() => void exportChart('alert-frequency')}>PNG</button><button type="button" className="button trends-chart-export" disabled={!alertFrequency.length} onClick={exportAlertCsv}>CSV</button></div>}
@@ -527,7 +472,7 @@ export default function TrendsPage() {
               </article>
             </section>
 
-            <p className="trends-footer-note">Temperature, dissolved oxygen and pH are sensor measurements. Salinity and ammonia are advisory values based on manual tests and rule-based guidance; they are not direct sensor readings.</p>
+            <p className="trends-footer-note">Temperature, dissolved oxygen and pH are sensor measurements.</p>
           </>
         )}
     </div>

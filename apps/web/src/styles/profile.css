@@ -28,6 +28,14 @@
 .profile-page .profile-alert-row { display: grid; gap: 6px; min-width: 0; }
 .profile-page .profile-actions { display: grid; gap: 8px; }
 .profile-page .profile-actions .button { width: 100%; }
+.profile-page .profile-details > .profile-security { align-items: center; padding-block: 8px; }
+.profile-page .profile-security .button { width: 100%; min-height: 0; height: 24px; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--control-border); background: transparent; color: var(--text); font-size: 12px; line-height: 1; cursor: not-allowed; opacity: 1; transition: background-color 200ms ease, border-color 200ms ease, backdrop-filter 200ms ease; }
+.profile-page .profile-security .button:hover { background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .5); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+[data-theme='light'] .profile-page .profile-security .button:hover { background: rgba(20, 33, 58, .08); border-color: rgba(20, 33, 58, .35); }
+.profile-page #device-maintenance { grid-column: 1 / -1; }
+.profile-page .profile-maintenance-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items: end; gap: 16px; }
+.profile-page .profile-maintenance-fields .profile-actions { display: flex; flex-wrap: wrap; align-self: end; align-items: center; }
+.profile-page .profile-maintenance-fields .profile-actions .button { flex: 1 1 0; width: auto; height: 44px; min-height: 44px; }
 .profile-page .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
 .profile-page .settings-row-label { font-weight: 600; }
 .profile-page .toggle-switch { appearance: none; position: relative; flex: 0 0 auto; width: 48px; height: 28px; margin: 0; border: 1px solid var(--control-border); border-radius: var(--radius-pill); background: var(--surface); }

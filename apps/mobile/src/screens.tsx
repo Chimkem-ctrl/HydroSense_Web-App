@@ -92,6 +92,7 @@ const createLogScreenStyles = (colors: Palette) => StyleSheet.create({
 
 function ReadingCard({ parameter, reading, threshold, stale }: { parameter: MeasuredParameter; reading: Reading; threshold?: Threshold; stale: boolean }) {
   const { colors } = useTheme();
+  const lineColor = parameter === 'temperature' ? '#fb923c' : parameter === 'do' ? '#2dd4bf' : '#a78bfa';
   const value = parameter === 'do' ? reading.doMgL : reading[parameter];
   const status = getParameterStatus(parameter, value, threshold);
   const label = parameter === 'temperature' ? 'Temperature' : parameter === 'do' ? 'Dissolved oxygen' : 'pH';
@@ -117,12 +118,12 @@ function ReadingCard({ parameter, reading, threshold, stale }: { parameter: Meas
     <Text style={{ color: colors.muted, lineHeight: 20 }}>{!valid ? 'Invalid reading excluded' : stale ? 'Last reading; status unavailable' : status.distance}{'\n'}Safe {safe}</Text>
     {gauge && <View accessibilityRole="image" accessibilityLabel={`${label}, ${formatParameter(parameter, value)}. Safe ${safe}. ${statusLabel}.`} style={{ gap: uiScale.spacing[2], marginTop: uiScale.spacing[1] }}>
       <View style={{ height: 8, borderRadius: 8, marginHorizontal: 7, backgroundColor: colors.border }}>
-        <View style={{ position: 'absolute', left: `${gauge.safeStart}%`, width: `${gauge.safeEnd - gauge.safeStart}%`, height: 8, borderRadius: 8, backgroundColor: stale ? colors.muted : colors.normal }} />
-        <View style={{ position: 'absolute', left: `${gauge.position}%`, top: -4, marginLeft: -7, height: 16, width: 16, borderRadius: 8, borderWidth: 2, borderColor: stale ? colors.muted : colors.ink, backgroundColor: colors.surface }} />
+        <View style={{ position: 'absolute', left: `${gauge.safeStart}%`, width: `${gauge.safeEnd - gauge.safeStart}%`, height: 8, borderRadius: 8, backgroundColor: stale ? colors.muted : lineColor }} />
+        <View style={{ position: 'absolute', left: `${gauge.position}%`, top: -4, marginLeft: -7, height: 16, width: 16, borderRadius: 8, borderWidth: 2, borderColor: stale ? colors.muted : lineColor, backgroundColor: colors.surface }} />
       </View>
       <View style={{ height: 18, marginHorizontal: 7 }}>
-        {min !== undefined && <Text style={{ position: 'absolute', left: `${gauge.safeStart}%`, color: colors.muted, fontSize: 12 }}>{min}</Text>}
-        {max !== undefined && <Text style={{ position: 'absolute', left: `${gauge.safeEnd}%`, color: colors.muted, fontSize: 12 }}>{max}</Text>}
+        {min !== undefined && <Text style={{ position: 'absolute', left: `${gauge.safeStart}%`, color: stale ? colors.muted : lineColor, fontSize: 12 }}>{min}</Text>}
+        {max !== undefined && <Text style={{ position: 'absolute', left: `${gauge.safeEnd}%`, color: stale ? colors.muted : lineColor, fontSize: 12 }}>{max}</Text>}
       </View>
       <Text style={{ color: colors.muted, fontSize: 12 }}>Display scale {gauge.scaleMin}–{gauge.scaleMax} {unit}{value < gauge.scaleMin || value > gauge.scaleMax ? ' · marker at scale edge' : ''}</Text>
     </View>}
@@ -145,7 +146,6 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
   const { tankId, tanks, isLoading: tanksLoading, error: tanksError } = useTankSelection();
   const { data: reading, isLoading, isError, error: readingError, refetch } = useQuery({ queryKey: ['latest-reading', tankId], queryFn: () => api.getLatestReading(tankId), enabled: Boolean(tankId) });
   const thresholds = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
-  const advisories = useQuery({ queryKey: ['advisories', tankId], queryFn: () => api.listAdvisories(tankId), enabled: Boolean(tankId) });
   const devices = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses() });
   const alerts = useQuery({ queryKey: ['alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
   const tank = tanks.find((item) => item.id === tankId);
@@ -162,15 +162,11 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>
         {(['temperature', 'do', 'ph'] as const).map((parameter) => <View key={parameter} style={{ width: width >= 950 ? '32%' : width >= 600 ? '48%' : '100%' }}><ReadingCard parameter={parameter} reading={reading} threshold={thresholds.data?.find((item) => item.parameter === parameter)} stale={freshness?.stale ?? false} /></View>)}
       </View>
-      <Card title="Water-quality advisories">
-        <Text style={{ color: colors.muted, lineHeight: 20 }}>Salinity and ammonia are not measured by the sensors. These rule-based advisories are not readings.</Text>
-        {advisories.isLoading ? <StateMessage message="Loading advisories…" loading /> : advisories.isError ? <StateMessage message="Could not load advisories." /> : (advisories.data ?? []).length === 0 ? <StateMessage message="No advisories are available for this tank." /> : advisories.data?.map((item) => <DataRow key={item.kind} label={`${item.kind === 'salinity' ? 'Salinity' : 'Ammonia'} risk`} value={item.level.toUpperCase()} detail={item.firedRule} />)}
-      </Card>
       <Card title="Last update"><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text><Text style={{ color: colors.muted }}>Readings are sampled every 3 hours.</Text></Card>
       <Card title="Device connection">
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: deviceExpanded }} onPress={() => setDeviceExpanded((current) => !current)} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.teal }}>{deviceExpanded ? 'Hide device details' : 'Show device details'}</Text></Pressable>
         {deviceExpanded && (devices.isLoading ? <StateMessage message="Loading device status…" loading /> : devices.isError ? <StateMessage message={`Could not load device status: ${devices.error.message}`} /> : !device ? <StateMessage message="No device is registered for this tank." /> : <>
-          <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} />
+          <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} valueColor={device.online ? colors.normal : colors.critical} />
           <DataRow label="Battery" value={device.batteryPct > 0 ? `${device.batteryPct}%` : 'Unavailable'} detail={`Power source: ${device.powerSource}`} />
           {device.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
           {alerts.isError ? <StateMessage message="Could not load alerts." /> : <DataRow label="Active alerts" value={alerts.isLoading ? 'Loading…' : `${openCount}`} />}
@@ -186,20 +182,18 @@ function TankSummaryCard({ tank, onOpen, onRemove }: { tank: { id: string; name:
   const { colors } = useTheme();
   const reading = useQuery({ queryKey: ['latest-reading', tank.id], queryFn: () => api.getLatestReading(tank.id) });
   const statuses = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses() });
-  const advisories = useQuery({ queryKey: ['advisories', tank.id], queryFn: () => api.listAdvisories(tank.id) });
   const device = statuses.data?.find((item) => item.deviceId === tank.deviceId);
   const day = getRaisingDay(tank.rearingStartDate);
   const freshness = reading.data ? readingFreshness(reading.data.timestamp, device?.online) : null;
   return <Card title={tank.name}>
     <Text style={{ color: colors.muted }}>{tank.deviceId} · Rearing day {day} of 21</Text>
     <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 21, now: day }} style={{ height: 6, backgroundColor: colors.border, borderRadius: 3 }}><View style={{ width: `${day / 21 * 100}%`, height: 6, backgroundColor: colors.teal, borderRadius: 3 }} /></View>
-    {statuses.isLoading ? <StateMessage message="Loading connection…" loading /> : statuses.isError ? <StateMessage message={`Could not load connection: ${statuses.error.message}`} /> : <Text style={{ color: colors.ink }}>{device ? device.online ? 'Online' : 'Offline' : 'No device status'}</Text>}
+    {statuses.isLoading ? <StateMessage message="Loading connection…" loading /> : statuses.isError ? <StateMessage message={`Could not load connection: ${statuses.error.message}`} /> : <Text style={{ color: device ? device.online ? colors.normal : colors.critical : colors.muted, fontWeight: '700' }}>{device ? device.online ? 'Online' : 'Offline' : 'No device status'}</Text>}
     {reading.isLoading ? <StateMessage message="Loading readings…" loading /> : reading.isError ? <StateMessage message={`Could not load readings: ${reading.error.message}`} /> : reading.data ? <Text style={{ color: colors.ink }}>{(['temperature', 'do', 'ph'] as const).map((parameter) => {
       const value = parameter === 'do' ? reading.data!.doMgL : reading.data![parameter];
       return isValidMeasurement(parameter, value) ? formatParameter(parameter, value) : `${parameter}: Check probe`;
     }).join(' · ')}</Text> : <StateMessage message="No reading available." />}
     {freshness && <Text style={{ color: colors.muted }}>{freshness.stale ? 'Stale reading' : 'Last reading'} · {readingAge(freshness.ageMs)}</Text>}
-    {advisories.isLoading ? <StateMessage message="Loading advisories…" loading /> : advisories.isError ? <Text style={{ color: colors.warning }}>Advisories unavailable: {advisories.error.message}</Text> : advisories.data?.map((item) => <Text key={item.kind} style={{ color: colors.muted }}>{item.kind === 'salinity' ? 'Salinity' : 'Ammonia'} advisory: {item.level.toUpperCase()} · {item.firedRule}</Text>)}
     <Button label="View live" secondary onPress={onOpen} />
     {onRemove && <Button label="Remove tank" secondary onPress={onRemove} />}
   </Card>;
@@ -492,9 +486,7 @@ export function ActivityLogsScreen() {
       setFormError('');
       await queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
       if (scope !== 'hatchery') {
-        await queryClient.invalidateQueries({ queryKey: ['advisories', scope] });
       } else {
-        await queryClient.invalidateQueries({ queryKey: ['advisories'] });
       }
     },
   });
@@ -715,7 +707,6 @@ function ManualEntryCard() {
       setSalinity(''); setAmmonia(''); setNotes('');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['activity-logs'] }),
-        queryClient.invalidateQueries({ queryKey: ['advisories', tankId] }),
       ]);
       Alert.alert('Manual readings saved', 'The field readings are available in the activity log.');
     },

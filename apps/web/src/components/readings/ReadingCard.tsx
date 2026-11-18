@@ -29,7 +29,7 @@ export function ReadingCard({ parameter, reading, threshold, showRangeMeter = fa
   const scaleNote = gauge ? `Display scale ${gauge.scaleMin}–${gauge.scaleMax} ${unit}${value < gauge.scaleMin || value > gauge.scaleMax ? ' · marker at scale edge' : ''}` : '';
   const distance = status.distance.replace('minimum', 'min').replace('maximum', 'max');
   return (
-    <article className={`card reading-card${showRangeMeter ? ' glass' : ''}${stale ? ' reading-stale' : ''}`} aria-label={`${config[parameter].title} reading`}>
+    <article className={`card reading-card${showRangeMeter ? ' glass' : ''}${stale ? ' reading-stale' : ''}`} data-parameter={parameter} aria-label={`${config[parameter].title} reading`}>
       <div className="reading-head">
         <span className="reading-label">{config[parameter].title}</span>
         {!valid ? <span className="badge reading-invalid"><AlertTriangle size={15} aria-hidden="true" />Check probe</span> : stale ? <span className="badge reading-offline"><Clock3 size={15} aria-hidden="true" />Offline</span> : <StatusBadge level={status.level} label={status.label} />}

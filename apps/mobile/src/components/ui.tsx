@@ -147,10 +147,10 @@ export function StateMessage({ message, loading, spacious = false }: { message: 
   return <View style={[styles.state, spacious && styles.spaciousState]}>{loading ? <ActivityIndicator color={colors.teal} /> : null}<Text style={[styles.muted, styles.centerText]}>{message}</Text></View>;
 }
 
-export function DataRow({ label, value, detail }: { label: string; value: string; detail?: string }) {
+export function DataRow({ label, value, detail, valueColor }: { label: string; value: string; detail?: string; valueColor?: string }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  return <View style={styles.dataRow}><View style={{ flex: 1 }}><Text style={styles.dataLabel}>{label}</Text>{detail ? <Text style={styles.muted}>{detail}</Text> : null}</View><Text style={styles.dataValue}>{value}</Text></View>;
+  return <View style={styles.dataRow}><View style={{ flex: 1 }}><Text style={styles.dataLabel}>{label}</Text>{detail ? <Text style={styles.muted}>{detail}</Text> : null}</View><Text style={[styles.dataValue, valueColor ? { color: valueColor } : null]}>{value}</Text></View>;
 }
 
 export const createFormStyles = (colors: Palette) => StyleSheet.create({

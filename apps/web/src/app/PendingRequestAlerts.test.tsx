@@ -48,13 +48,13 @@ afterEach(() => {
 describe('admin account request alerts', () => {
   it('detects a new request while the admin is on the alerts page', async () => {
     render(<App />);
-    await screen.findByRole('heading', { name: 'Alerts center' });
-    await waitFor(() => expect(screen.getByRole('link', { name: /^\d+ open alerts?$/ })).not.toBeNull());
+    await screen.findByRole('heading', { name: 'Alerts Center' });
+    await waitFor(() => expect(screen.getByRole('button', { name: /^\d+ open alerts?$/ })).not.toBeNull());
 
     window.localStorage.setItem(accountsKey, JSON.stringify([pendingAccount]));
 
     expect(await screen.findByText('New account request: Jane Smith', {}, { timeout: tierConfig.refreshIntervalMs + 3000 })).not.toBeNull();
-    expect(screen.getByRole('link', { name: /including 1 pending account request/ })).not.toBeNull();
+    expect(screen.getByRole('button', { name: /including 1 pending account request/ })).not.toBeNull();
     expect(screen.getByRole('link', { name: 'Review account requests' }).getAttribute('href')).toBe('/admin/users');
   }, tierConfig.refreshIntervalMs + 5000);
 
@@ -63,17 +63,18 @@ describe('admin account request alerts', () => {
     render(<App />);
     await screen.findByText('New account request: Jane Smith');
     fireEvent.click(screen.getByRole('link', { name: 'Review account requests' }));
-    await screen.findByRole('heading', { name: 'Users & roles' });
+    await screen.findByRole('heading', { name: 'Users & Roles' });
     if (action === 'Approve') {
-      fireEvent.change(screen.getByRole('combobox', { name: 'Review role for Jane Smith' }), { target: { value: 'operator' } });
+      fireEvent.click(screen.getByRole('combobox', { name: 'Review role for Jane Smith' }));
+      fireEvent.click(screen.getByRole('option', { name: 'Operator' }));
     }
     fireEvent.click(screen.getByRole('button', { name: `${action} Jane Smith` }));
     const confirmation = screen.getByRole('dialog', { name: action === 'Approve' ? 'Approve account request?' : 'Reject account request?' });
     fireEvent.click(within(confirmation).getByRole('button', { name: action === 'Approve' ? 'Approve request' : 'Reject request' }));
     await screen.findByText('No account requests are awaiting review.');
-    await waitFor(() => expect(screen.getByRole('link', { name: /^\d+ open alerts?$/ })).not.toBeNull());
-    fireEvent.click(screen.getByRole('link', { name: 'Alerts center' }));
-    await screen.findByRole('heading', { name: 'Alerts center' });
+    await waitFor(() => expect(screen.getByRole('button', { name: /^\d+ open alerts?$/ })).not.toBeNull());
+    fireEvent.click(screen.getByRole('link', { name: 'Alerts Center' }));
+    await screen.findByRole('heading', { name: 'Alerts Center' });
     expect(screen.queryByText('New account request: Jane Smith')).toBeNull();
   });
 
@@ -82,7 +83,7 @@ describe('admin account request alerts', () => {
     window.localStorage.setItem(sessionKey, JSON.stringify({ userId: 'operator' }));
     const listRequests = vi.spyOn(authService, 'listPendingRequests');
     render(<App />);
-    await screen.findByRole('heading', { name: 'Alerts center' });
+    await screen.findByRole('heading', { name: 'Alerts Center' });
     expect(listRequests).not.toHaveBeenCalled();
     expect(screen.queryByText('New account request: Jane Smith')).toBeNull();
     expect(screen.queryByRole('link', { name: 'Review account requests' })).toBeNull();
@@ -99,7 +100,7 @@ describe('admin account request alerts', () => {
     fireEvent(window, new Event('hydrosense:auth-change'));
 
     await waitFor(() => expect(screen.queryByText('New account request: Jane Smith')).toBeNull());
-    expect(screen.queryByRole('link', { name: /pending account request/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /pending account request/ })).toBeNull();
     expect(listRequests).not.toHaveBeenCalled();
   });
 
@@ -107,7 +108,7 @@ describe('admin account request alerts', () => {
     vi.spyOn(authService, 'listPendingRequests').mockRejectedValue(new Error('Account requests could not be loaded.'));
     render(<App />);
     expect(await screen.findByText('Account requests could not be loaded.')).not.toBeNull();
-    expect(screen.getByRole('link', { name: /account requests unavailable/ })).not.toBeNull();
+    expect(screen.getByRole('button', { name: /account requests unavailable/ })).not.toBeNull();
     expect(screen.getByRole('button', { name: /Retry/ })).not.toBeNull();
   });
 });

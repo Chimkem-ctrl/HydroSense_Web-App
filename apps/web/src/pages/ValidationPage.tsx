@@ -34,7 +34,7 @@ export default function ValidationPage() {
 
   return (
     <div className="stack">
-      <PageHeading title="Validation view" description="Compare sensor averages with manual or lab readings. Edit tolerances." />
+      <PageHeading title="Validation View" description="Compare sensor averages with manual or lab readings. Edit tolerances." />
       <StaleQueryState updatedAt={rowsQuery.dataUpdatedAt} />
       <StaleQueryState updatedAt={tolerancesQuery.dataUpdatedAt} />
       {rowsQuery.isLoading || tolerancesQuery.isLoading ? <LoadingState /> : rowsQuery.isError ? <ErrorState error={rowsQuery.error} onRetry={() => void rowsQuery.refetch()} /> : tolerancesQuery.isError ? <ErrorState error={tolerancesQuery.error} onRetry={() => void tolerancesQuery.refetch()} /> : !rows.length ? <EmptyState>No validation comparisons are available.</EmptyState> : (

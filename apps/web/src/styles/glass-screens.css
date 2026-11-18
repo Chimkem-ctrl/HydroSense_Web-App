@@ -164,7 +164,7 @@
 .trends-overnight-table th, .trends-overnight-table td { vertical-align: middle; white-space: nowrap; }
 .trends-overnight-table th:first-child, .trends-overnight-table td:first-child { width: 28%; }
 .trends-overnight-table th:not(:first-child), .trends-overnight-table td:not(:first-child) { width: 18%; }
-.trends-secondary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--space-4); }
+.trends-secondary-grid { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: var(--space-4); }
 .trends-secondary-grid > .card { min-width: 0; }
 .trends-secondary-grid .trends-alert-log { grid-column: 1 / -1; }
 .trends-secondary-grid .small { margin: calc(-1 * var(--space-2)) 0 var(--space-3); }
