@@ -11,7 +11,7 @@ import { PhoneField } from './components/PhoneField';
 import { uiScale, useTheme } from './theme';
 import { useSession } from './state';
 import { API_BASE_URL, API_KEY, DATA_MODE } from './services/client';
-import { authenticate, HATCHERY, requestAccount, requestPasswordReset, validateSignIn } from './services/auth';
+import { authenticate, HATCHERIES, requestAccount, requestPasswordReset, validateSignIn } from './services/auth';
 import type { SignUpValues } from './services/auth';
 
 type Props<T extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, T>;
@@ -111,8 +111,8 @@ export function LoginScreen({ navigation }: Props<'Login'>) {
 }
 
 const initialValues: SignUpValues = {
-  firstName: '', lastName: '', employeeId: '', phone: '', email: '',
-  hatcheryId: '', address: EMPTY_SIGNUP_ADDRESS, emergencyContactName: '',
+  firstName: '', lastName: '', phone: '', email: '',
+  hatcheryId: '', requestedRole: 'operator', address: EMPTY_SIGNUP_ADDRESS, emergencyContactName: '',
   emergencyContactPhone: '', password: '', confirmPassword: '', termsAccepted: false,
 };
 
@@ -150,32 +150,31 @@ export function SignUpScreen({ navigation }: Props<'SignUp'>) {
   return <Page auth>
     <Brand />
     <Card>
-      <Title centered detail="Submit your staff details for administrator approval. An administrator will assign your role.">Request an account</Title>
+      <Title centered detail="Submit your details and requested role for administrator review.">Request an account</Title>
       <View style={{ flexDirection: width >= 600 ? 'row' : 'column', gap: 12 }}>
         <View style={{ flex: 1 }}><AuthField label="First name" value={values.firstName} onChange={(v) => setField('firstName', v)} placeholder="First name" /></View>
         <View style={{ flex: 1 }}><AuthField label="Last name" value={values.lastName} onChange={(v) => setField('lastName', v)} placeholder="Last name" /></View>
       </View>
-      <AuthField label="Employee / staff ID" value={values.employeeId} onChange={(v) => setField('employeeId', v)} placeholder="e.g. SAG-OP-014" />
       <PhoneField label="Contact number" value={values.phone} country={phoneCountry} onChange={(v) => setField('phone', v)} onCountryChange={(country) => { setPhoneCountry(country); setError(''); }} />
       <AuthField label="Work email" value={values.email} onChange={(v) => setField('email', v)} keyboard="email-address" placeholder="name@example.com" />
       <View style={ui.formField}>
         <Text style={ui.label}>Subscribed hatchery</Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Subscribed hatchery: ${values.hatcheryId ? HATCHERY.name : 'Select a subscribed hatchery'}`}
-          accessibilityValue={{ text: values.hatcheryId ? HATCHERY.name : 'Select a subscribed hatchery' }}
+          accessibilityLabel={`Subscribed hatchery: ${HATCHERIES.find((item) => item.id === values.hatcheryId)?.name ?? 'Select a subscribed hatchery'}`}
+          accessibilityValue={{ text: HATCHERIES.find((item) => item.id === values.hatcheryId)?.name ?? 'Select a subscribed hatchery' }}
           accessibilityState={{ expanded: hatcheryOpen }}
           aria-expanded={hatcheryOpen}
           onPress={() => setHatcheryOpen((open) => !open)}
           style={[ui.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }]}
         >
           <Text style={{ color: values.hatcheryId ? colors.ink : colors.muted, fontSize: 16, flex: 1 }}>
-            {values.hatcheryId ? HATCHERY.name : 'Select a subscribed hatchery'}
+            {HATCHERIES.find((item) => item.id === values.hatcheryId)?.name ?? 'Select a subscribed hatchery'}
           </Text>
           <ChevronDown size={20} color={colors.muted} />
         </Pressable>
         {hatcheryOpen && <View accessibilityRole="radiogroup" accessibilityLabel="Subscribed hatchery options" style={{ backgroundColor: 'transparent', borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderRadius: 12, overflow: 'hidden' }}>
-          {[{ id: '', name: 'Select a subscribed hatchery' }, HATCHERY].map((hatchery) => <Pressable
+          {[{ id: '', name: 'Select a subscribed hatchery' }, ...HATCHERIES].map((hatchery) => <Pressable
             key={hatchery.id}
             accessibilityRole="radio"
             accessibilityState={{ checked: values.hatcheryId === hatchery.id }}
@@ -187,6 +186,9 @@ export function SignUpScreen({ navigation }: Props<'SignUp'>) {
           </Pressable>)}
         </View>}
       </View>
+      <AddressPicker label="Requested role" value={values.requestedRole} options={[
+        { id: 'admin', name: 'Admin' }, { id: 'manager', name: 'Manager' }, { id: 'operator', name: 'Operator' },
+      ]} onChange={(requestedRole) => setField('requestedRole', requestedRole as SignUpValues['requestedRole'])} />
       <AddressPicker label="Country" value={values.address.country} options={[{ id: 'PH', name: 'Philippines' }]} onChange={(country) => setField('address', { ...values.address, country, province: '', city: '', barangay: '' })} />
       <AddressPicker label="Province / region" value={values.address.province} disabled={!values.address.country} options={ADDRESS_PROVINCES} onChange={(province) => setField('address', { ...values.address, province, city: '', barangay: '' })} />
       <AddressPicker label="City / municipality / district" value={values.address.city} disabled={!values.address.province} options={addressCities(values.address.province)} onChange={(city) => setField('address', { ...values.address, city, barangay: '' })} />

@@ -8,7 +8,7 @@ import FormInput from '../../components/common/FormInput';
 import GlassPanel from '../../components/common/GlassPanel';
 import PrimaryButton from '../../components/common/PrimaryButton';
 import { useAuthForm } from '../../hooks/useAuthForm';
-import { authService, DEMO_ADMIN_CREDENTIALS } from '../../services/authService';
+import { authService } from '../../services/authService';
 import type { SignInValues } from '../../types/auth.types';
 import { getSafeInAppPath } from '../../app/auth/RouteGuards';
 
@@ -85,12 +85,6 @@ export default function SignInPage() {
           <AuthFooter>
             Don&apos;t have an account? <Link to="/signup">Sign Up</Link>
           </AuthFooter>
-          {import.meta.env.DEV && <div className="demo-login-box">
-            <strong>Administrator demo access</strong>
-            <span>Email: {DEMO_ADMIN_CREDENTIALS.email}</span>
-            <span>Password: {DEMO_ADMIN_CREDENTIALS.password}</span>
-          </div>}
-          <p className="auth-demo-disclaimer">Demo only: credentials are checked in this browser. Do not use a real password.</p>
         </GlassPanel>
       </div>
     </AuthLayout>

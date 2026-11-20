@@ -3,7 +3,7 @@ import type { Role } from '@hydrosense/shared';
 import { useTheme } from '../theme';
 import { Button } from './ui';
 
-export function AlertPreferenceControls({ phone, email }: { phone?: string | null; email?: string | null }) {
+export function AlertPreferenceControls() {
   const { colors } = useTheme();
   return <>
     <View style={{ gap: 6, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
@@ -13,7 +13,6 @@ export function AlertPreferenceControls({ phone, email }: { phone?: string | nul
           <Switch accessibilityLabel="SMS alerts" accessibilityState={{ disabled: true, checked: false }} value={false} disabled />
         </View>
       </View>
-      <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 21 }}>Phone on file: {phone?.trim() || 'Not provided'}</Text>
     </View>
     <View style={{ gap: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -22,19 +21,14 @@ export function AlertPreferenceControls({ phone, email }: { phone?: string | nul
           <Switch accessibilityLabel="Email alerts" accessibilityState={{ disabled: true, checked: false }} value={false} disabled />
         </View>
       </View>
-      <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 21 }}>Email on file: {email?.trim() || 'Not provided'}</Text>
     </View>
-    <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>Coming soon: delivery preferences. Critical alerts always appear in the Alerts center.</Text>
   </>;
 }
 
-export function SecurityControls({ email }: { email?: string | null }) {
+export function SecurityControls() {
   const { colors } = useTheme();
   return <>
-    <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 21 }}>Signed-in email: {email?.trim() || 'Not provided'}</Text>
     <Button label="Change password" secondary disabled onPress={() => {}} />
-    <Button label="Sign out other devices" secondary disabled onPress={() => {}} />
-    <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>Coming soon: password changes and signing out other devices.</Text>
   </>;
 }
 
@@ -45,6 +39,5 @@ export function DeviceMaintenanceControls({ role }: { role: Role }) {
       <Button label="Request calibration" secondary disabled onPress={() => {}} />
       <Button label="Request reboot" secondary disabled onPress={() => {}} />
     </> : <Button label="Reboot device" secondary disabled onPress={() => {}} />}
-    <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>Coming soon: device actions. Nothing is sent to hardware yet.</Text>
   </>;
 }

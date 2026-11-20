@@ -30,14 +30,14 @@ describe('mobile pending account review', () => {
     vi.stubEnv('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'public-key');
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([{
       id: '1', first_name: 'Test', last_name: 'User', email: 'test@example.test',
-      role: 'manager', status: 'approved', site: 'camiguin-sagay', employee_id: 'EMP-1',
+      role: 'manager', requested_role: 'operator', status: 'approved', site: 'camiguin-sagay', employee_id: 'EMP-1',
       emergency_contact_phone: '123',
     }])));
     vi.stubGlobal('fetch', fetchMock);
     const { getAccountProfile, setMobileAccessToken } = await import('./client');
     setMobileAccessToken('token');
     const profile = await getAccountProfile('1');
-    expect(profile).toMatchObject({ name: 'Test User', site: 'camiguin-sagay', employeeId: 'EMP-1', emergencyContactPhone: '123' });
+    expect(profile).toMatchObject({ name: 'Test User', site: 'camiguin-sagay', employeeId: 'EMP-1', requestedRole: 'operator', emergencyContactPhone: '123' });
     expect(fetchMock).toHaveBeenCalledWith('https://example.test/rest/v1/profiles?id=eq.1&select=*', expect.objectContaining({
       headers: { apikey: 'public-key', Authorization: 'Bearer token' },
     }));

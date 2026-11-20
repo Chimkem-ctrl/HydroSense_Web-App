@@ -8,7 +8,7 @@ vi.mock('../theme', () => ({
   uiScale: { spacing: { 1: 4, 2: 8 } },
   useTheme: () => ({
     choice: state.choice, setChoice: state.setChoice, error: state.error,
-    colors: { selected: '#def', surface: '#fff', teal: '#06c', border: '#ccc', muted: '#444', ink: '#000', critical: '#c00' },
+    mode: 'dark', colors: { selected: '#def', surface: '#fff', teal: '#06c', border: '#ccc', muted: '#444', ink: '#000', critical: '#c00' },
   }),
 }));
 
@@ -29,14 +29,14 @@ beforeEach(() => {
 });
 
 describe('inline appearance options', () => {
-  it('shows all choices and saves the selected theme', () => {
+  it('shows light and dark choices and saves the selected theme', () => {
     const options = elements(AppearanceOptions(), 'Pressable');
-    expect(options).toHaveLength(3);
-    expect(options.map((option) => option.props.accessibilityState)).toEqual([{ checked: true }, { checked: false }, { checked: false }]);
-    (options[2].props.onPress as () => void)();
+    expect(options).toHaveLength(2);
+    expect(options.map((option) => option.props.accessibilityState)).toEqual([{ checked: false }, { checked: true }]);
+    (options[1].props.onPress as () => void)();
     expect(state.setChoice).toHaveBeenCalledWith('dark');
     state.choice = 'dark';
-    expect(elements(AppearanceOptions(), 'Pressable')[2].props.accessibilityState).toEqual({ checked: true });
+    expect(elements(AppearanceOptions(), 'Pressable')[1].props.accessibilityState).toEqual({ checked: true });
   });
 
   it('surfaces preference storage errors', () => {

@@ -17,7 +17,7 @@ const pending = [
 const team: DashboardUser[] = [
   { id: 'u1', name: 'Local Operator', email: 'local-op@example.com', role: 'operator', site: hatchery.name, phone: 'bad', active: true, lastActive: '2026-01-01T00:00:00Z' },
   { id: 'u2', name: 'Local Manager', email: 'local-manager@example.com', role: 'manager', site: hatchery.name, active: true, lastActive: '2026-01-01T00:00:00Z' },
-  { id: 'u3', name: 'Local Admin', email: 'local-admin@example.com', role: 'admin', site: hatchery.name, active: true, lastActive: '2026-01-01T00:00:00Z' },
+  { id: 'u3', name: 'Local Admin', email: 'local-admin@example.com', role: 'admin', site: hatchery.name, active: true, lastActive: '2026-01-01T00:00:00Z', employeeId: 'ADM-001', phone: '+639175550999' },
   { id: 'u4', name: 'Other Operator', email: 'other-op@example.com', role: 'operator', site: 'Other hatchery', active: true, lastActive: '2026-01-01T00:00:00Z' },
 ];
 
@@ -66,7 +66,7 @@ describe('users and roles', () => {
     const accounts = await screen.findByRole('region', { name: 'Team accounts table' });
     expect(within(accounts).getByText('Local Operator')).toBeInTheDocument();
     expect(within(accounts).getByText('Local Manager')).toBeInTheDocument();
-    expect(within(accounts).getByText('Not valid for SMS')).toBeInTheDocument();
+    expect(within(accounts).queryByText(/valid for sms/i)).not.toBeInTheDocument();
     expect(within(accounts).queryByText('Local Admin')).not.toBeInTheDocument();
     expect(within(accounts).queryByText('Other Operator')).not.toBeInTheDocument();
     expect(within(accounts).queryByRole('combobox')).not.toBeInTheDocument();
@@ -83,20 +83,23 @@ describe('users and roles', () => {
     expect(api.listUsers).not.toHaveBeenCalled();
   });
 
-  it('preserves admin visibility and requires confirmation for role changes', async () => {
+  it('shows admin accounts separately and keeps approved roles static', async () => {
     signIn('admin');
     mockAccounts();
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
-    const update = vi.spyOn(api, 'updateUserRole').mockRejectedValue(new Error('Update failed'));
     window.history.replaceState({}, '', '/admin/users');
     render(<App />);
     const requests = await screen.findByRole('region', { name: 'Pending requests table' });
     expect(within(requests).getByRole('heading', { name: hatchery.name })).toBeInTheDocument();
     expect(within(requests).getByRole('region', { name: 'other pending requests' })).toBeInTheDocument();
     expect(within(requests).getByText('Other Applicant')).toBeInTheDocument();
-    const approvalRole = within(requests).getByRole('combobox', { name: 'Approval role for Local Applicant' });
-    expect(within(approvalRole).queryByRole('option', { name: 'Admin' })).not.toBeInTheDocument();
+    const approvalRole = within(requests).getByRole('combobox', { name: 'Review role for Local Applicant' });
+    expect(within(approvalRole).getByRole('option', { name: 'Admin' })).toBeInTheDocument();
+    expect(within(requests).getAllByText('Pending')).toHaveLength(2);
+    expect(within(requests).getByRole('button', { name: 'Approve Local Applicant' })).toBeInTheDocument();
+    expect(within(requests).getByRole('button', { name: 'Reject Local Applicant' })).toBeInTheDocument();
     expect(within(requests).getAllByRole('columnheader', { name: 'Requested role' })).toHaveLength(2);
+    expect(within(requests).getAllByRole('columnheader', { name: 'Review Role' })).toHaveLength(2);
+    expect(within(requests).getAllByRole('columnheader', { name: 'Action' })).toHaveLength(2);
     const accounts = await screen.findByRole('region', { name: 'Team accounts table' });
     const localSite = within(accounts).getByRole('region', { name: `${hatchery.name} accounts` });
     const otherSite = within(accounts).getByRole('region', { name: 'Other hatchery accounts' });
@@ -104,15 +107,17 @@ describe('users and roles', () => {
     expect(within(otherSite).getByText('Other Operator')).toBeInTheDocument();
     expect(within(localSite).queryByRole('columnheader', { name: 'Site' })).not.toBeInTheDocument();
     expect(within(accounts).getByText('Other Operator')).toBeInTheDocument();
-    expect(within(accounts).getByText('Local Admin')).toBeInTheDocument();
-    const select = within(accounts).getByRole('combobox', { name: 'Role for Local Operator' });
-    fireEvent.change(select, { target: { value: 'manager' } });
-    expect(confirm).toHaveBeenCalledWith('Change Local Operator from Operator to Manager?');
-    expect(select).toHaveValue('operator');
-    expect(update).not.toHaveBeenCalled();
-    fireEvent.change(select, { target: { value: 'manager' } });
-    await waitFor(() => expect(update).toHaveBeenCalledWith('u1', 'manager', 'Test User'));
-    expect(await screen.findByText('Update failed')).toBeInTheDocument();
+    expect(within(accounts).queryByText('Local Admin')).not.toBeInTheDocument();
+    expect(within(accounts).getByText('Local Operator').closest('tr')).toHaveTextContent('Operator');
+    expect(within(accounts).queryByRole('combobox', { name: /Role for/ })).not.toBeInTheDocument();
+    const adminAccounts = screen.getByRole('region', { name: 'Admin accounts table' });
+    expect(within(adminAccounts).getByText('Local Admin')).toBeInTheDocument();
+    expect(within(adminAccounts).getByRole('columnheader', { name: 'ID' })).toBeInTheDocument();
+    expect(within(adminAccounts).getByRole('columnheader', { name: 'Phone number' })).toBeInTheDocument();
+    expect(within(adminAccounts).getByText('ADM-001')).toBeInTheDocument();
+    expect(within(adminAccounts).getByText('+639175550999')).toBeInTheDocument();
+    expect(Array.from(document.querySelectorAll('.admin-users-panel h2')).map((heading) => heading.textContent))
+      .toEqual(['Pending requests', 'Admin accounts', 'Team accounts']);
   });
 
   it('moves an approved request into its hatchery account list after refresh', async () => {
@@ -130,9 +135,10 @@ describe('users and roles', () => {
     window.history.replaceState({}, '', '/admin/users');
     render(<App />);
     const requests = await screen.findByRole('region', { name: 'Pending requests table' });
-    fireEvent.change(within(requests).getByRole('combobox', { name: 'Approval role for Local Applicant' }), { target: { value: 'operator' } });
-    fireEvent.click(within(requests).getByRole('button', { name: 'Approve' }));
-    await waitFor(() => expect(approve).toHaveBeenCalledWith('p1', 'operator'));
+    fireEvent.click(within(requests).getByRole('button', { name: 'Approve Local Applicant' }));
+    const confirmation = screen.getByRole('dialog', { name: 'Approve account request?' });
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Approve request' }));
+    await waitFor(() => expect(approve).toHaveBeenCalledWith('p1', 'manager'));
     const accounts = await screen.findByRole('region', { name: `${hatchery.name} accounts` });
     expect(within(accounts).getByText('Local Applicant')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('region', { name: `${hatchery.name} pending requests` })).not.toBeInTheDocument());

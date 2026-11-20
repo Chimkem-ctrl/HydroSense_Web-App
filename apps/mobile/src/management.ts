@@ -1,8 +1,8 @@
-import { HATCHERY } from './services/auth';
+import { HATCHERIES } from './services/auth';
 
 export function hatcheryLabel(site?: string | null): string {
   const value = site?.trim();
-  return value === HATCHERY.id ? HATCHERY.name : value || 'Unassigned';
+  return HATCHERIES.find((hatchery) => hatchery.id === value)?.name ?? (value || 'Unassigned');
 }
 
 export function groupByHatchery<T>(items: T[], getSite: (item: T) => string | null | undefined): Map<string, T[]> {

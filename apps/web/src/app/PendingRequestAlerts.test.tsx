@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import { authService } from '../services/authService';
@@ -60,15 +60,16 @@ describe('admin account request alerts', () => {
 
   it.each(['Approve', 'Reject'] as const)('removes a request alert after an admin selects %s', async (action) => {
     window.localStorage.setItem(accountsKey, JSON.stringify([pendingAccount]));
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<App />);
     await screen.findByText('New account request: Jane Smith');
     fireEvent.click(screen.getByRole('link', { name: 'Review account requests' }));
     await screen.findByRole('heading', { name: 'Users & roles' });
     if (action === 'Approve') {
-      fireEvent.change(screen.getByRole('combobox', { name: 'Approval role for Jane Smith' }), { target: { value: 'operator' } });
+      fireEvent.change(screen.getByRole('combobox', { name: 'Review role for Jane Smith' }), { target: { value: 'operator' } });
     }
-    fireEvent.click(screen.getByRole('button', { name: action }));
+    fireEvent.click(screen.getByRole('button', { name: `${action} Jane Smith` }));
+    const confirmation = screen.getByRole('dialog', { name: action === 'Approve' ? 'Approve account request?' : 'Reject account request?' });
+    fireEvent.click(within(confirmation).getByRole('button', { name: action === 'Approve' ? 'Approve request' : 'Reject request' }));
     await screen.findByText('No account requests are awaiting review.');
     await waitFor(() => expect(screen.getByRole('link', { name: /^\d+ open alerts?$/ })).not.toBeNull());
     fireEvent.click(screen.getByRole('link', { name: 'Alerts center' }));

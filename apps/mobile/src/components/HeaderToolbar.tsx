@@ -3,7 +3,7 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 import NetInfo from '@react-native-community/netinfo';
 import { useQuery } from '@tanstack/react-query';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
-import { Activity, AlertTriangle, Bell, ChevronDown, ClipboardList, Database, FileText, LayoutDashboard, LogOut, Menu, Sliders, UserRound, Users, Waves, Wifi, WifiOff, X } from 'lucide-react-native';
+import { Activity, AlertTriangle, Bell, ClipboardList, Database, FileText, LayoutDashboard, LogOut, Menu, Sliders, UserRound, Users, Wifi, WifiOff, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MainTabParamList } from '../navigation';
 import { canAccess } from '../access';
@@ -14,14 +14,14 @@ import { Brand } from './ui';
 import { uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
 
-type Panel = 'navigation' | 'tanks' | 'account' | null;
+type Panel = 'navigation' | 'account' | null;
 type Destination = { name: keyof MainTabParamList; label: string; icon: typeof Menu; group: 'Monitor' | 'Records' | 'Manage' };
 
 export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const { colors, reduceMotion } = useTheme();
   const styles = createStyles(colors);
   const { user, signOut } = useSession();
-  const { tanks, tankId, setTankId, isLoading, error, refetch } = useTankSelection();
+  const { tankId } = useTankSelection();
   const [panel, setPanel] = useState<Panel>(null);
   const [online, setOnline] = useState<boolean | null>(null);
   const [connection, setConnection] = useState(liveClient?.getConnectionState() ?? 'disconnected');
@@ -31,7 +31,6 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const [, updateClock] = useState(0);
   const openAlerts = alerts.data?.filter((item) => item.status === 'open').length;
   const alertCount = openAlerts === undefined ? undefined : openAlerts + (pending.data?.length ?? 0);
-  const tank = tanks.find((item) => item.id === tankId);
 
   useEffect(() => NetInfo.addEventListener((state) => setOnline(state.isConnected)), []);
   useEffect(() => liveClient?.subscribeConnection(setConnection), []);
@@ -56,8 +55,7 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
     { name: 'Profile', label: 'My profile', icon: UserRound, group: 'Manage' },
   ];
   const connectionLabel = getConnectionLabel(online, connection, latestReading.data?.timestamp, Date.now());
-  const initials = user?.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() ?? '';
-
+  const connectionColor = connectionLabel === 'Live' ? colors.normal : colors.critical;
   function goTo(name: keyof MainTabParamList) {
     setPanel(null);
     navigation.navigate(name);
@@ -83,7 +81,7 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
           <Bell size={20} color={colors.ink} />
           {alertCount !== undefined && alertCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{alertCount > 99 ? '99+' : alertCount}</Text></View>}
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Account menu for ${user?.name ?? 'user'}`} accessibilityState={{ expanded: panel === 'account' }} onPress={() => setPanel('account')} style={styles.avatar}><Text style={styles.avatarText}>{initials}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Account menu for ${user?.name ?? 'user'}`} accessibilityState={{ expanded: panel === 'account' }} onPress={() => setPanel('account')} style={styles.avatar}><UserRound size={21} color={colors.teal} /></Pressable>
       </View>
       {alerts.isError && <Text style={styles.error}>Could not load alert count. Open alerts to retry.</Text>}
       {pending.isError && <Text style={styles.error}>Could not load account requests. Open alerts to retry.</Text>}
@@ -92,7 +90,7 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
       <View style={styles.overlay}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={StyleSheet.absoluteFill} />
         <SafeAreaView edges={['top', 'bottom']} style={[styles.panel, panel !== 'navigation' && styles.sheet]}>
-          <View style={styles.panelHeader}><Text style={styles.panelTitle}>{panel === 'navigation' ? 'Navigation' : panel === 'tanks' ? 'Select tank' : 'Account'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={styles.close}><X size={20} color={colors.ink} /></Pressable></View>
+          <View style={styles.panelHeader}><Text style={styles.panelTitle}>{panel === 'navigation' ? 'Navigation' : 'Account'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={styles.close}><X size={20} color={colors.ink} /></Pressable></View>
           <ScrollView contentContainerStyle={styles.panelContent}>
             {panel === 'navigation' && <>
               <Brand compact />
@@ -106,19 +104,11 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
                 </View> : null;
               })}
             </>}
-            {panel === 'tanks' && <>
-              <Pressable accessibilityRole="button" onPress={() => setPanel('account')} style={styles.menuItem}><Text style={styles.selectedText}>Back to account</Text></Pressable>
-              {isLoading ? <Text style={styles.description}>Loading tanks…</Text> : error ? <><Text accessibilityRole="alert" style={styles.error}>Could not load tanks: {error.message}</Text><Pressable accessibilityRole="button" onPress={refetch} style={styles.menuItem}><Text style={styles.selectedText}>Retry tank list</Text></Pressable></> : !tanks.length ? <Text style={styles.description}>No tanks are available for this account.</Text> : tanks.map((item) => <Pressable key={item.id} accessibilityRole="radio" accessibilityState={{ checked: item.id === tankId }} onPress={() => { setTankId(item.id); setPanel('account'); }} style={[styles.menuItem, item.id === tankId && styles.selected]}><Waves size={19} color={colors.teal} /><View style={{ flex: 1 }}><Text style={styles.itemText}>{item.name}</Text><Text style={styles.description}>{item.site}</Text></View>{item.id === tankId && <Text style={styles.selectedText}>Selected</Text>}</Pressable>)}
-            </>}
             {panel === 'account' && <>
               <Text style={styles.panelTitle}>{user?.name}</Text><Text style={styles.description}>{user?.role}</Text>
-              <Text style={styles.groupLabel}>DASHBOARD</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Select tank: ${tank?.name ?? (isLoading ? 'loading' : error ? 'unavailable' : 'none')}`} onPress={() => setPanel('tanks')} style={styles.tankButton}>
-                <Waves size={19} color={colors.teal} /><View style={{ flex: 1, minWidth: 0 }}><Text style={styles.description}>Selected tank</Text><Text numberOfLines={1} style={styles.tankText}>{tank?.name ?? (isLoading ? 'Loading tanks…' : error ? 'Tanks unavailable' : 'Select tank')}</Text></View><ChevronDown size={18} color={colors.muted} />
-              </Pressable>
               <View accessibilityLabel={`Connection ${connectionLabel}`} style={styles.connection}>
-                {connectionLabel === 'Live' ? <Wifi size={19} color={colors.normal} /> : <WifiOff size={19} color={colors.warning} />}
-                <Text style={styles.description}>Connection</Text><Text style={styles.connectionText}>{connectionLabel}</Text>
+                {connectionLabel === 'Live' ? <Wifi size={19} color={connectionColor} /> : <WifiOff size={19} color={connectionColor} />}
+                <Text style={styles.description}>Connection</Text><Text style={[styles.connectionText, { color: connectionColor }]}>{connectionLabel}</Text>
               </View>
               <Pressable accessibilityRole="button" onPress={() => goTo('Profile')} style={styles.menuItem}><UserRound size={19} color={colors.muted} /><Text style={styles.itemText}>My profile</Text></Pressable>
               <Pressable accessibilityRole="button" onPress={() => void handleSignOut()} style={styles.menuItem}><LogOut size={19} color={colors.critical} /><Text style={[styles.itemText, { color: colors.critical }]}>Sign out</Text></Pressable>
@@ -137,11 +127,8 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   brandSlot: { flex: 1, minWidth: 0, overflow: 'hidden' },
   iconButton: { width: 48, height: 48, flexShrink: 0, borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   avatar: { width: 48, height: 48, flexShrink: 0, borderRadius: uiScale.radius.pill, backgroundColor: colors.selected, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: colors.teal, fontWeight: '800', fontSize: uiScale.type.caption },
   badge: { position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, paddingHorizontal: 3, borderRadius: 10, backgroundColor: '#b51c1c', alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: 'white', fontWeight: '700', fontSize: uiScale.type.caption },
-  tankButton: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 8 },
-  tankText: { color: colors.ink, fontWeight: '700', fontSize: 15 },
   connection: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14 },
   connectionText: { color: colors.ink, fontWeight: '700', fontSize: 14, marginLeft: 'auto' },
   error: { color: colors.critical, fontSize: 14, lineHeight: 20 },

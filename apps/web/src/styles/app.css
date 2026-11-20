@@ -122,6 +122,9 @@ td.table-numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .account-menu { position: relative; }
 .user-name { min-height: 44px; display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; padding: 0 8px; }
 .account-menu-popover { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; display: grid; min-width: 190px; gap: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); padding: 6px; }
+.account-menu-identity { display: grid; gap: 3px; padding: 9px 10px 11px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
+.account-menu-identity strong { color: var(--text-primary); font-size: 14px; }
+.account-menu-identity span { color: var(--text-secondary); font-size: 12px; text-transform: capitalize; }
 .account-menu-popover a { display: flex; min-height: 44px; align-items: center; gap: 9px; border-radius: 7px; padding: 0 9px; text-decoration: none; }
 .account-menu-popover a:hover { background: color-mix(in srgb, var(--brand) 11%, var(--surface)); }
 
