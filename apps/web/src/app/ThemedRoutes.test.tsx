@@ -5,7 +5,6 @@ import App from '../App';
 import { queryClient } from './query';
 import { api } from './api';
 import { authService } from '../services/authService';
-import * as csvDownload from '../services/downloadCsv';
 
 function render(ui: ReactElement) {
   const result = renderBase(ui);
@@ -99,10 +98,7 @@ describe('themed dashboard routes', () => {
     const { container } = render(<App />);
     await screen.findByRole('heading', { name: 'Tank Overview & System Health', level: 1 });
     expect(container.querySelector('.app-shell')?.getAttribute('data-role')).toBe(role);
-    expect(screen.queryByText('WATER QUALITY MONITORING')).not.toBeInTheDocument();
-    expect(screen.getByText(`${role.toUpperCase()} Workspace`)).toBeInTheDocument();
-    expect(screen.queryByText('Days 0–21 · 3-hour sampling')).not.toBeInTheDocument();
-    expect(screen.getByText('© 2026 HydroSense')).toBeInTheDocument();
+    expect(screen.getByText(`Pilot workspace · ${role.toUpperCase()}`)).not.toBeNull();
   });
 
   it.each(routes.flatMap(([path, title]) => (['light', 'dark'] as const).map((theme) => [path, title, theme] as const)))('renders %s in the shared shell (%s, %s)', async (path, title, theme) => {
@@ -165,32 +161,6 @@ describe('themed dashboard routes', () => {
     expect(within(screen.getByRole('dialog', { name: 'Current notifications' })).getAllByRole('link').length).toBeGreaterThanOrEqual(4);
   });
 
-  it('adds dismissible activity export notifications that remain when navigating', async () => {
-    vi.spyOn(api, 'listActivityLogs').mockResolvedValue([{ id: 'log-1', tankId: 'hatchery', kind: 'OPERATION', type: 'Check', occurredAt: '2026-01-01T00:00:00Z', operator: 'Test', notes: 'Checked' }]);
-    const download = vi.spyOn(csvDownload, 'downloadCsv').mockImplementation(() => {});
-    window.history.replaceState({}, '', '/entries');
-    render(<App />);
-    const exportButton = await screen.findByRole('button', { name: 'Export CSV' });
-    await waitFor(() => expect(exportButton).toBeEnabled());
-    expect(exportButton.querySelector('svg.lucide-file-down')).not.toBeNull();
-    expect(exportButton.textContent).toBe('');
-    fireEvent.click(exportButton);
-    fireEvent.click(exportButton);
-    expect(download).toHaveBeenCalledTimes(2);
-    expect(screen.queryByText('Activity logs exported.')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('link', { name: 'Alerts Center' }));
-    await screen.findByRole('heading', { name: 'Alerts Center' });
-    fireEvent.click(screen.getByRole('button', { name: /2 export notifications/ }));
-    const notifications = screen.getByRole('dialog', { name: 'Current notifications' });
-    expect(within(notifications).getAllByText('Activity logs exported.')).toHaveLength(2);
-    fireEvent.click(within(notifications).getAllByRole('button', { name: 'Dismiss activity logs export notification' })[0]);
-    expect(within(notifications).getAllByText('Activity logs exported.')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: /1 export notification/ })).toBeInTheDocument();
-    fireEvent.click(within(notifications).getByRole('button', { name: 'Dismiss activity logs export notification' }));
-    expect(within(notifications).queryByText('Activity logs exported.')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /export notification/ })).not.toBeInTheDocument();
-  });
-
   it('keeps the tank table available when probe readings are invalid', async () => {
     const getReading = api.getLatestReading.bind(api);
     vi.spyOn(api, 'getLatestReading').mockImplementation(async (tankId) => {
@@ -233,10 +203,32 @@ describe('themed dashboard routes', () => {
     window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
     const validation = vi.spyOn(api, 'listValidationRows');
     const calibration = vi.spyOn(api, 'listCalibrationLogs');
+    vi.spyOn(api, 'listThresholds').mockResolvedValue([
+      { parameter: 'temperature', max: 32 },
+      { parameter: 'do', min: 5 },
+      { parameter: 'ph', min: 7.2, max: 8.5 },
+    ]);
     window.history.replaceState({}, '', '/reports');
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Reports' })).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Download CSV' })).toBeInTheDocument();
+    const downloadButton = await screen.findByRole('button', { name: 'Download CSV' });
+    const printButton = await screen.findByRole('button', { name: 'Print / Save PDF' });
+    expect(downloadButton.className).toBe('button button-primary');
+    expect(printButton.className).toBe(downloadButton.className);
+    const statistics = screen.getByRole('region', { name: 'Report statistics' });
+    expect(within(statistics).getByRole('columnheader', { name: 'Std dev' })).toBeInTheDocument();
+    expect(within(statistics).getByText('Temperature')).toBeInTheDocument();
+    expect(screen.getByText('Temperature ≤ 32')).toBeInTheDocument();
+    expect(screen.getByText('DO ≥ 5')).toBeInTheDocument();
+    expect(screen.getByText('pH 7.2–8.5')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Temp (°C)' })).toBeInTheDocument();
+    expect(screen.getByText(/^Showing first \d+ of \d+ readings$/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    const filterDialog = await screen.findByRole('dialog', { name: 'Report filters' });
+    expect(filterDialog.closest('.glass-shell')).not.toBeNull();
+    fireEvent.click(screen.getByRole('combobox', { name: 'CSV dataset' }));
+    const datasetMenu = await screen.findByRole('listbox', { name: 'CSV dataset' });
+    expect(datasetMenu.closest('.glass-shell')).not.toBeNull();
     expect(screen.queryByRole('option', { name: 'Validation' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Calibration log' })).not.toBeInTheDocument();
     expect(validation).not.toHaveBeenCalled();

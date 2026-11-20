@@ -27,12 +27,31 @@ const reportSections: Array<{ value: ReportSection; label: string }> = [
   { value: 'data-quality', label: 'Data quality' },
 ];
 
+const reportParameterLabels = { temperature: 'Temperature', do: 'DO', ph: 'pH' } as const;
+
 function manilaStart(date: string) {
   return new Date(`${date}T00:00:00+08:00`).toISOString();
 }
 
 function manilaEnd(date: string) {
   return new Date(`${date}T23:59:59.999+08:00`).toISOString();
+}
+
+const reportRangeDateFormatter = new Intl.DateTimeFormat('en-PH', {
+  timeZone: 'Asia/Manila',
+  month: 'short',
+  day: 'numeric',
+});
+
+function formatReportRangeDate(date: string) {
+  return reportRangeDateFormatter.format(new Date(`${date}T12:00:00+08:00`));
+}
+
+function formatThresholdRange(min?: number, max?: number) {
+  if (min != null && max != null) return `${min}–${max}`;
+  if (min != null) return `≥ ${min}`;
+  if (max != null) return `≤ ${max}`;
+  return '—';
 }
 
 export default function ReportsPage() {
@@ -54,6 +73,9 @@ export default function ReportsPage() {
   const filterActionsRef = useRef<HTMLDivElement>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const filterPanelRef = useRef<HTMLDivElement>(null);
+  const filterPortalRoot = typeof document === 'undefined'
+    ? null
+    : filterButtonRef.current?.closest('.glass-shell') ?? document.body;
   const filterPanelId = useId();
   const availableReportSections = reportSections.filter(({ value }) => (value !== 'validation' || canViewValidation) && (value !== 'calibration' || canViewCalibration));
   const selectedReportSectionCount = availableReportSections.filter(({ value }) => sections.includes(value)).length;
@@ -169,6 +191,7 @@ export default function ReportsPage() {
     calibration: ['Date (ISO)', 'Tank', 'Parameter', 'Standard', 'Before', 'After', 'User', 'Next due (ISO)'],
     validation: ['Parameter', 'HydroSense mean', 'Reference', 'Error', '% error', 'Tolerance', 'Result'],
   };
+  const rawReadingsPreview = model?.rawReadings.slice(0, 10) ?? [];
 
   function toggleFilters() {
     if (filtersOpen) {
@@ -199,40 +222,44 @@ export default function ReportsPage() {
         <section className="card stack dash-card dash-report-settings">
           <header className="dash-card-header">
             <h2 className="card-title">Export settings</h2>
-            <p className="small muted dash-subtitle">Choose a dataset and reporting period.</p>
             <StaleQueryState updatedAt={dataQuery.dataUpdatedAt} />
           </header>
-          <div className="dash-report-controls">
-            {canExport && <label className="field">CSV dataset<Select value={type} onChange={(event) => setType(event.target.value as ExportType)}><option value="readings">Raw readings</option><option value="alerts">Alerts</option><option value="activity">Activity logs</option>{canViewCalibration && <option value="calibration">Calibration log</option>}{canViewValidation && <option value="validation">Validation</option>}</Select></label>}
+          <div className={`dash-report-controls${canExport ? '' : ' without-dataset'}`}>
+            {canExport && <label className="field">CSV dataset<Select aria-label="CSV dataset" value={type} onChange={(event) => setType(event.target.value as ExportType)}><option value="readings">Raw readings</option><option value="alerts">Alerts</option><option value="activity">Activity logs</option>{canViewCalibration && <option value="calibration">Calibration log</option>}{canViewValidation && <option value="validation">Validation</option>}</Select></label>}
             <label className="field">From<input type="date" value={from} min={minimumDate} max={to} onChange={(event) => setFrom(event.target.value)} /></label>
             <label className="field">To<input type="date" value={to} min={from} max={maximumDate} onChange={(event) => setTo(event.target.value)} /></label>
           </div>
-          <p className="small muted dash-report-scope-note">The dataset applies to CSV export; the date range applies to CSV and the report.</p>
-          <div className="dash-report-toolbar">
-            <div className="dash-report-result">
-              <span className="small muted">Records matched</span>
+          <p className="small muted dash-report-scope-note">CSV includes the selected dataset, tanks, and date range; report sections apply to the preview and PDF.</p>
+        </section>
+        <section className="card stack dash-card dash-report-result-card">
+          <div className="dash-report-result">
+            <span className="dash-report-result-label">RECORDS MATCHED</span>
+            <div className="dash-report-count">
               <strong>{rows.length}</strong>
-              <span className="small muted">{from} → {to} · Asia/Manila</span>
+              <span>readings</span>
             </div>
-            <div className="dash-report-actions" ref={filterActionsRef}>
-              {!dataQuery.isLoading && !dataQuery.isError && !rows.length && <p className="small muted">No records match this dataset and date range.</p>}
+            <span className="dash-report-date-range">{formatReportRangeDate(from)} → {formatReportRangeDate(to)}</span>
+          </div>
+          <div className="dash-report-actions" ref={filterActionsRef}>
+            <div className="dash-report-status">
+              {!dataQuery.isLoading && !dataQuery.isError && !rows.length && <p>No records match this dataset and date range.</p>}
               {notice && <p role="status">{notice}</p>}
-              <div className={`dash-report-action-buttons${canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError ? ' has-csv' : ''}`}>
-                {canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError && <button className="button button-primary" type="button" onClick={downloadCsv}>Download CSV</button>}
-                <button
-                  ref={filterButtonRef}
-                  className="button dash-report-filter-button"
-                  type="button"
-                  aria-expanded={filtersOpen}
-                  aria-haspopup="dialog"
-                  aria-controls={filtersOpen ? filterPanelId : undefined}
-                  onClick={toggleFilters}
-                >
-                  <span>Filters</span>
-                  <span className="dash-report-filter-count">{selectedReportSectionCount}/{availableReportSections.length}</span>
-                  <ChevronDown size={16} aria-hidden="true" />
-                </button>
-              </div>
+            </div>
+            <div className={`dash-report-action-buttons${canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError ? ' has-csv' : ''}`}>
+              {canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError && <button className="button button-primary" type="button" onClick={downloadCsv}>Download CSV</button>}
+              <button
+                ref={filterButtonRef}
+                className="button dash-report-filter-button"
+                type="button"
+                aria-expanded={filtersOpen}
+                aria-haspopup="dialog"
+                aria-controls={filtersOpen ? filterPanelId : undefined}
+                onClick={toggleFilters}
+              >
+                <span>Filters</span>
+                <span className="dash-report-filter-count">{selectedReportSectionCount}/{availableReportSections.length}</span>
+                <ChevronDown size={16} aria-hidden="true" />
+              </button>
             </div>
           </div>
         </section>
@@ -244,30 +271,55 @@ export default function ReportsPage() {
           {dataQuery.isLoading ? <LoadingState label="Preparing report..." /> : dataQuery.isError ? <ErrorState error={dataQuery.error} onRetry={() => void dataQuery.refetch()} /> : !model ? <EmptyState>Select a tank to generate the report.</EmptyState> : (
             <div className="dash-report-body">
               <dl className="dash-report-meta">
-                <div><dt>Report ID</dt><dd className="dash-report-id">{model.id}</dd></div>
+                <div><dt>Report ID</dt><dd className="dash-report-id" title={model.id}>{model.id}</dd></div>
                 <div><dt>Tanks / period</dt><dd>{model.tanks.map((tank) => tank.name).join(', ')} · {from} to {to} PHT</dd></div>
                 <div><dt>Prepared by</dt><dd>{model.generatedBy.name} ({model.generatedBy.role})</dd></div>
                 <div><dt>Generated</dt><dd>{formatManilaDateTime(model.generatedAt)} PHT</dd></div>
               </dl>
-              {sections.includes('summary') && <p className="dash-report-summary">{model.summary}</p>}
-              {sections.includes('statistics') && <div className="table-wrap"><table><thead><tr><th>Parameter</th><th>Min</th><th>Max</th><th>Mean</th><th>Std dev</th><th>In range</th><th>Excursions</th><th>Longest (h)</th></tr></thead><tbody>
-                {model.statistics.map((row) => <tr key={row.parameter}><td>{row.parameter}</td><td className="table-numeric">{row.min?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.max?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.mean?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.standardDeviation?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.percentInRange?.toFixed(1) ?? '—'}%</td><td className="table-numeric">{row.excursions}</td><td className="table-numeric">{row.longestExcursionHours.toFixed(1)}</td></tr>)}
-              </tbody></table></div>}
-              <div className="dash-report-facts">
-                {sections.includes('alerts') && <p className="dash-report-fact"><strong>Alerts:</strong> {model.alertCounts.critical} critical, {model.alertCounts.warning} warning · {model.alertCounts.open} open, {model.alertCounts.acknowledged} acknowledged, {model.alertCounts.resolved} resolved.</p>}
-                {sections.includes('data-quality') && <p className="dash-report-fact"><strong>Expected readings:</strong> {model.dataQuality.expectedReadings} · Received: {model.dataQuality.receivedReadings} ({model.dataQuality.receivedPercent.toFixed(1)}%).</p>}
-                {sections.includes('thresholds') && <p className="dash-report-fact"><strong>Thresholds used:</strong> {model.thresholds.map((threshold) => `${threshold.parameter} ${threshold.min ?? '—'}–${threshold.max ?? '—'}`).join(' · ')}</p>}
-                {sections.includes('activity') && <p className="dash-report-fact"><strong>Activity logs included:</strong> {model.activityLogs.length}.</p>}
-                {sections.includes('calibration') && <p className="dash-report-fact"><strong>Calibration records included:</strong> {model.calibrationLogs.length}.</p>}
-                {sections.includes('validation') && <p className="dash-report-fact"><strong>Validation comparisons included:</strong> {model.validationRows.length}.</p>}
-              </div>
-              {sections.includes('raw-readings') && <div className="dash-report-raw-readings">{model.rawReadings.slice(0, 10).map((row) => <p className="small" key={row.id}>{formatManilaDateTime(row.timestamp)} PHT · {row.tankId} · {row.temperature} °C · {row.doMgL} mg/L · pH {row.ph}</p>)}</div>}
+              {sections.includes('summary') && <section className="dash-report-section"><p className="dash-report-summary">{model.summary}</p></section>}
+              {sections.includes('statistics') && (
+                <section className="dash-report-section" aria-label="Report statistics">
+                  <div className="table-wrap dash-report-table-frame">
+                    <table className="dash-report-stats-table">
+                      <thead><tr><th scope="col">Parameter</th><th className="table-numeric" scope="col">Min</th><th className="table-numeric" scope="col">Max</th><th className="table-numeric" scope="col">Mean</th><th className="table-numeric" scope="col">Std dev</th><th className="table-numeric" scope="col">In range</th><th className="table-numeric" scope="col">Excursions</th><th className="table-numeric" scope="col">Longest (h)</th></tr></thead>
+                      <tbody>
+                        {model.statistics.map((row) => <tr key={row.parameter}><td>{reportParameterLabels[row.parameter]}</td><td className="table-numeric">{row.min?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.max?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.mean?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.standardDeviation?.toFixed(2) ?? '—'}</td><td className="table-numeric">{row.percentInRange?.toFixed(1) ?? '—'}%</td><td className="table-numeric">{row.excursions}</td><td className="table-numeric">{row.longestExcursionHours.toFixed(1)}</td></tr>)}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+              {(sections.includes('alerts') || sections.includes('data-quality') || sections.includes('thresholds') || sections.includes('activity') || sections.includes('calibration') || sections.includes('validation')) && (
+                <section className="dash-report-section" aria-label="Report facts">
+                  <div className="dash-report-facts">
+                    {sections.includes('alerts') && <div className="dash-report-fact"><span className="dash-report-fact-label">Alerts</span><p className="dash-report-fact-value">{model.alertCounts.critical} critical · {model.alertCounts.warning} warning · {model.alertCounts.open} open · {model.alertCounts.acknowledged} acknowledged · {model.alertCounts.resolved} resolved</p></div>}
+                    {sections.includes('data-quality') && <div className="dash-report-fact"><span className="dash-report-fact-label">Expected readings</span><p className="dash-report-fact-value">Expected {model.dataQuality.expectedReadings} · Received {model.dataQuality.receivedReadings} ({model.dataQuality.receivedPercent.toFixed(1)}%)</p></div>}
+                    {sections.includes('thresholds') && <div className="dash-report-fact"><span className="dash-report-fact-label">Thresholds used</span><div className="dash-report-thresholds">{model.thresholds.map((threshold) => <span className="dash-report-threshold-chip" key={threshold.parameter}>{reportParameterLabels[threshold.parameter]} {formatThresholdRange(threshold.min, threshold.max)}</span>)}</div></div>}
+                    {sections.includes('activity') && <div className="dash-report-fact"><span className="dash-report-fact-label">Activity logs</span><p className="dash-report-fact-value">{model.activityLogs.length}</p></div>}
+                    {sections.includes('calibration') && <div className="dash-report-fact"><span className="dash-report-fact-label">Calibration</span><p className="dash-report-fact-value">{model.calibrationLogs.length}</p></div>}
+                    {sections.includes('validation') && <div className="dash-report-fact"><span className="dash-report-fact-label">Validation</span><p className="dash-report-fact-value">{model.validationRows.length}</p></div>}
+                  </div>
+                </section>
+              )}
+              {sections.includes('raw-readings') && (
+                <section className="dash-report-section">
+                  <p className="dash-report-raw-caption">Showing first {rawReadingsPreview.length} of {model.rawReadings.length} readings</p>
+                  <div className="table-wrap dash-report-table-frame dash-report-raw-readings">
+                    <table className="dash-report-raw-table">
+                      <thead><tr><th scope="col">Time</th><th scope="col">Tank</th><th className="table-numeric" scope="col">Temp (°C)</th><th className="table-numeric" scope="col">DO (mg/L)</th><th className="table-numeric" scope="col">pH</th></tr></thead>
+                      <tbody>
+                        {rawReadingsPreview.map((row) => <tr key={row.id}><td>{formatManilaDateTime(row.timestamp, { year: '2-digit', month: 'numeric', day: 'numeric' })}</td><td>{model.tanks.find((tank) => tank.id === row.tankId)?.name ?? row.tankId}</td><td className="table-numeric">{row.temperature.toFixed(2)}</td><td className="table-numeric">{row.doMgL.toFixed(2)}</td><td className="table-numeric">{row.ph.toFixed(2)}</td></tr>)}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
               {!canExport && <p className="small muted">Operators may view reports; export is available to managers and administrators.</p>}
             </div>
           )}
         </section>
       </div>
-      {filtersOpen && createPortal(
+      {filtersOpen && filterPortalRoot && createPortal(
         <div
           ref={filterPanelRef}
           id={filterPanelId}
@@ -310,7 +362,7 @@ export default function ReportsPage() {
             </div>
           </div>
         </div>,
-        document.body,
+        filterPortalRoot,
       )}
     </>
   );
