@@ -45,7 +45,6 @@ import { canAccess } from './access';
 import { useSession, useTankSelection } from './state';
 import { Button, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, Page, StateMessage, Title } from './components/ui';
 import { AlertFilterSection } from './components/AlertFilterSection';
-import { HatcheryPicker } from './components/HatcheryPicker';
 import { RangeBar } from './components/RangeBar';
 import { uiScale, useTheme } from './theme';
 import type { Palette, ThemeChoice } from './theme';
@@ -318,6 +317,7 @@ function alertParameterLabel(parameter: string) {
 export function AlertsScreen({ navigation }: Props<'Alerts'>) {
   const { colors } = useTheme();
   const { user } = useSession();
+  const { tanks, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const [statusFilter, setStatusFilter] = useState<AlertItem['status'] | 'all'>('all');
   const [severityFilter, setSeverityFilter] = useState<AlertItem['severity'] | 'all'>('all');
   const [parameterFilter, setParameterFilter] = useState<'temperature' | 'do' | 'ph' | null>(null);
@@ -349,6 +349,7 @@ export function AlertsScreen({ navigation }: Props<'Alerts'>) {
     parameterOptions.find((option) => option.value === parameterFilter)?.label,
   ].join(' · ');
   const rows = [...(query.data ?? [])]
+    .filter((alert) => tanks.some((tank) => tank.id === alert.tankId))
     .filter((alert) => statusFilter === 'all' || alert.status === statusFilter)
     .filter((alert) => severityFilter === 'all' || alert.severity === severityFilter)
     .filter((alert) => parameterFilter === null || alertParameterKey(alert.parameter) === parameterFilter)
@@ -376,7 +377,7 @@ export function AlertsScreen({ navigation }: Props<'Alerts'>) {
           <AlertFilterSection title="Parameter" options={parameterOptions} value={parameterFilter} expanded={expandedFilter === 'parameter'} onToggle={() => setExpandedFilter((current) => current === 'parameter' ? null : 'parameter')} onChange={(value) => { if (parameterFilter !== value) { setParameterFilter(value); setPage(1); } }} />
         </View>}
       </View>
-      {query.isLoading ? <StateMessage message="Loading alerts…" loading /> : query.isError ? <><StateMessage message={`Alert data could not be loaded: ${query.error.message}`} /><Button label="Retry alerts" secondary onPress={() => void query.refetch()} /></> : rows.length === 0 ? <StateMessage message={statusFilter === 'all' && severityFilter === 'all' && parameterFilter === null ? 'No alerts are recorded.' : 'No alerts match these filters.'} /> : <>
+      {query.isLoading || tanksLoading ? <StateMessage message="Loading alerts…" loading /> : tanksError ? <><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry tank list" secondary onPress={refetchTanks} /></> : query.isError ? <><StateMessage message={`Alert data could not be loaded: ${query.error.message}`} /><Button label="Retry alerts" secondary onPress={() => void query.refetch()} /></> : rows.length === 0 ? <StateMessage message={statusFilter === 'all' && severityFilter === 'all' && parameterFilter === null ? 'No alerts are recorded for the selected hatchery.' : 'No alerts match these filters.'} /> : <>
       {rows.slice((currentPage - 1) * 5, currentPage * 5).map((alert) => {
         const StatusIcon = alert.severity === 'critical' ? AlertCircle : AlertTriangle;
         const statusColor = alert.severity === 'critical' ? colors.critical : colors.warning;
@@ -558,7 +559,6 @@ export function StatusScreen() {
   const pendingTotal = pendingRecordTotal(devices.map(({ device }) => device));
   return <Page>
     <Title detail="Sensor and connectivity health">System health</Title>
-    <HatcheryPicker />
     {statuses.isLoading || isLoading ? <StateMessage message="Loading device status…" loading /> : statuses.isError || error ? <Card><StateMessage message={`Could not load device status: ${(statuses.error ?? error)?.message}`} /><Button label="Retry" secondary onPress={() => { void statuses.refetch(); refetch(); }} /></Card> : devices.length === 0 ? <StateMessage message="No device status is available." /> : <>
       <Card title="Overview"><DataRow label="Devices" value={`${devices.length}`} /><DataRow label="Online" value={`${devices.filter(({ device }) => device.online).length}`} /><DataRow label="Offline" value={`${devices.filter(({ device }) => !device.online).length}`} /><DataRow label="Pending offline records" value={pendingTotal === null ? 'Unavailable' : `${pendingTotal}`} /></Card>
       {devices.map(({ device, tank }) => <Card key={device.deviceId} title={tank.name}>
@@ -914,7 +914,6 @@ export function ReportsScreen() {
   }
   return <Page>
     <Title detail="Select tanks, dates, sections and format">Report builder</Title>
-    <Card title="Export settings"><HatcheryPicker /></Card>
     <Card title="Tanks">
       {tanksLoading ? <StateMessage message="Loading tanks…" loading /> : tanksError ? <><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry tank list" secondary onPress={refetchTanks} /></> : tanks.length === 0 ? <StateMessage message="No tanks are available for this account." /> : null}
       {tanks.map((tank) => <Pressable key={tank.id} accessibilityRole="checkbox" accessibilityState={{ checked: selectedIds.includes(tank.id) }} onPress={() => setSelectedTanks((current) => {

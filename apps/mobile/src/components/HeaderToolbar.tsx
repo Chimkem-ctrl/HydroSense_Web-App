@@ -11,6 +11,7 @@ import { api, listPendingAccounts, liveClient } from '../services/client';
 import { getConnectionLabel } from '../services/connectionStatus';
 import { useSession, useTankSelection } from '../state';
 import { Brand } from './ui';
+import { HatcheryPicker } from './HatcheryPicker';
 import { uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
 
@@ -28,7 +29,7 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const insets = useSafeAreaInsets();
   const styles = createStyles(colors);
   const { user, signOut } = useSession();
-  const { tankId } = useTankSelection();
+  const { tankId, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const [panel, setPanel] = useState<Panel>(null);
   const [online, setOnline] = useState<boolean | null>(null);
   const [connection, setConnection] = useState(liveClient?.getConnectionState() ?? 'disconnected');
@@ -124,6 +125,10 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
             </>}
             {panel === 'account' && <>
               <View style={styles.accountIdentity}><Text style={styles.panelTitle}>{user?.name}</Text><Text style={styles.description}>{user?.role}</Text></View>
+              {user?.role === 'admin' && (tanksLoading ? <Text style={styles.description}>Loading hatcheries...</Text> : tanksError ? <View>
+                <Text accessibilityRole="alert" style={styles.error}>Could not load hatcheries: {tanksError.message}</Text>
+                <Pressable accessibilityRole="button" onPress={refetchTanks} style={styles.menuItem}><Text style={styles.itemText}>Retry</Text></Pressable>
+              </View> : <HatcheryPicker />)}
               <View accessibilityLabel={`Connection ${connectionLabel}`} style={styles.connection}>
                 {connectionLabel === 'Live' ? <Wifi size={19} color={connectionColor} /> : <WifiOff size={19} color={connectionColor} />}
                 <Text style={styles.description}>Connection</Text><Text style={[styles.connectionText, { color: connectionColor }]}>{connectionLabel}</Text>

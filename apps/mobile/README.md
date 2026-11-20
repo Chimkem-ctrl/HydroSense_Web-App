@@ -34,8 +34,10 @@ development builds after adding the system UI module.
 Appearance is available in My profile and Settings. Choose System,
 Light or Dark; the preference is saved on the device and System follows its
 current color scheme. The preference remains after signing out.
-The dashboard header offers role-filtered navigation and alert access. Tank
-selection and connection status are in the account menu. The indicator reports a live connection
+The dashboard header offers role-filtered navigation and alert access. Administrators
+can choose a hatchery in the account menu; the selection filters tanks, alerts,
+activity and reports. Tank selection remains on the relevant screens, and
+connection status is in the account menu. The indicator reports a live connection
 or a recent reading; a recent reading alone does not imply a WebSocket stream.
 The hatchery selector combines locations reported by the tank API with Sagay
 and Benoni. Empty locations show no data; administrators can share filtered

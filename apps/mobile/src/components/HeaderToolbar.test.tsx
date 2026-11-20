@@ -2,7 +2,7 @@ import { Children, isValidElement } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ panel: null as string | null, role: 'operator' as 'operator' | 'admin', setPanel: vi.fn(), setTankId: vi.fn() }));
+const state = vi.hoisted(() => ({ panel: null as string | null, role: 'operator' as 'operator' | 'admin', tanksLoading: false, tanksError: null as Error | null, refetchTanks: vi.fn(), setPanel: vi.fn(), setTankId: vi.fn() }));
 vi.mock('react', async (importOriginal) => {
   const react = await importOriginal<typeof import('react')>();
   return {
@@ -26,13 +26,14 @@ vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView',
 vi.mock('../services/client', () => ({ api: {}, listPendingAccounts: vi.fn(), liveClient: null }));
 vi.mock('../state', () => ({
   useSession: () => ({ user: { name: 'Test User', role: state.role }, signOut: vi.fn() }),
-  useTankSelection: () => ({ tanks: [{ id: '1', name: 'Tank 01', site: 'Site' }], tankId: '1', setTankId: state.setTankId, isLoading: false, error: null, refetch: vi.fn() }),
+  useTankSelection: () => ({ tanks: [{ id: '1', name: 'Tank 01', site: 'Site' }], tankId: '1', setTankId: state.setTankId, isLoading: state.tanksLoading, error: state.tanksError, refetch: state.refetchTanks }),
 }));
 vi.mock('../theme', () => ({
   uiScale: { radius: { pill: 999 }, type: { caption: 12 } },
   useTheme: () => ({ colors: { ink: '#000', muted: '#444', teal: '#06c', border: '#ccc', surface: '#fff', selected: '#def', normal: '#080', warning: '#a80', critical: '#c00', overlay: '#000' }, reduceMotion: false }),
 }));
 vi.mock('./ui', () => ({ Brand: 'Brand' }));
+vi.mock('./HatcheryPicker', () => ({ HatcheryPicker: 'HatcheryPicker' }));
 
 import { HeaderToolbar } from './HeaderToolbar';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
@@ -50,6 +51,9 @@ const props = { navigation: { navigate: vi.fn() }, route: { key: 'home', name: '
 beforeEach(() => {
   state.panel = null;
   state.role = 'operator';
+  state.tanksLoading = false;
+  state.tanksError = null;
+  state.refetchTanks.mockClear();
   state.setPanel.mockClear();
   state.setTankId.mockClear();
 });
@@ -94,9 +98,32 @@ describe('account profile controls', () => {
     expect(elements(root, 'Text').some((item) => item.props.children === 'DASHBOARD')).toBe(false);
     expect(elements(root, 'View').some((item) => item.props.accessibilityLabel === 'Connection Offline')).toBe(true);
     expect(elements(root, 'WifiOff')[0].props.color).toBe('#c00');
+    expect(elements(root, 'HatcheryPicker')).toHaveLength(0);
     const accountPanel = elements(root, 'SafeAreaView').find((item) => Array.isArray(item.props.edges) && item.props.edges.length === 0);
     const panelStyles = (accountPanel?.props.style as unknown[]).flat(Infinity).filter(Boolean);
     expect(Object.assign({}, ...panelStyles)).toMatchObject({ position: 'absolute', top: 98, right: 16, width: 340, maxHeight: 696 });
+  });
+
+  it('offers the hatchery filter only in the administrator account menu', () => {
+    state.role = 'admin';
+    state.panel = 'account';
+    expect(elements(HeaderToolbar(props), 'HatcheryPicker')).toHaveLength(1);
+    state.panel = 'navigation';
+    expect(elements(HeaderToolbar(props), 'HatcheryPicker')).toHaveLength(0);
+  });
+
+  it('shows loading and retry states for the administrator hatchery filter', () => {
+    state.role = 'admin';
+    state.panel = 'account';
+    state.tanksLoading = true;
+    expect(elements(HeaderToolbar(props), 'Text').some((item) => item.props.children === 'Loading hatcheries...')).toBe(true);
+    state.tanksLoading = false;
+    state.tanksError = new Error('Network error');
+    const root = HeaderToolbar(props);
+    expect(elements(root, 'HatcheryPicker')).toHaveLength(0);
+    const retry = elements(root, 'Pressable').find((item) => elements(item, 'Text').some((text) => text.props.children === 'Retry'));
+    (retry?.props.onPress as () => void)();
+    expect(state.refetchTanks).toHaveBeenCalledOnce();
   });
 
   it('positions notifications beneath the bell within the viewport', () => {

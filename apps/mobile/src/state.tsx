@@ -181,6 +181,7 @@ export function TankProvider({ children }: PropsWithChildren) {
   });
   const allTanks = query.data ?? [];
   const [hatchery, setHatchery] = useState('all');
+  useEffect(() => { setHatchery('all'); }, [user?.id]);
   const tanks = useMemo(() => allTanks.filter((tank) => tankInHatchery(tank, hatchery)), [allTanks, hatchery]);
   const [selectedId, setSelectedId] = useState('');
   const tankId = tanks.some((tank) => tank.id === selectedId) ? selectedId : tanks[0]?.id ?? '';

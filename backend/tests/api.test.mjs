@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
+import { reportedDeviceFields } from '../supabase/functions/api/reportedFields.mjs';
 
 const source = await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8');
 const javascript = stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, ''), { mode: 'strip' });
@@ -75,7 +76,7 @@ function setup(role = 'admin', status = 'approved') {
       barangay: { name: 'Alangilan' }, municipality: { psgcCode: 'city', provinceCode: 'province', name: 'Sagay' },
       province: { psgcCode: 'province', name: 'Camiguin' }, region: { psgcCode: 'region', name: 'Region X' },
     } : undefined,
-    Request, Response, URL, console,
+    Request, Response, URL, console, reportedDeviceFields,
   };
   runInNewContext(javascript, context);
   return {
