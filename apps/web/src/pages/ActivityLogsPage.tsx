@@ -24,34 +24,6 @@ import { downloadCsv } from '../services/downloadCsv';
 import type { ShellOutletContext } from '../components/shell/AppShell';
 
 type FormKind = Extract<ActivityLogKind, 'OPERATION' | 'ENVIRONMENT'>;
-type ReadingField = 'dissolvedOxygen' | 'temperature' | 'ph' | 'salinity' | 'ammonia';
-type RawReadings = Record<ReadingField | 'method', string>;
-
-const initialReadings: RawReadings = {
-  dissolvedOxygen: '',
-  temperature: '',
-  ph: '',
-  salinity: '',
-  ammonia: '',
-  method: '',
-};
-
-const readingFields: Array<{ key: ReadingField; label: string; min: number; max: number; unit: string }> = [
-  { key: 'dissolvedOxygen', label: 'Dissolved oxygen', min: 0, max: 30, unit: 'mg/L' },
-  { key: 'temperature', label: 'Temperature', min: -5, max: 60, unit: '°C' },
-  { key: 'ph', label: 'pH', min: 0, max: 14, unit: '' },
-  { key: 'salinity', label: 'Salinity', min: 0, max: 100, unit: 'ppt' },
-  { key: 'ammonia', label: 'Ammonia test-kit result', min: 0, max: 100, unit: 'mg/L' },
-];
-
-function parsedReadings(raw: RawReadings) {
-  const readings: NonNullable<ActivityLog['manualReadings']> = {};
-  readingFields.forEach(({ key }) => {
-    if (raw[key].trim()) readings[key] = Number(raw[key]);
-  });
-  if (raw.method.trim()) readings.method = raw.method.trim();
-  return readings;
-}
 
 export default function ActivityLogsPage() {
   const { notifyActivityExport } = useOutletContext<ShellOutletContext>();
@@ -67,7 +39,6 @@ export default function ActivityLogsPage() {
   const [notes, setNotes] = useState('');
   const [waterChangePercent, setWaterChangePercent] = useState('');
   const [waterSource, setWaterSource] = useState('');
-  const [readings, setReadings] = useState<RawReadings>(initialReadings);
   const [impact, setImpact] = useState('Moderate');
   const [formError, setFormError] = useState('');
   const [kindFilter, setKindFilter] = useState<ActivityLogKind | 'all'>('all');
@@ -82,7 +53,6 @@ export default function ActivityLogsPage() {
       setNotes('');
       setWaterChangePercent('');
       setWaterSource('');
-      setReadings(initialReadings);
       setFormError('');
       setStatusMessage(created.kind === 'OPERATION' ? 'Hatchery operation logged.' : 'Environmental event logged.');
       await queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
@@ -121,7 +91,6 @@ export default function ActivityLogsPage() {
     setNotes('');
     setWaterChangePercent('');
     setWaterSource('');
-    setReadings(initialReadings);
     setImpact('Moderate');
     setFormError('');
   }
@@ -137,9 +106,6 @@ export default function ActivityLogsPage() {
     }
     const rawPercent = waterChangePercent.trim();
     const parsedPercent = rawPercent ? Number(rawPercent) : undefined;
-    const manualReadings = modalKind === 'OPERATION' && activityType === 'Manual water quality check'
-      ? parsedReadings(readings)
-      : undefined;
     const entry: Omit<ActivityLog, 'id' | 'occurredAt'> = {
       tankId: scope,
       ...(scope === 'hatchery' ? { hatcheryId: selectedHatchery } : {}),
@@ -151,7 +117,6 @@ export default function ActivityLogsPage() {
         waterChangePercent: parsedPercent ?? Number.NaN,
         ...(waterSource.trim() ? { waterSource: waterSource.trim() } : {}),
       } : {}),
-      ...(manualReadings ? { manualReadings } : {}),
       ...(modalKind === 'ENVIRONMENT' ? { impact } : {}),
     };
     const issues = validateActivityLog(entry);
@@ -159,16 +124,8 @@ export default function ActivityLogsPage() {
       setFormError(issues[0].message);
       return;
     }
-    const detailSuffix = [
-      entry.waterSource ? `Water source: ${entry.waterSource}.` : '',
-      entry.manualReadings ? `Manual readings: ${readingFields.flatMap(({ key, label, unit }) => {
-        const value = entry.manualReadings?.[key];
-        return value === undefined ? [] : [`${label} ${value}${unit ? ` ${unit}` : ''}`];
-      }).join(', ')}${entry.manualReadings.method ? ` (method: ${entry.manualReadings.method})` : ''}.` : '',
-    ].filter(Boolean).join(' ');
     createLog.mutate({
       ...entry,
-      notes: `${entry.notes}${detailSuffix ? ` ${detailSuffix}` : ''}`,
     });
   }
 
@@ -246,19 +203,6 @@ export default function ActivityLogsPage() {
                   <label className="field">Water replaced (%)<input type="number" min="0.1" max="100" step="0.1" value={waterChangePercent} onChange={(event) => setWaterChangePercent(event.target.value)} placeholder="e.g. 20" required /></label>
                   <label className="field">Water source (optional)<input value={waterSource} onChange={(event) => setWaterSource(event.target.value)} placeholder="e.g. treated reservoir" /></label>
                 </div>
-              )}
-              {modalKind === 'OPERATION' && activityType === 'Manual water quality check' && (
-                <>
-                  <div className="form-grid">
-                    {readingFields.map(({ key, label, min, max, unit }) => (
-                      <label className="field" key={key}>{label}{unit ? ` (${unit})` : ''}
-                        <input type="number" min={min} max={max} step="0.1" value={readings[key]} onChange={(event) => setReadings((current) => ({ ...current, [key]: event.target.value }))} placeholder="Optional" />
-                      </label>
-                    ))}
-                  </div>
-                  <label className="field">Instrument / method (optional)<input value={readings.method} onChange={(event) => setReadings((current) => ({ ...current, method: event.target.value }))} placeholder="e.g. calibrated handheld refractometer" /></label>
-                  <p className="small muted">Enter readings actually measured. Manual values are logged separately from sensor readings.</p>
-                </>
               )}
               {modalKind === 'ENVIRONMENT' && <label className="field">Observed impact<Select value={impact} onChange={(event) => setImpact(event.target.value)}><option>Low</option><option>Moderate</option><option>High</option><option>Unknown</option></Select></label>}
               <label className="field">Notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={modalKind === 'OPERATION' ? 'What was done? Include observations or follow-up needed.' : 'When did it occur? What changed around the tank?'} rows={4} required /></label>

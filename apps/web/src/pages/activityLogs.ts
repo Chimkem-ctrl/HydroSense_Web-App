@@ -1,5 +1,5 @@
 import type { ActivityLog, Tank } from '@hydrosense/shared';
-import { activityHatcheryName } from '@hydrosense/shared';
+import { activityHatcheryName, toCsv } from '@hydrosense/shared';
 
 function manilaTimestamp(value: string) {
   return new Intl.DateTimeFormat('en-PH', {
@@ -13,14 +13,23 @@ function manilaTimestamp(value: string) {
   }).format(new Date(value));
 }
 
-function csvCell(value: string) {
-  const safeValue = /^[\s]*[=+\-@]/.test(value) ? `'${value}` : value;
-  return `"${safeValue.replace(/"/g, '""')}"`;
+function manualReadingsText(log: ActivityLog) {
+  const readings = log.manualReadings;
+  if (!readings) return '';
+  return [
+    ['Dissolved oxygen', readings.dissolvedOxygen, 'mg/L'],
+    ['Temperature', readings.temperature, '°C'],
+    ['pH', readings.ph, ''],
+    ['Salinity', readings.salinity, 'ppt'],
+    ['Ammonia', readings.ammonia, 'mg/L'],
+  ].flatMap(([label, value, unit]) => value === undefined ? [] : [`${label}: ${value}${unit ? ` ${unit}` : ''}`])
+    .concat(readings.method ? [`Method: ${readings.method}`] : [])
+    .join('; ');
 }
 
 export function activityLogCsv(logs: ActivityLog[], tanks: Tank[]) {
-  const rows: string[][] = [
-    ['Hatchery', 'Timestamp (PHT)', 'Tank', 'Type', 'Activity', 'Operator', 'Water change (%)', 'Water source', 'Manual salinity (ppt)', 'Manual DO (mg/L)', 'Manual temperature (°C)', 'Manual pH', 'Manual ammonia (mg/L)', 'Manual method', 'Impact', 'Notes'],
+  const rows: unknown[][] = [
+    ['Hatchery', 'Timestamp (PHT)', 'Tank/scope', 'Kind', 'Activity', 'Operator', 'Water change (%)', 'Water source', 'Manual readings', 'Impact', 'Notes'],
     ...logs.map((log) => [
       activityHatcheryName(log, tanks),
       manilaTimestamp(log.occurredAt),
@@ -32,17 +41,12 @@ export function activityLogCsv(logs: ActivityLog[], tanks: Tank[]) {
       log.operator,
       log.waterChangePercent === undefined ? '' : String(log.waterChangePercent),
       log.waterSource ?? '',
-      log.manualReadings?.salinity === undefined ? '' : String(log.manualReadings.salinity),
-      log.manualReadings?.dissolvedOxygen === undefined ? '' : String(log.manualReadings.dissolvedOxygen),
-      log.manualReadings?.temperature === undefined ? '' : String(log.manualReadings.temperature),
-      log.manualReadings?.ph === undefined ? '' : String(log.manualReadings.ph),
-      log.manualReadings?.ammonia === undefined ? '' : String(log.manualReadings.ammonia),
-      log.manualReadings?.method ?? '',
+      manualReadingsText(log),
       log.impact ?? '',
       log.notes,
     ]),
   ];
-  return rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
+  return toCsv(rows);
 }
 
 export function manilaDate(value: string) {

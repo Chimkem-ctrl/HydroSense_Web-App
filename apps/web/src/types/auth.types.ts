@@ -33,6 +33,7 @@ export interface AuthUser {
   employeeId?: string;
   phone?: string;
   position?: string;
+  avatarUrl?: string;
   hatcheryId?: string;
   address?: string;
   emergencyContactName?: string;

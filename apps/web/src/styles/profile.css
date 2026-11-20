@@ -4,7 +4,18 @@
 .profile-page .profile-card, .profile-page .profile-preferences { display: grid; align-content: start; gap: 16px; }
 .profile-page .profile-layout > section { min-width: 0; scroll-margin-top: 20px; }
 .profile-page .profile-summary { display: flex; align-items: center; gap: 14px; padding-bottom: 20px; border-bottom: 1px solid var(--control-border); }
-.profile-page .profile-avatar { width: 52px; height: 52px; font-size: 16px; }
+.profile-page .profile-avatar-wrap { position: relative; width: 72px; height: 72px; flex: 0 0 72px; }
+.profile-page .profile-avatar { width: 72px; height: 72px; margin: 0; font-size: 22px; }
+.profile-page img.profile-avatar { object-fit: cover; }
+.profile-page .profile-avatar-upload { position: absolute; right: 3px; bottom: 3px; display: grid; width: 28px; height: 28px; place-items: center; padding: 0; border: 1px solid var(--control-border); border-radius: 50%; background: var(--surface); color: var(--text-primary); box-shadow: 0 1px 5px rgb(0 0 0 / 28%); cursor: pointer; }
+.profile-page .profile-avatar-upload:hover:not(:disabled) { background: var(--accent-soft); }
+.profile-page .profile-avatar-upload:disabled { cursor: progress; opacity: .65; }
+.profile-page .profile-avatar-upload-spinner { animation: profile-avatar-spinner 900ms linear infinite; }
+@keyframes profile-avatar-spinner { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .profile-page .profile-avatar-upload-spinner { animation: none; } }
+.profile-page .profile-summary-details { display: grid; justify-items: start; gap: 6px; min-width: 0; }
+.profile-page .profile-summary-details h2, .profile-page .profile-summary-details p { margin: 0; }
+.profile-page .profile-summary-details .small { margin: 0; }
 .profile-page .profile-summary h3 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
 .profile-page .profile-summary p { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
 .profile-page .profile-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }

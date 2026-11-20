@@ -12,6 +12,12 @@ describe('activity log CSV export', () => {
       occurredAt: '2025-01-01T16:30:00.000Z',
       operator: '=HYPERLINK("https://example.test")',
       notes: '@SUM(1,2)',
+      manualReadings: {
+        dissolvedOxygen: 5.2,
+        salinity: 30.2,
+        ammonia: 0.1,
+        method: 'test kit',
+      },
     }];
 
     const csv = activityLogCsv(logs, [{
@@ -29,7 +35,9 @@ describe('activity log CSV export', () => {
     expect(csv).toContain('"Hatchery","Timestamp (PHT)"');
     expect(csv).toContain('"Sagay","Jan 2, 2025');
     expect(csv).toContain('"Water source"');
-    expect(csv).toContain('"Manual ammonia (mg/L)"');
+    expect(csv).toContain('"Manual readings"');
+    expect(csv).toContain('"Dissolved oxygen: 5.2 mg/L; Salinity: 30.2 ppt; Ammonia: 0.1 mg/L; Method: test kit"');
+    expect(csv).not.toContain('"Manual ammonia (mg/L)"');
   });
 
   it('includes the location of hatchery-wide activity', () => {

@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { getCurrentUser, signOut, SUBSCRIBED_HATCHERIES } from '../services/authService';
 import { readTankRegistry, tanks } from '../data/mockDashboardData';
-import { ACTIVITY_EVENT_TYPES, ACTIVITY_OPERATION_TYPES } from '@hydrosense/shared';
+import { ACTIVITY_EVENT_TYPES, ACTIVITY_OPERATION_TYPES, toCsv } from '@hydrosense/shared';
 import {
   getThreeHourReadings,
   operatorAlerts,
@@ -321,13 +321,6 @@ export default function OperatorDashboardPage() {
   const [activityNotes, setActivityNotes] = useState('');
   const [waterChangePercent, setWaterChangePercent] = useState('');
   const [waterSource, setWaterSource] = useState('');
-  const [manualReadings, setManualReadings] = useState({
-    dissolvedOxygen: '',
-    temperature: '',
-    ph: '',
-    salinity: '',
-    method: '',
-  });
   const [environmentImpact, setEnvironmentImpact] = useState('Moderate');
   const [formError, setFormError] = useState('');
   const [resolutionAlertId, setResolutionAlertId] = useState('');
@@ -409,7 +402,6 @@ export default function OperatorDashboardPage() {
     setActivityNotes('');
     setWaterChangePercent('');
     setWaterSource('');
-    setManualReadings({ dissolvedOxygen: '', temperature: '', ph: '', salinity: '', method: '' });
     setFormError('');
     setModal('log');
   }
@@ -427,33 +419,6 @@ export default function OperatorDashboardPage() {
       return;
     }
 
-    const readingEntries = [
-      ['Dissolved oxygen', manualReadings.dissolvedOxygen, 'mg/L', 0, 30],
-      ['Temperature', manualReadings.temperature, '°C', -5, 60],
-      ['pH', manualReadings.ph, 'pH', 0, 14],
-      ['Salinity', manualReadings.salinity, 'ppt', 0, 100],
-    ] as const;
-    const recordedManualReadings = readingEntries.flatMap(([label, rawValue, unit, min, max]) => {
-      if (!rawValue.trim()) return [];
-      const value = Number(rawValue);
-      if (!Number.isFinite(value) || value < min || value > max) return [];
-      return [{ label, value, unit }];
-    });
-    if (activityKind === 'OPERATION' && activityType === 'Manual water quality check') {
-      const enteredReadingCount = readingEntries.filter(([, rawValue]) => rawValue.trim()).length;
-      if (enteredReadingCount === 0) {
-        setFormError('Enter at least one water-quality measurement from a manual instrument.');
-        return;
-      }
-      if (recordedManualReadings.length !== enteredReadingCount) {
-        setFormError('Check that each manual reading is within its allowed numeric range.');
-        return;
-      }
-    }
-
-    const manualReadingSummary = recordedManualReadings.length
-      ? ` Manual readings: ${recordedManualReadings.map(({ label, value, unit }) => `${label} ${value} ${unit}`).join(', ')}${manualReadings.method.trim() ? ` (method: ${manualReadings.method.trim()})` : ''}.`
-      : '';
     const extraDetails = activityKind === 'OPERATION' &&
       activityType === 'Water change / exchange' && waterSource.trim()
       ? ` Water source: ${waterSource.trim()}.`
@@ -467,20 +432,11 @@ export default function OperatorDashboardPage() {
       type: activityType,
       occurredAt: time.now.toISOString(),
       operator: activeOperatorName,
-      notes: `${activityNotes.trim()}${extraDetails}${manualReadingSummary}`,
+      notes: `${activityNotes.trim()}${extraDetails}`,
       ...(activityKind === 'OPERATION' && activityType === 'Water change / exchange'
         ? { waterChangePercent: parsedPercent }
         : {}),
       ...(activityKind === 'ENVIRONMENT' ? { impact: environmentImpact } : {}),
-      ...(recordedManualReadings.length ? {
-        manualReadings: {
-          ...(manualReadings.dissolvedOxygen.trim() ? { dissolvedOxygen: Number(manualReadings.dissolvedOxygen) } : {}),
-          ...(manualReadings.temperature.trim() ? { temperature: Number(manualReadings.temperature) } : {}),
-          ...(manualReadings.ph.trim() ? { ph: Number(manualReadings.ph) } : {}),
-          ...(manualReadings.salinity.trim() ? { salinity: Number(manualReadings.salinity) } : {}),
-          ...(manualReadings.method.trim() ? { method: manualReadings.method.trim() } : {}),
-        },
-      } : {}),
     };
     setLogs((current) => [newLog, ...current]);
     setModal(null);
@@ -550,8 +506,8 @@ export default function OperatorDashboardPage() {
   }
 
   function downloadLog() {
-    const rows = [
-      ['Timestamp (PHT)', 'Tank', 'Type', 'Activity', 'Operator', 'Water change (%)', 'Manual salinity (ppt)', 'Manual DO (mg/L)', 'Manual temperature (°C)', 'Manual pH', 'Manual method', 'Impact', 'Notes'],
+    const rows: unknown[][] = [
+      ['Timestamp (PHT)', 'Tank/scope', 'Kind', 'Activity', 'Operator', 'Water change (%)', 'Manual readings', 'Impact', 'Notes'],
       ...logsForTank.map((log) => [
         formatManilaTimestamp(new Date(log.occurredAt)),
         log.tankId === 'hatchery'
@@ -561,19 +517,17 @@ export default function OperatorDashboardPage() {
         log.type,
         log.operator,
         log.waterChangePercent === undefined ? '' : String(log.waterChangePercent),
-        log.manualReadings?.salinity === undefined ? '' : String(log.manualReadings.salinity),
-        log.manualReadings?.dissolvedOxygen === undefined ? '' : String(log.manualReadings.dissolvedOxygen),
-        log.manualReadings?.temperature === undefined ? '' : String(log.manualReadings.temperature),
-        log.manualReadings?.ph === undefined ? '' : String(log.manualReadings.ph),
-        log.manualReadings?.method ?? '',
+        [
+          ['DO', log.manualReadings?.dissolvedOxygen, 'mg/L'],
+          ['Temperature', log.manualReadings?.temperature, '°C'],
+          ['pH', log.manualReadings?.ph, ''],
+          ['Salinity', log.manualReadings?.salinity, 'ppt'],
+        ].flatMap(([label, value, unit]) => value === undefined ? [] : [`${label}: ${value}${unit ? ` ${unit}` : ''}`]).join('; '),
         log.impact ?? '',
         log.notes,
       ]),
     ];
-    const csv = rows.map((row) => row.map((field) => {
-      const safeField = /^[\s]*[=+\-@]/.test(field) ? `'${field}` : field;
-      return `"${safeField.replace(/"/g, '""')}"`;
-    }).join(',')).join('\r\n');
+    const csv = toCsv(rows);
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
@@ -875,18 +829,6 @@ export default function OperatorDashboardPage() {
                 <label>Water replaced (%)<input type="number" min="0.1" max="100" step="0.1" value={waterChangePercent} onChange={(event) => setWaterChangePercent(event.target.value)} placeholder="e.g. 20" required /></label>
                 <label>Water source (optional)<input value={waterSource} onChange={(event) => setWaterSource(event.target.value)} placeholder="e.g. treated reservoir" /></label>
               </div>
-            )}
-            {activityKind === 'OPERATION' && activityType === 'Manual water quality check' && (
-              <>
-                <div className="operator-manual-reading-grid">
-                  <label>Dissolved oxygen (mg/L)<input type="number" min="0" max="30" step="0.1" value={manualReadings.dissolvedOxygen} onChange={(event) => setManualReadings((current) => ({ ...current, dissolvedOxygen: event.target.value }))} placeholder="Optional" /></label>
-                  <label>Temperature (°C)<input type="number" min="-5" max="60" step="0.1" value={manualReadings.temperature} onChange={(event) => setManualReadings((current) => ({ ...current, temperature: event.target.value }))} placeholder="Optional" /></label>
-                  <label>pH<input type="number" min="0" max="14" step="0.1" value={manualReadings.ph} onChange={(event) => setManualReadings((current) => ({ ...current, ph: event.target.value }))} placeholder="Optional" /></label>
-                  <label>Salinity (ppt)<input type="number" min="0" max="100" step="0.1" value={manualReadings.salinity} onChange={(event) => setManualReadings((current) => ({ ...current, salinity: event.target.value }))} placeholder="Optional" /></label>
-                </div>
-                <label>Instrument / method (optional)<input value={manualReadings.method} onChange={(event) => setManualReadings((current) => ({ ...current, method: event.target.value }))} placeholder="e.g. calibrated handheld refractometer" /></label>
-                <small className="operator-field-help">Enter readings you actually measured. Manual values are logged as operator observations, separate from sensor readings.</small>
-              </>
             )}
             {activityKind === 'ENVIRONMENT' && <label>Observed impact<select value={environmentImpact} onChange={(event) => setEnvironmentImpact(event.target.value)}><option>Low</option><option>Moderate</option><option>High</option><option>Unknown</option></select></label>}
             <label>Notes<textarea value={activityNotes} onChange={(event) => setActivityNotes(event.target.value)} placeholder={activityKind === 'OPERATION' ? 'What was done? Include observations or follow-up needed.' : 'When did it occur? What changed around the tank?'} rows={4} required /></label>

@@ -17,8 +17,20 @@ function setup(role = 'admin', status = 'approved') {
   ];
   const tables = { profiles, tanks: [{ id: 'tank', device_id: 'node', site: 'Camiguin, Sagay Multispecies Hatchery' }], sms_alert_queue: [], thresholds: [{ parameter: 'temperature', min_value: 26, max_value: 30 }, { parameter: 'do', min_value: 4, max_value: null }, { parameter: 'ph', min_value: 6, max_value: 8 }], alerts: [], alert_responses: [], device_statuses: [], audit_logs: [], manual_entries: [], activity_logs: [], validation_rows: [], readings: [], advisory_settings: [{ id: true, salinity_watch_temperature_c: 31, salinity_high_temperature_c: 32, ammonia_watch_temperature_c: 31, ammonia_high_ph: 7.8 }] };
   const failures = {};
+  const uploads = [];
   let createdUser;
   const db = {
+    storage: {
+      from(bucket) {
+        return {
+          createSignedUrl: async (path) => ({ data: { signedUrl: `https://storage.example/${bucket}/${path}` }, error: null }),
+          upload: async (path, file, options) => {
+            uploads.push({ bucket, path, size: file.byteLength, options });
+            return { error: null };
+          },
+        };
+      },
+    },
     auth: { admin: { createUser: async (body) => { createdUser = body; return { data: { user: { id: 'new', email: body.email } }, error: null }; } } },
     async rpc(name, args) {
       assert.equal(name, 'claim_alert_sms');
@@ -82,6 +94,7 @@ function setup(role = 'admin', status = 'approved') {
   return {
     tables,
     failures,
+    uploads,
     get createdUser() { return createdUser; },
     hardwareRequest: (path, body, key = 'hardware-key') => handler(new Request(`https://example.test/functions/v1/api${path}`, {
       method: 'POST', headers: { 'X-Hardware-Api-Key': key, 'Content-Type': 'application/json' },
@@ -90,6 +103,11 @@ function setup(role = 'admin', status = 'approved') {
     request: (path, method = 'GET', body) => handler(new Request(`https://example.test/functions/v1/api${path}`, {
       method, headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })),
+    upload: (path, contentType, bytes) => handler(new Request(`https://example.test/functions/v1/api${path}`, {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer test', 'Content-Type': contentType },
+      body: bytes,
     })),
     ingest: (body) => handler(new Request('https://example.test/functions/v1/api/v1/ingest/readings', {
       method: 'POST', headers: { 'x-hardware-api-key': 'hardware-key', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -199,7 +217,7 @@ test('only approved admins can review pending requests and assign any approval r
 
 test('profile endpoint returns the signed-in profile and hatchery details', async () => {
   const app = setup('manager');
-  Object.assign(app.tables.profiles[0], { site: 'site', phone: '123', employee_id: 'EMP-1' });
+  Object.assign(app.tables.profiles[0], { site: 'site', phone: '123', employee_id: 'EMP-1', avatar_path: 'actor/avatar' });
   const response = await app.request('/v1/profile');
   assert.equal(response.status, 200);
   const profile = await response.json();
@@ -207,7 +225,28 @@ test('profile endpoint returns the signed-in profile and hatchery details', asyn
   assert.equal(profile.site, 'site');
   assert.equal(profile.phone, '123');
   assert.equal(profile.employeeId, 'EMP-1');
+  assert.equal(profile.avatarUrl, 'https://storage.example/profile-avatars/actor/avatar');
   assert.equal((await setup('manager', 'pending').request('/v1/profile')).status, 403);
+});
+
+test('profile avatar uploads are validated and exposed only through signed links', async () => {
+  const app = setup();
+  const unsupported = await app.upload('/v1/profile/avatar', 'text/plain', new Uint8Array([1]));
+  assert.equal(unsupported.status, 415);
+  const tooLarge = await app.upload('/v1/profile/avatar', 'image/png', new Uint8Array(2 * 1024 * 1024 + 1));
+  assert.equal(tooLarge.status, 413);
+  const uploaded = await app.upload('/v1/profile/avatar', 'image/png', new Uint8Array([1, 2, 3]));
+  assert.equal(uploaded.status, 201);
+  assert.equal(app.uploads.length, 1);
+  assert.equal(app.uploads[0].bucket, 'profile-avatars');
+  assert.equal(app.uploads[0].path, 'actor/avatar');
+  assert.equal(app.tables.profiles[0].avatar_path, 'actor/avatar');
+  assert.equal((await uploaded.json()).avatarUrl, 'https://storage.example/profile-avatars/actor/avatar');
+
+  app.tables.profiles[2].avatar_path = 'member/avatar';
+  const userList = await app.request('/v1/admin/users');
+  const users = await userList.json();
+  assert.equal(users.find((user) => user.id === 'member').avatarUrl, 'https://storage.example/profile-avatars/member/avatar');
 });
 
 test('manager account list is restricted to approved non-admin users at their assigned site', async () => {

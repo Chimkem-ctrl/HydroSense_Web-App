@@ -118,11 +118,6 @@ export function validateActivityLog(entry: Partial<ActivityLog>): ActivityLogVal
     })) {
       issues.push({ field: 'manualReadings', message: 'Check that each manual reading is within its allowed numeric range.' });
     }
-    if (entry.kind === 'OPERATION' && entry.type === 'Manual water quality check' && entered.length === 0) {
-      issues.push({ field: 'manualReadings', message: 'Enter at least one water-quality measurement from a manual instrument.' });
-    }
-  } else if (entry.kind === 'OPERATION' && entry.type === 'Manual water quality check') {
-    issues.push({ field: 'manualReadings', message: 'Enter at least one water-quality measurement from a manual instrument.' });
   }
   return issues;
 }

@@ -64,6 +64,12 @@ Deno.serve(async (request) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
   const admin = createClient(supabaseUrl, serviceRoleKey);
+  const profileAvatarUrl = async (path?: string | null) => {
+    if (!path) return undefined;
+    const { data, error } = await admin.storage.from("profile-avatars").createSignedUrl(path, 86400);
+    if (error || !data?.signedUrl) throw new Error(error?.message ?? "Unable to create a profile picture link.");
+    return data.signedUrl;
+  };
 
   let publicPath = url.pathname;
   publicPath = publicPath.replace(/^\/functions\/v1\/api/, "");
@@ -738,12 +744,34 @@ Deno.serve(async (request) => {
     return json(body.tolerances);
   }
 
+  if (action === "/v1/profile/avatar" && request.method === "PUT") {
+    const contentType = request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase();
+    if (contentType !== "image/jpeg" && contentType !== "image/png" && contentType !== "image/webp") {
+      return json({ error: "Choose a JPG, PNG, or WebP image." }, 415);
+    }
+    const image = new Uint8Array(await request.arrayBuffer());
+    if (image.byteLength === 0 || image.byteLength > 2 * 1024 * 1024) {
+      return json({ error: "Choose an image no larger than 2 MB." }, 413);
+    }
+    const avatarPath = `${profile.id}/avatar`;
+    const { error: uploadError } = await admin.storage.from("profile-avatars").upload(avatarPath, image, {
+      contentType,
+      cacheControl: "3600",
+      upsert: true,
+    });
+    if (uploadError) return json({ error: uploadError.message }, 500);
+    const { error: profileError } = await admin.from("profiles").update({ avatar_path: avatarPath }).eq("id", profile.id);
+    if (profileError) return json({ error: profileError.message }, 500);
+    return json({ avatarUrl: await profileAvatarUrl(avatarPath) }, 201);
+  }
+
   if (action === "/v1/profile" && request.method === "GET") {
     return json({
       id: profile.id, name: `${profile.first_name} ${profile.last_name}`.trim(), email: profile.email,
       role: profile.role, status: profile.status, site: profile.site, createdAt: profile.created_at,
       employeeId: profile.employee_id, phone: profile.phone, position: profile.position, address: profile.address,
       emergencyContactName: profile.emergency_contact_name, emergencyContactPhone: profile.emergency_contact_phone,
+      avatarUrl: await profileAvatarUrl(profile.avatar_path),
     });
   }
 
@@ -761,13 +789,14 @@ Deno.serve(async (request) => {
     }
     const { data, error } = await query;
     if (error) return json({ error: error.message }, 500);
-    return json(data?.map((user) => ({
+    return json(await Promise.all((data ?? []).map(async (user) => ({
       id: user.id, firstName: user.first_name, lastName: user.last_name, name: `${user.first_name} ${user.last_name}`.trim(), email: user.email,
       role: user.role, requestedRole: user.requested_role, status: user.status, createdAt: user.created_at,
       site: user.site, active: user.active, lastActive: user.last_active,
       employeeId: user.employee_id, phone: user.phone, position: user.position, address: user.address,
       emergencyContactName: user.emergency_contact_name, emergencyContactPhone: user.emergency_contact_phone,
-    })));
+      avatarUrl: await profileAvatarUrl(user.avatar_path),
+    }))));
   }
 
   const adminRoleUpdate = action.match(/^\/v1\/admin\/users\/([^/]+)\/role$/);

@@ -24,6 +24,8 @@
 .admin-users-page .admin-users-table th, .admin-users-page .admin-users-table td { padding: 12px; vertical-align: middle; }
 .admin-users-page .admin-users-table td { overflow-wrap: anywhere; }
 .admin-users-page .admin-users-table td:first-child { font-weight: 700; }
+.admin-users-page .admin-user-identity { display: inline-flex; align-items: center; gap: 10px; }
+.admin-users-page .admin-user-avatar { display: inline-grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid var(--control-border); border-radius: 50%; background: var(--accent-soft); color: var(--text-primary); font-size: 12px; font-weight: 700; object-fit: cover; }
 .admin-users-page .admin-users-table tr:last-child td { border-bottom: 0; }
 .admin-users-page .admin-users-table .field select { min-width: 120px; }
 .admin-request-action-buttons { display: flex; align-items: center; gap: 8px; }

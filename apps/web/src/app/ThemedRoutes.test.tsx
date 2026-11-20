@@ -626,6 +626,27 @@ describe('themed dashboard routes', () => {
     expect(document.documentElement).toHaveAttribute('data-theme', 'light');
   });
 
+  it('lets a signed-in user upload a profile picture', async () => {
+    signInAs('operator');
+    const saveProfileAvatar = authService.saveProfileAvatar.bind(authService);
+    let finishUpload!: () => void;
+    const uploadGate = new Promise<void>((resolve) => { finishUpload = resolve; });
+    vi.spyOn(authService, 'saveProfileAvatar').mockImplementation(async (file) => {
+      await uploadGate;
+      return saveProfileAvatar(file);
+    });
+    window.history.replaceState({}, '', '/profile');
+    render(<App />);
+    expect(screen.getByRole('button', { name: 'Upload profile picture' })).toBeInTheDocument();
+    expect(screen.queryByText(/JPG, PNG, or WebP/)).not.toBeInTheDocument();
+    const file = new File([new Uint8Array([1, 2, 3])], 'profile.png', { type: 'image/png' });
+    fireEvent.change(await screen.findByLabelText('Choose profile picture'), { target: { files: [file] } });
+    expect(await screen.findByText(/Preparing and uploading… JPG, PNG, or WebP/)).toBeInTheDocument();
+    finishUpload();
+    expect(await screen.findByRole('img', { name: 'Test operator profile picture' })).toHaveAttribute('src', 'data:image/png;base64,AQID');
+    expect(await screen.findByText('Profile picture updated.')).toHaveAttribute('role', 'status');
+  });
+
   it.each(['not a phone', ''] as const)('does not show SMS validation text for %s', async (phone) => {
     signInAs('operator', phone);
     window.history.replaceState({}, '', '/profile');
@@ -793,6 +814,10 @@ describe('themed dashboard routes', () => {
     expect(within(dialog).getByLabelText('Operation type')).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Operation' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Weather / event' })).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('Operation type'), { target: { value: 'Manual water quality check' } });
+    expect(within(dialog).getByLabelText('Notes')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Dissolved oxygen')).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Instrument / method (optional)')).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     fireEvent.click(screen.getByRole('button', { name: 'Log weather / event' }));
     dialog = screen.getByRole('dialog', { name: 'Log weather or event' });
