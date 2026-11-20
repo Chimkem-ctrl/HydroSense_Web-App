@@ -60,6 +60,7 @@ HMUfpIBvFSDJ3gyICh3WZlXi/EjJKSZp4A==
 const float CAL_SLOPE = -5.689;
 const float CAL_INTERCEPT = 21.08;
 const int NUM_PH_SAMPLES = 20;
+const unsigned long REGULAR_READING_INTERVAL_MS = 3UL * 60UL * 60UL * 1000UL;
 
 // Saved sensor calculation reference:
 // DS18B20 temperature = raw 16-bit register / 16.0.
@@ -698,7 +699,7 @@ void sampleAndStore() {
     return;
   }
   unsigned long now = millis();
-  bool regular = lastRegular == 0 || now - lastRegular >= 300000;
+  bool regular = lastRegular == 0 || now - lastRegular >= REGULAR_READING_INTERVAL_MS;
   bool alert = thresholdsReady && (thresholdViolated(0, currentTemp) ||
     thresholdViolated(1, currentDO_mgL) || thresholdViolated(2, currentPH));
   if (!regular && !alert) return;
