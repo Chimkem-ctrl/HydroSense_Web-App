@@ -6,6 +6,7 @@
   --scrollbar-thumb: #666;
   --scrollbar-track: #171717;
 }
+html:has(.glass-shell) { overscroll-behavior: none; }
 html, .glass-shell .side-nav, .glass-shell .table-wrap, .glass-shell .popover, .glass-shell .dialog, .glass-shell .dialog-backdrop, .glass-shell .audit-trail-modal, .glass-shell .notification-list, .glass-shell .hs-select-menu, .auth-background .terms-modal {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);

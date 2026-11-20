@@ -40,6 +40,19 @@ describe('merged dashboard backgrounds', () => {
     },
   );
 
+  it('prevents viewport overscroll only while the dashboard is mounted', () => {
+    const style = document.createElement('style');
+    style.dataset.backgroundTest = '';
+    style.textContent = shellStyles;
+    document.head.append(style);
+
+    document.body.innerHTML = '<div class="glass-shell"></div>';
+    expect(getComputedStyle(document.documentElement).getPropertyValue('overscroll-behavior')).toBe('none');
+
+    document.body.innerHTML = '';
+    expect(getComputedStyle(document.documentElement).getPropertyValue('overscroll-behavior')).toBe('');
+  });
+
   it('uses neutral frosted surfaces for cards and transparent nested cards', () => {
     for (const css of [shellStyles, themeStyles]) {
       const style = document.createElement('style');
