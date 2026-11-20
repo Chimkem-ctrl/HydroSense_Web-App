@@ -92,7 +92,6 @@ const createLogScreenStyles = (colors: Palette) => StyleSheet.create({
 
 function ReadingCard({ parameter, reading, threshold, stale }: { parameter: MeasuredParameter; reading: Reading; threshold?: Threshold; stale: boolean }) {
   const { colors } = useTheme();
-  const lineColor = parameter === 'temperature' ? '#fb923c' : parameter === 'do' ? '#2dd4bf' : '#a78bfa';
   const value = parameter === 'do' ? reading.doMgL : reading[parameter];
   const status = getParameterStatus(parameter, value, threshold);
   const label = parameter === 'temperature' ? 'Temperature' : parameter === 'do' ? 'Dissolved oxygen' : 'pH';
@@ -106,7 +105,7 @@ function ReadingCard({ parameter, reading, threshold, stale }: { parameter: Meas
   const statusColor = stale ? colors.muted : !valid ? colors.warning : status.level === 'normal' ? colors.normal : status.level === 'warning' ? colors.warning : colors.critical;
   const StatusIcon = stale || !valid ? AlertTriangle : status.level === 'normal' ? CheckCircle2 : status.level === 'warning' ? AlertTriangle : AlertCircle;
   const statusLabel = !valid ? 'Check probe' : stale ? 'Offline' : status.label;
-  return <Card>
+  return <Card toneColor={stale ? undefined : statusColor}>
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: uiScale.spacing[2] }}>
       <Text style={{ color: colors.muted, fontSize: 14, fontWeight: '700', flexShrink: 1 }}>{label}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderColor: statusColor, borderWidth: 1, borderRadius: uiScale.radius.pill, paddingHorizontal: uiScale.spacing[2], paddingVertical: uiScale.spacing[1] }}>
@@ -115,23 +114,22 @@ function ReadingCard({ parameter, reading, threshold, stale }: { parameter: Meas
       </View>
     </View>
     <Text style={{ color: stale ? colors.muted : colors.ink, fontSize: 38, fontWeight: '400', fontVariant: ['tabular-nums'] }}>{valid ? formatParameter(parameter, value) : `— ${unit}`}</Text>
-    <Text style={{ color: colors.muted, lineHeight: 20 }}>{!valid ? 'Invalid reading excluded' : stale ? 'Last reading; status unavailable' : status.distance}{'\n'}Safe {safe}</Text>
     {gauge && <View accessibilityRole="image" accessibilityLabel={`${label}, ${formatParameter(parameter, value)}. Safe ${safe}. ${statusLabel}.`} style={{ gap: uiScale.spacing[2], marginTop: uiScale.spacing[1] }}>
       <View style={{ height: 8, borderRadius: 8, marginHorizontal: 7, backgroundColor: colors.border }}>
-        <View style={{ position: 'absolute', left: `${gauge.safeStart}%`, width: `${gauge.safeEnd - gauge.safeStart}%`, height: 8, borderRadius: 8, backgroundColor: stale ? colors.muted : lineColor }} />
-        <View style={{ position: 'absolute', left: `${gauge.position}%`, top: -4, marginLeft: -7, height: 16, width: 16, borderRadius: 8, borderWidth: 2, borderColor: stale ? colors.muted : lineColor, backgroundColor: colors.surface }} />
+        <View style={{ position: 'absolute', left: `${gauge.safeStart}%`, width: `${gauge.safeEnd - gauge.safeStart}%`, height: 8, borderRadius: 8, backgroundColor: statusColor }} />
+        <View style={{ position: 'absolute', left: `${gauge.position}%`, top: -4, marginLeft: -7, height: 16, width: 16, borderRadius: 8, borderWidth: 2, borderColor: statusColor, backgroundColor: colors.surface }} />
       </View>
       <View style={{ height: 18, marginHorizontal: 7 }}>
-        {min !== undefined && <Text style={{ position: 'absolute', left: `${gauge.safeStart}%`, color: stale ? colors.muted : lineColor, fontSize: 12 }}>{min}</Text>}
-        {max !== undefined && <Text style={{ position: 'absolute', left: `${gauge.safeEnd}%`, color: stale ? colors.muted : lineColor, fontSize: 12 }}>{max}</Text>}
+        {min !== undefined && <Text style={{ position: 'absolute', left: `${gauge.safeStart}%`, color: statusColor, fontSize: 12 }}>{min}</Text>}
+        {max !== undefined && <Text style={{ position: 'absolute', left: `${gauge.safeEnd}%`, color: statusColor, fontSize: 12 }}>{max}</Text>}
       </View>
-      <Text style={{ color: colors.muted, fontSize: 12 }}>Display scale {gauge.scaleMin}–{gauge.scaleMax} {unit}{value < gauge.scaleMin || value > gauge.scaleMax ? ' · marker at scale edge' : ''}</Text>
     </View>}
+    <Text style={{ color: colors.muted, lineHeight: 20 }}>{!valid ? 'Invalid reading excluded' : stale ? 'Last reading; status unavailable' : status.distance}{'\n'}Safe {safe}</Text>
     <Text style={{ color: colors.muted, fontSize: 12 }}>Updated {formatManilaDateTime(reading.timestamp)} PHT</Text>
   </Card>;
 }
 
-export function HomeScreen({ navigation }: Props<'Home'>) {
+export function HomeScreen() {
   const { colors } = useTheme();
   const { user } = useSession();
   const [now, setNow] = useState(Date.now);
@@ -162,19 +160,16 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>
         {(['temperature', 'do', 'ph'] as const).map((parameter) => <View key={parameter} style={{ width: width >= 950 ? '32%' : width >= 600 ? '48%' : '100%' }}><ReadingCard parameter={parameter} reading={reading} threshold={thresholds.data?.find((item) => item.parameter === parameter)} stale={freshness?.stale ?? false} /></View>)}
       </View>
-      <Card title="Last update"><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text><Text style={{ color: colors.muted }}>Readings are sampled every 3 hours.</Text></Card>
+      <Card title="Last update"><View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text><Text style={{ color: colors.muted }}>Readings are sampled every 3 hours.</Text></View></Card>
       <Card title="Device connection">
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: deviceExpanded }} onPress={() => setDeviceExpanded((current) => !current)} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.teal }}>{deviceExpanded ? 'Hide device details' : 'Show device details'}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: deviceExpanded }} onPress={() => setDeviceExpanded((current) => !current)} hitSlop={{ top: 8, bottom: 8 }} style={{ paddingVertical: uiScale.spacing[1] }}><Text style={{ color: colors.teal }}>{deviceExpanded ? 'Hide device details' : 'Show device details'}</Text></Pressable>
         {deviceExpanded && (devices.isLoading ? <StateMessage message="Loading device status…" loading /> : devices.isError ? <StateMessage message={`Could not load device status: ${devices.error.message}`} /> : !device ? <StateMessage message="No device is registered for this tank." /> : <>
           <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} valueColor={device.online ? colors.normal : colors.critical} />
-          <DataRow label="Battery" value={device.batteryPct > 0 ? `${device.batteryPct}%` : 'Unavailable'} detail={`Power source: ${device.powerSource}`} />
           {device.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
           {alerts.isError ? <StateMessage message="Could not load alerts." /> : <DataRow label="Active alerts" value={alerts.isLoading ? 'Loading…' : `${openCount}`} />}
         </>)}
-        {canAccess(user?.role ?? null, 'canCalibrate') && <Button label="Calibration helper" secondary onPress={() => navigation.navigate('Calibration')} />}
       </Card>
     </> : <StateMessage message="No reading is available for this tank." />}
-    <Button label="Record manual water test" onPress={() => navigation.navigate('FieldEntry')} secondary />
   </Page>;
 }
 

@@ -3,7 +3,7 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 import NetInfo from '@react-native-community/netinfo';
 import { useQuery } from '@tanstack/react-query';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
-import { Activity, AlertTriangle, Bell, ClipboardList, Database, FileText, LayoutDashboard, LogOut, Menu, Sliders, UserRound, Users, Wifi, WifiOff, X } from 'lucide-react-native';
+import { Activity, AlertTriangle, Bell, ClipboardList, Database, FileText, LayoutDashboard, LogOut, Sliders, UserRound, Users, Wifi, WifiOff, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MainTabParamList } from '../navigation';
 import { canAccess } from '../access';
@@ -15,7 +15,7 @@ import { uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
 
 type Panel = 'navigation' | 'account' | 'notifications' | null;
-type Destination = { name: keyof MainTabParamList; label: string; icon: typeof Menu; group: 'Monitor' | 'Records' | 'Manage' };
+type Destination = { name: keyof MainTabParamList; label: string; icon: typeof Activity; group: 'Monitor' | 'Records' | 'Manage' };
 
 export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const { colors, mode, reduceMotion } = useTheme();
@@ -76,8 +76,7 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safe}>
     <View style={styles.header}>
       <View style={styles.brandRow}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" accessibilityState={{ expanded: panel === 'navigation' }} onPress={() => setPanel('navigation')} style={styles.iconButton}><Menu size={21} color={colors.ink} /></Pressable>
-        <View style={styles.brandSlot}><Brand compact /></View>
+        <View style={styles.brandSlot}><Brand compact onLogoPress={() => setPanel('navigation')} logoExpanded={panel === 'navigation'} /></View>
         <Pressable accessibilityRole="button" accessibilityLabel={alerts.isError ? 'Alerts unavailable; open alerts' : alertCount === undefined ? 'Loading alerts; open alerts' : `${alertCount} open alerts and pending requests${pending.isError ? ', account requests unavailable' : ''}`} accessibilityState={{ expanded: panel === 'notifications' }} onPress={() => setPanel('notifications')} style={styles.iconButton}>
           <Bell size={20} color={colors.ink} />
           {alertCount !== undefined && alertCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{alertCount > 99 ? '99+' : alertCount}</Text></View>}

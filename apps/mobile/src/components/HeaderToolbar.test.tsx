@@ -53,6 +53,15 @@ beforeEach(() => {
 });
 
 describe('account profile controls', () => {
+  it('opens navigation from the header logo without a separate menu icon', () => {
+    const root = HeaderToolbar(props);
+    const brand = elements(root, 'Brand').find((item) => typeof item.props.onLogoPress === 'function');
+    expect(brand?.props.logoExpanded).toBe(false);
+    (brand?.props.onLogoPress as () => void)();
+    expect(state.setPanel).toHaveBeenCalledWith('navigation');
+    expect(elements(root, 'Menu')).toHaveLength(0);
+  });
+
   it('shows connection status without dashboard or tank selection controls', () => {
     state.panel = 'account';
     const root = HeaderToolbar(props);

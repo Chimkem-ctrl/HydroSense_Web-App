@@ -51,14 +51,15 @@ export function Page({ children, auth = false, bottomPadding, maxWidth }: PropsW
     : <View style={styles.background}>{content}</View>;
 }
 
-export function Brand({ compact = false }: { compact?: boolean }) {
+export function Brand({ compact = false, onLogoPress, logoExpanded }: { compact?: boolean; onLogoPress?: () => void; logoExpanded?: boolean }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
+  const logo = <Image source={require('../../assets/hydrosense-logo.png')} resizeMode="contain" accessibilityLabel="HydroSense logo" style={compact ? styles.logoSmall : styles.logo} />;
   return <View style={compact ? styles.brandCompact : styles.brand}>
-    <Image source={require('../../assets/hydrosense-logo.png')} resizeMode="contain" accessibilityLabel="HydroSense logo" style={compact ? styles.logoSmall : styles.logo} />
+    {onLogoPress ? <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" accessibilityState={{ expanded: logoExpanded }} onPress={onLogoPress} style={styles.logoButton}>{logo}</Pressable> : logo}
     <View style={compact ? styles.brandTextCompact : styles.brandText}>
       <Text numberOfLines={compact ? 1 : undefined} style={compact ? styles.brandNameSmall : styles.brandName}>HydroSense</Text>
-      <Text numberOfLines={compact ? 1 : undefined} style={styles.brandCaption}>WATER QUALITY MONITORING</Text>
+      {!compact && <Text style={styles.brandCaption}>WATER QUALITY MONITORING</Text>}
     </View>
   </View>;
 }
@@ -69,15 +70,16 @@ export function Title({ children, detail, centered = false }: { children: string
   return <View style={[styles.heading, centered && styles.centered]}><Text style={[styles.title, centered && styles.centerText]}>{children}</Text>{detail ? <Text style={[styles.muted, centered && styles.centerText]}>{detail}</Text> : null}</View>;
 }
 
-export function Card({ children, title, action }: { children: ReactNode; title?: string; action?: ReactNode }) {
+export function Card({ children, title, action, toneColor }: { children: ReactNode; title?: string; action?: ReactNode; toneColor?: string }) {
   const { colors, reduceTransparency } = useTheme();
   const blurTarget = useContext(BlurTargetContext);
   const nested = useContext(CardContext);
   const styles = createStyles(colors);
   const solidFallback = needsSolidFallback(reduceTransparency) || (Platform.OS === 'android' && !blurTarget && !nested);
   return <CardContext.Provider value>
-    <View style={[styles.card, nested && styles.nestedCard, solidFallback && !nested && { backgroundColor: colors.surface }]}>
+    <View style={[styles.card, nested && styles.nestedCard, solidFallback && !nested && { backgroundColor: colors.surface }, toneColor && { borderColor: toneColor }]}>
       {!nested && !solidFallback && glassBlur(blurTarget, styles)}
+      {toneColor && <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.cardBlur, { backgroundColor: `${toneColor}20` }]} />}
       {(title || action) && <View style={styles.cardHeading}>{title ? <Text style={styles.cardTitle}>{title}</Text> : <View />}{action}</View>}{children}
     </View>
   </CardContext.Provider>;
@@ -172,6 +174,7 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   brandText: { alignItems: 'center', gap: uiScale.spacing[1] },
   logo: { width: 52, height: 74 },
   logoSmall: { width: 26, height: 37, flexShrink: 0 },
+  logoButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   brandName: { color: colors.ink, fontWeight: '800', fontSize: 24, letterSpacing: -0.5 },
   brandNameSmall: { color: colors.ink, fontWeight: '800', fontSize: 17 },
   brandCaption: { color: colors.muted, fontSize: uiScale.type.caption, letterSpacing: 0.9, fontWeight: '700' },
