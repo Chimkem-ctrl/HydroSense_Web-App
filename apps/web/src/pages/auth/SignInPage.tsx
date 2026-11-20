@@ -1,14 +1,12 @@
 import type { ChangeEvent } from 'react';
+import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import AuthFooter from '../../components/auth/AuthFooter';
-import AuthHeader from '../../components/auth/AuthHeader';
-import AuthLayout from '../../components/auth/AuthLayout';
+import AuthSplitLayout from '../../components/auth/AuthSplitLayout';
 import PasswordInput from '../../components/auth/PasswordInput';
 import FormInput from '../../components/common/FormInput';
-import GlassPanel from '../../components/common/GlassPanel';
 import PrimaryButton from '../../components/common/PrimaryButton';
 import { useAuthForm } from '../../hooks/useAuthForm';
-import { authService } from '../../services/authService';
+import { authService, EmailNotVerifiedError } from '../../services/authService';
 import type { SignInValues } from '../../types/auth.types';
 import { getSafeInAppPath } from '../../app/auth/RouteGuards';
 
@@ -27,66 +25,111 @@ function validate(values: SignInValues) {
 export default function SignInPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
+  const [isResending, setIsResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
   const from = getSafeInAppPath(location.state?.from);
+  const emailWasVerified = new URLSearchParams(location.search).get('verified') === '1';
   const form = useAuthForm({
     initialValues,
     validate,
     onSubmit: async (values) => {
-      const result = await authService.signIn(values.email, values.password);
-      navigate(result.status === 'approved' ? (from ?? result.redirectPath) : result.redirectPath, { replace: true });
+      try {
+        const result = await authService.signIn(values.email, values.password);
+        navigate(result.status === 'approved' ? (from ?? result.redirectPath) : result.redirectPath, { replace: true });
+      } catch (error) {
+        if (error instanceof EmailNotVerifiedError) {
+          setUnverifiedEmail(values.email.trim().toLowerCase());
+          setResendMessage('');
+        }
+        throw error;
+      }
     },
   });
 
+  async function handleResendVerification() {
+    if (!unverifiedEmail || isResending) return;
+    setIsResending(true);
+    setResendMessage('');
+    try {
+      await authService.resendVerification(unverifiedEmail);
+      setResendMessage('Verification email sent.');
+    } catch (error) {
+      setResendMessage(error instanceof Error ? error.message : 'Unable to resend verification email.');
+    } finally {
+      setIsResending(false);
+    }
+  }
+
   return (
-    <AuthLayout>
-      <div className="auth-page page-enter">
-        <AuthHeader size={52} showBrand />
-        <GlassPanel className="auth-panel signin-panel">
-          <h1 className="glass-title">Welcome Back</h1>
-          <h2 className="glass-subtitle">Sign in to your HydroSense account</h2>
-          <form onSubmit={form.handleSubmit} noValidate>
-            <FormInput
-              label="Email"
-              name="email"
-              type="email"
-              placeholder="Enter your email"
-              autoComplete="email"
-              value={form.values.email}
-              onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                form.setField('email', event.target.value)
-              }
-              error={form.errors.email}
-              required
-            />
-            <PasswordInput
-              label="Password"
-              name="password"
-              placeholder="Enter your password"
-              autoComplete="current-password"
-              value={form.values.password}
-              onChange={(event) =>
-                form.setField('password', event.target.value)
-              }
-              error={form.errors.password}
-              required
-            />
-            <div className="forgot-link-row">
-              <Link to="/forgot-password">Forgot password?</Link>
-            </div>
-            <PrimaryButton type="submit" loading={form.isSubmitting}>
-              Sign In
-            </PrimaryButton>
-            {form.statusMessage && (
-              <p className="form-status" role="status">
-                {form.statusMessage}
+    <AuthSplitLayout
+      introTitle="Welcome Back"
+      introDescription="Sign in to manage water quality monitoring and keep your hatchery records up to date."
+      formTitle="Sign in"
+    >
+      {emailWasVerified && (
+        <p className="form-status auth-verification-banner" role="status">
+          Email verified. You can now sign in.
+        </p>
+      )}
+      <form onSubmit={form.handleSubmit} noValidate>
+        <FormInput
+          label="Email"
+          name="email"
+          type="email"
+          placeholder="Enter your email"
+          autoComplete="email"
+          value={form.values.email}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+            setUnverifiedEmail('');
+            setResendMessage('');
+            form.setField('email', event.target.value);
+          }}
+          error={form.errors.email}
+          required
+        />
+        <PasswordInput
+          label="Password"
+          name="password"
+          placeholder="Enter your password"
+          autoComplete="current-password"
+          value={form.values.password}
+          onChange={(event) => form.setField('password', event.target.value)}
+          error={form.errors.password}
+          required
+        />
+        <div className="forgot-link-row">
+          <Link to="/forgot-password">Forgot password?</Link>
+        </div>
+        <PrimaryButton type="submit" loading={form.isSubmitting}>
+          Sign in
+        </PrimaryButton>
+        {form.statusMessage && (
+          <p className="form-status" role="status">
+            {form.statusMessage}
+          </p>
+        )}
+        {unverifiedEmail && (
+          <div className="auth-resend-prompt">
+            <button
+              type="button"
+              className="inline-link auth-resend-link"
+              onClick={handleResendVerification}
+              disabled={isResending}
+            >
+              {isResending ? 'Sending…' : 'Resend verification email'}
+            </button>
+            {resendMessage && (
+              <p className="form-status" role="status" aria-live="polite">
+                {resendMessage}
               </p>
             )}
-          </form>
-          <AuthFooter>
-            Don&apos;t have an account? <Link to="/signup">Sign Up</Link>
-          </AuthFooter>
-        </GlassPanel>
-      </div>
-    </AuthLayout>
+          </div>
+        )}
+      </form>
+      <p className="auth-split-footer">
+        New here? <Link to="/signup">Sign up</Link>
+      </p>
+    </AuthSplitLayout>
   );
 }

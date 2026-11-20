@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useContext, useMemo, useState, useEffect } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,6 +28,7 @@ import {
   readingFreshness,
   resolveAlertWithActivityLog,
   safeRangeGauge,
+  toCsv,
   DEFAULT_THRESHOLDS,
   validateAcknowledgeNote,
   validateActivityLog,
@@ -37,10 +38,11 @@ import type { MainTabParamList, RootStackParamList } from './navigation';
 import { DATA_MODE, api, listPendingAccounts } from './services/client';
 import { canAccess } from './access';
 import { useSession, useTankSelection } from './state';
-import { Button, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, Page, StateMessage, Title } from './components/ui';
+import { Button, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, Page, RedesignedContext, StateMessage, Title } from './components/ui';
 import { uiScale, useTheme } from './theme';
 import type { Palette, ThemeChoice } from './theme';
-import { createReportFile } from './services/reportFiles';
+import { createReportFile, reportDatasetRows } from './services/reportFiles';
+import type { ReportDataset } from './services/reportFiles';
 import { TrendChart } from './components/TrendChart';
 
 type Props<T extends keyof MainTabParamList> = BottomTabScreenProps<MainTabParamList, T>;
@@ -55,8 +57,9 @@ function Field({ label, value, onChangeText, placeholder, keyboardType = 'defaul
   secureTextEntry?: boolean;
 }) {
   const { colors } = useTheme();
+  const redesigned = useContext(RedesignedContext);
   const ui = createFormStyles(colors);
-  return <View style={ui.formField}><Text style={ui.label}>{label}</Text><TextInput style={ui.input} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} keyboardType={keyboardType} secureTextEntry={secureTextEntry} autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'} /></View>;
+  return <View style={ui.formField}><Text style={ui.label}>{label}</Text><TextInput accessibilityLabel={label} style={[ui.input, redesigned && { backgroundColor: colors.glassControl }]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} keyboardType={keyboardType} secureTextEntry={secureTextEntry} autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'} /></View>;
 }
 
 function TankPicker({ horizontal = false }: { horizontal?: boolean }) {
@@ -167,7 +170,7 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: deviceExpanded }} onPress={() => setDeviceExpanded((current) => !current)} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.teal }}>{deviceExpanded ? 'Hide device details' : 'Show device details'}</Text></Pressable>
         {deviceExpanded && (devices.isLoading ? <StateMessage message="Loading device status…" loading /> : devices.isError ? <StateMessage message={`Could not load device status: ${devices.error.message}`} /> : !device ? <StateMessage message="No device is registered for this tank." /> : <>
           <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} valueColor={device.online ? colors.normal : colors.critical} />
-          <DataRow label="Battery" value={device.batteryPct > 0 ? `${device.batteryPct}%` : 'Unavailable'} detail={`Power source: ${device.powerSource}`} />
+          <DataRow label="Battery" value={device.batteryPct != null ? `${device.batteryPct}%` : 'Unavailable'} detail={`Power source: ${device.powerSource}`} />
           {device.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
           {alerts.isError ? <StateMessage message="Could not load alerts." /> : <DataRow label="Active alerts" value={alerts.isLoading ? 'Loading…' : `${openCount}`} />}
         </>)}
@@ -417,7 +420,7 @@ export function StatusScreen() {
       {devices.map((device) => <Card key={device.deviceId} title={tanks.find((tank) => tank.deviceId === device.deviceId)?.name ?? 'Unassigned device'}>
         <DataRow label="Device" value={device.deviceId} />
         <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} detail={`Last seen ${formatManilaDateTime(device.lastSeen)} PHT`} />
-        <DataRow label="Battery" value={`${device.batteryPct}%`} detail={`Power source: ${device.powerSource}`} />
+        <DataRow label="Battery" value={device.batteryPct != null ? `${device.batteryPct}%` : 'Unavailable'} detail={`Power source: ${device.powerSource}`} />
         <DataRow label="Wi-Fi signal" value={`${device.wifiRssi} dBm`} />
         <DataRow label="Pending offline records" value={`${device.pendingSyncCount}`} />
         {device.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
@@ -427,13 +430,14 @@ export function StatusScreen() {
 }
 
 export function ManagerReviewScreen() {
+  const { colors } = useTheme();
   const { user } = useSession();
   const allowed = canAccess(user?.role ?? null, 'validation');
   const rows = useQuery({ queryKey: ['validation'], queryFn: () => api.listValidationRows(), enabled: allowed });
   const tolerances = useQuery({ queryKey: ['validation-tolerances'], queryFn: () => api.getValidationTolerances(), enabled: allowed });
   if (!allowed) return <Page><StateMessage message="You do not have access to validation." /></Page>;
-  return <Page>
-    <Title detail="Compare sensor averages with reference readings">Manager review</Title>
+  return <Page redesigned>
+    <Title detail="Compare sensor averages with manual or lab readings.">Validation View</Title>
     {rows.isLoading || tolerances.isLoading ? <StateMessage message="Loading validation…" loading /> :
       rows.isError || tolerances.isError ? <Card><StateMessage message={`Could not load validation: ${(rows.error ?? tolerances.error)?.message ?? 'Unknown error'}`} /><Button label="Retry" secondary onPress={() => { void rows.refetch(); void tolerances.refetch(); }} /></Card> :
       !rows.data?.length || !tolerances.data ? <StateMessage message="No validation comparisons are available." /> :
@@ -447,7 +451,7 @@ export function ManagerReviewScreen() {
           <DataRow label="Reference" value={`${row.reference}`} />
           <DataRow label="Error" value={`${Number(difference.toFixed(3))} (${percent}%)`} />
           <DataRow label="Tolerance" value={`±${tolerance}`} />
-          <DataRow label="Result" value={Math.abs(difference) <= tolerance ? 'Pass' : 'Fail'} />
+          <DataRow label="Result" value={Math.abs(difference) <= tolerance ? 'Pass' : 'Fail'} valueColor={Math.abs(difference) <= tolerance ? colors.normal : colors.critical} />
         </Card>;
       })}
   </Page>;
@@ -532,8 +536,8 @@ export function ActivityLogsScreen() {
     setFormError('');
     createLog.mutate(entry);
   }
-  return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
-    <Title detail="Log operations and environmental events">Activity logs</Title>
+  return <Page redesigned bottomPadding={tabBarHeight + uiScale.spacing[4]}>
+    <Title detail="Log operations, water-quality checks, and environmental events for shift handover.">Activity Logs</Title>
     <TankPicker horizontal />
     <View style={[layout.actions, width < 360 && layout.stackedActions]}>
       <Button style={[layout.actionButton, width < 360 && layout.stackedActionButton]} label="Log operation" onPress={() => openLog('OPERATION')} />
@@ -572,9 +576,9 @@ export function ActivityLogsScreen() {
           <ScrollView style={layout.modalScroll} keyboardShouldPersistTaps="handled">
           <Card>
             <Text style={layout.modalTitle}>{modalKind === 'OPERATION' ? 'Log operation' : 'Log weather / event'}</Text>
-            <TextInput placeholder="Tank or scope" style={layout.modalInput} placeholderTextColor={colors.muted} value={scope} onChangeText={setScope} />
-            <TextInput placeholder="Type" style={layout.modalInput} placeholderTextColor={colors.muted} value={activityType} onChangeText={setActivityType} />
-            <TextInput placeholder="Notes" style={[layout.modalInput, layout.modalNotes]} placeholderTextColor={colors.muted} value={notes} onChangeText={setNotes} multiline />
+            <TextInput accessibilityLabel="Tank or scope" placeholder="Tank or scope" style={layout.modalInput} placeholderTextColor={colors.muted} value={scope} onChangeText={setScope} />
+            <TextInput accessibilityLabel="Type" placeholder="Type" style={layout.modalInput} placeholderTextColor={colors.muted} value={activityType} onChangeText={setActivityType} />
+            <TextInput accessibilityLabel="Notes" placeholder="Notes" style={[layout.modalInput, layout.modalNotes]} placeholderTextColor={colors.muted} value={notes} onChangeText={setNotes} multiline />
             {formError ? <Text style={layout.modalError}>{formError}</Text> : null}
             <View style={[layout.actions, width < 360 && layout.stackedActions]}>
               <Button style={layout.actionButton} label="Cancel" secondary onPress={() => setModalKind(null)} />
@@ -630,12 +634,12 @@ export function CalibrationAndMaintenanceScreen() {
     setError('');
     calibrationMutation.mutate();
   }
-  return <Page>
-    <Title detail="Calibration logs and measurement thresholds">Calibration & maintenance</Title>
+  return <Page redesigned>
+    <Title detail="Log pH and dissolved-oxygen calibration results and due dates.">Calibration & Maintenance</Title>
     <TankPicker />
     {canCalibrate && (
       <Card title="Log calibration">
-        <View style={{ flexDirection: 'row', gap: 8 }}><Button label="pH" secondary={parameter !== 'ph'} onPress={() => setParameter('ph')} /><Button label="Dissolved oxygen" secondary={parameter !== 'do'} onPress={() => setParameter('do')} /></View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}><Button label="pH" secondary={parameter !== 'ph'} onPress={() => setParameter('ph')} /><Button label="Dissolved oxygen" secondary={parameter !== 'do'} onPress={() => setParameter('do')} /></View>
         <Field label="Calibration standard" value={standard} onChangeText={setStandard} />
         <Field label="Before" value={before} onChangeText={setBefore} keyboardType="numeric" />
         <Field label="After" value={after} onChangeText={setAfter} keyboardType="numeric" />
@@ -730,13 +734,16 @@ export function FieldEntryScreen() {
 
 export function HistoryScreen() {
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
   const tabBarHeight = useBottomTabBarHeight();
   const layout = createLogScreenStyles(colors);
   const record = createRecordStyles(colors);
-  const { tankId } = useTankSelection();
+  const { tankId, tanks } = useTankSelection();
   const [parameter, setParameter] = useState<'all' | 'temperature' | 'do' | 'ph'>('all');
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - 7 * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
+  const [sortKey, setSortKey] = useState<'timestamp' | MeasuredParameter>('timestamp');
+  const [ascending, setAscending] = useState(false);
   const query = useQuery({
     queryKey: ['history', tankId, from, to, parameter],
     queryFn: () => api.listReadings({
@@ -748,12 +755,16 @@ export function HistoryScreen() {
     enabled: Boolean(tankId),
   });
   const parameterValue = (reading: Reading, param: 'do' | 'temperature' | 'ph') => param === 'do' ? reading.doMgL : reading[param];
-  const rows = (query.data ?? []).filter((row) => parameter === 'all' || Number.isFinite(parameterValue(row, parameter)));
-  return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
-    <Title detail="View readings in date range">History</Title>
+  const rows = (query.data ?? []).filter((row) => parameter === 'all' || Number.isFinite(parameterValue(row, parameter))).sort((a, b) => {
+    const difference = sortKey === 'timestamp' ? a.timestamp.localeCompare(b.timestamp) : parameterValue(a, sortKey) - parameterValue(b, sortKey);
+    return ascending ? difference : -difference;
+  });
+  return <Page redesigned bottomPadding={tabBarHeight + uiScale.spacing[4]}>
+    <Title detail="Filter and sort the measured water-quality readings.">Historical Logs</Title>
     <TankPicker horizontal />
     <View style={layout.cards}>
-      <Card title="Filters">
+      <View style={{ flexDirection: width >= 700 ? 'row' : 'column', gap: uiScale.spacing[4] }}>
+      <View style={{ flex: width >= 700 ? 2 : undefined }}><Card title="Filters">
         <View style={layout.filters}>
           <View style={layout.dates}>
             <FilterField label="From date (PHT)" value={from} onChangeText={setFrom} placeholder={from} />
@@ -766,16 +777,28 @@ export function HistoryScreen() {
             </View>
           </View>
         </View>
-      </Card>
+      </Card></View>
+      <View style={{ flex: width >= 700 ? 1 : undefined }}><Card>
+        <Text style={{ color: colors.muted, fontSize: uiScale.type.caption, textTransform: 'uppercase' }}>Readings</Text>
+        <Text style={{ color: colors.ink, fontSize: 36, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{query.isLoading || query.isError ? '—' : rows.length}</Text>
+        <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{from} – {to}</Text>
+      </Card></View></View>
       <Card title="Readings">
         {query.isLoading ? <StateMessage message="Loading readings…" loading /> : query.isError ? <><StateMessage message="Could not load readings." /><Button label="Retry" secondary onPress={() => void query.refetch()} /></> : <>
           <Text style={layout.count}>{rows.length} readings{rows.length > 50 ? ' · Showing 50' : ''}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>
+            {([{ key: 'timestamp', label: 'Time' }, { key: 'temperature', label: 'Temperature' }, { key: 'do', label: 'DO' }, { key: 'ph', label: 'pH' }] as const).map(({ key, label }) => <Pressable key={key} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} onPress={() => {
+              if (sortKey === key) setAscending((value) => !value);
+              else { setSortKey(key); setAscending(false); }
+            }} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: uiScale.spacing[2] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{label}{sortKey === key ? ascending ? ' ↑' : ' ↓' : ''}</Text></Pressable>)}
+          </View>
           {rows.length === 0 ? <StateMessage message="No readings match the selected filters." spacious /> : <View>{rows.slice(0, 50).map((row) => <View key={row.id} style={record.row}>
             <Text style={record.title}>{formatManilaDateTime(row.timestamp)} PHT</Text>
+            <Text style={record.caption}>{tanks.find((tank) => tank.id === row.tankId)?.name ?? 'Unknown tank'}</Text>
             <View style={record.metrics}>
               {([{ label: 'Temp (°C)', value: row.temperature }, { label: 'DO (mg/L)', value: row.doMgL }, { label: 'pH', value: row.ph }]).map((metric) => <View key={metric.label} style={record.metric}>
                 <Text style={record.caption}>{metric.label}</Text>
-                <Text style={record.value}>{Number.isFinite(metric.value) ? metric.value.toFixed(2) : '—'}</Text>
+                <Text style={[record.value, { textAlign: 'right' }]}>{Number.isFinite(metric.value) ? metric.value.toFixed(2) : '—'}</Text>
               </View>)}
             </View>
           </View>)}</View>}
@@ -787,6 +810,7 @@ export function HistoryScreen() {
 
 export function ReportsScreen() {
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
   const { tankId, tanks, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const { user } = useSession();
   const [selectedTanks, setSelectedTanks] = useState<string[] | null>(null);
@@ -795,8 +819,40 @@ export function ReportsScreen() {
   const [format, setFormat] = useState<'pdf' | 'csv' | 'xlsx'>('pdf');
   const [sections, setSections] = useState<ReportSection[]>(['summary', 'statistics', 'alerts', 'raw-readings']);
   const [sharing, setSharing] = useState(false);
+  const [dataset, setDataset] = useState<ReportDataset>('readings');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const selectedIds = selectedTanks ?? (tankId ? [tankId] : []);
-  async function shareReport() {
+  const start = new Date(`${from}T00:00:00+08:00`);
+  const end = new Date(`${to}T23:59:59.999+08:00`);
+  const validRange = /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) &&
+    Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) &&
+    getManilaDateString(start) === from && getManilaDateString(end) === to && start <= end;
+  const preview = useQuery({
+    queryKey: ['report-preview', user?.id, user?.role, selectedIds, from, to],
+    enabled: validRange && selectedIds.length > 0 && Boolean(user),
+    queryFn: async () => {
+      const [readings, alerts, thresholds, activityLogs, calibrationLogs, validationRows] = await Promise.all([
+        Promise.all(selectedIds.map((id) => api.listReadings({ tankId: id, from: start.toISOString(), to: end.toISOString() }))),
+        Promise.all(selectedIds.map((id) => api.listAlerts(id))),
+        api.listThresholds(),
+        api.listActivityLogs(),
+        canAccess(user?.role ?? null, 'canCalibrate') ? api.listCalibrationLogs() : Promise.resolve([]),
+        canAccess(user?.role ?? null, 'validation') ? Promise.all(selectedIds.map((id) => api.listValidationRows(id))).then((rows) => rows.flat()) : Promise.resolve([]),
+      ]);
+      if (readings.some((rows) => rows.length >= 500) || alerts.some((rows) => rows.length >= 1000) ||
+          activityLogs.length >= 1000 || calibrationLogs.length >= 1000 || validationRows.length >= 1000) {
+        throw new Error('The server data limit was reached; the report could be incomplete.');
+      }
+      return { readings: readings.flat(), alerts: alerts.flat(), thresholds, activityLogs, calibrationLogs, validationRows };
+    },
+  });
+  const model = preview.data && validRange && selectedIds.length && user && selectedIds.every((id) => tanks.some((tank) => tank.id === id))
+    ? buildReport({ tankIds: selectedIds, from: start.toISOString(), to: end.toISOString(), sections, format, generatedBy: { name: user.name, role: user.role } }, {
+      tanks, ...preview.data, advisories: {}, deviceStatuses: [],
+    }) : null;
+  const datasetRows = model ? reportDatasetRows(model, dataset) : null;
+  const matched = datasetRows ? datasetRows.length - 1 : null;
+  async function shareReport(overrideFormat = format) {
     setSharing(true);
     try {
       if (!user || !can(user.role, 'exportReports')) throw new Error('You do not have permission to export reports.');
@@ -813,7 +869,7 @@ export function ReportsScreen() {
       ]);
       if (tankReadings.some((rows) => rows.length >= 500)) throw new Error('The reading limit was reached. Select a shorter date range to avoid an incomplete report.');
       if (tankAlerts.some((rows) => rows.length >= 1000)) throw new Error('The alert limit may have been reached. The report cannot be generated reliably.');
-      const report = buildReport({ tankIds: selectedIds, from: start.toISOString(), to: end.toISOString(), sections, format, generatedBy: { name: user.name, role: user.role } }, {
+      const report = buildReport({ tankIds: selectedIds, from: start.toISOString(), to: end.toISOString(), sections, format: overrideFormat, generatedBy: { name: user.name, role: user.role } }, {
         tanks, readings: tankReadings.flat(), alerts: tankAlerts.flat(), thresholds,
         advisories: {}, activityLogs: [], calibrationLogs: [], validationRows: [], deviceStatuses: [],
       });
@@ -827,27 +883,96 @@ export function ReportsScreen() {
       setSharing(false);
     }
   }
-  return <Page>
-    <Title detail="Select tanks, dates, sections and format">Report builder</Title>
-    <Card title="Tanks">
+  async function shareCsv() {
+    setSharing(true);
+    try {
+      if (!user || !can(user.role, 'exportReports')) throw new Error('You do not have permission to export reports.');
+      if (!datasetRows || preview.isFetching || preview.isError) throw new Error('Wait for a complete report preview before exporting.');
+      if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
+      const fileUri = `${FileSystem.documentDirectory}hydrosense-${dataset}-${Date.now()}.csv`;
+      await FileSystem.writeAsStringAsync(fileUri, toCsv(datasetRows), { encoding: FileSystem.EncodingType.UTF8 });
+      await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Share HydroSense dataset' });
+    } catch (error) {
+      Alert.alert('Export failed', error instanceof Error ? error.message : 'Could not share file.');
+    } finally { setSharing(false); }
+  }
+  const caption = { color: colors.muted, fontSize: uiScale.type.caption, textTransform: 'uppercase' as const };
+  const numeric = { color: colors.ink, fontVariant: ['tabular-nums'] as const, textAlign: 'right' as const };
+  return <Page redesigned>
+    <Title detail="Build and preview reports, print to PDF, or export datasets as CSV.">Reports</Title>
+    <Card title="Export settings">
+      <Text style={caption}>CSV dataset</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>
+        <Chip label="Raw readings" selected={dataset === 'readings'} onPress={() => setDataset('readings')} />
+        <Chip label="Alerts" selected={dataset === 'alerts'} onPress={() => setDataset('alerts')} />
+        <Chip label="Activity logs" selected={dataset === 'activity'} onPress={() => setDataset('activity')} />
+        {canAccess(user?.role ?? null, 'canCalibrate') && <Chip label="Calibration log" selected={dataset === 'calibration'} onPress={() => setDataset('calibration')} />}
+        {canAccess(user?.role ?? null, 'validation') && <Chip label="Validation" selected={dataset === 'validation'} onPress={() => setDataset('validation')} />}
+      </View>
+      <Field label="From (YYYY-MM-DD)" value={from} onChangeText={setFrom} />
+      <Field label="To (YYYY-MM-DD)" value={to} onChangeText={setTo} />
+      <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>CSV includes the selected dataset, tanks, and date range; report sections apply to the preview and PDF.</Text>
+      {dataset === 'validation' && <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>Validation comparisons have no date field and cannot be filtered by period.</Text>}
+    </Card>
+    <Card>
+      <Text style={caption}>Records matched</Text>
+      <Text style={[numeric, { fontSize: 36, fontWeight: '700', textAlign: 'left' }]}>{matched ?? '—'}</Text>
+      <Text style={{ color: colors.muted }}>{dataset === 'readings' ? 'readings' : dataset === 'activity' ? 'activity logs' : dataset} · {from} → {to} · Asia/Manila</Text>
+      <View style={{ flexDirection: 'row', gap: uiScale.spacing[2] }}>
+        {user && can(user.role, 'exportReports') && <Button label="Download CSV" disabled={sharing || !matched || preview.isFetching} onPress={() => void shareCsv()} style={{ flex: 1 }} />}
+        <Button label="Filters" secondary onPress={() => setFiltersOpen((open) => !open)} style={{ flex: 1 }} />
+      </View>
+    </Card>
+    {filtersOpen && <Card title="Tanks and report sections">
       {tanksLoading ? <StateMessage message="Loading tanks…" loading /> : tanksError ? <><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry tank list" secondary onPress={refetchTanks} /></> : tanks.length === 0 ? <StateMessage message="No tanks are available for this account." /> : null}
       {tanks.map((tank) => <Pressable key={tank.id} accessibilityRole="checkbox" accessibilityState={{ checked: selectedIds.includes(tank.id) }} onPress={() => setSelectedTanks((current) => {
         const existing = current ?? (tankId ? [tankId] : []);
         return existing.includes(tank.id) ? existing.filter((id) => id !== tank.id) : [...existing, tank.id];
       })} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{selectedIds.includes(tank.id) ? '☑' : '☐'} {tank.name}</Text></Pressable>)}
-    </Card>
-    <Card title="Date range">
-      <Field label="From (YYYY-MM-DD)" value={from} onChangeText={setFrom} />
-      <Field label="To (YYYY-MM-DD)" value={to} onChangeText={setTo} />
-    </Card>
-    <Card title="Sections">
       {([['summary', 'Summary'], ['statistics', 'Statistics'], ['alerts', 'Alerts'], ['raw-readings', 'Readings']] as const).map(([key, label]) => <Pressable key={key} accessibilityRole="checkbox" accessibilityState={{ checked: sections.includes(key) }} onPress={() => setSections((current) => current.includes(key) ? current.filter((value) => value !== key) : [...current, key])} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{sections.includes(key) ? '☑' : '☐'} {label}</Text></Pressable>)}
-    </Card>
-    <Card title="Format">
+      <Text style={caption}>Additional export format</Text>
       {(['pdf', 'csv', 'xlsx'] as const).map((value) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: format === value }} onPress={() => setFormat(value)} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{format === value ? '●' : '○'} {value.toUpperCase()}</Text></Pressable>)}
       <Button label={sharing ? 'Preparing report…' : 'Share report'} disabled={sharing} onPress={() => void shareReport()} />
+    </Card>}
+    <Card title="Report preview">
+      {user && can(user.role, 'exportReports') && <Button label="Print / Save PDF" disabled={sharing || !model || preview.isFetching} onPress={() => void shareReport('pdf')} />}
+      {!validRange ? <StateMessage message="Enter a valid start and end date." /> : !selectedIds.length ? <StateMessage message="Select a tank to generate the report." /> : preview.isLoading ? <StateMessage message="Preparing report…" loading /> : preview.isError ? <><StateMessage message={preview.error instanceof Error ? preview.error.message : 'Could not prepare report.'} /><Button label="Retry" secondary onPress={() => void preview.refetch()} /></> : model && <>
+        <View style={{ gap: uiScale.spacing[2] }}>
+          <Text style={caption}>Report ID</Text><Text numberOfLines={1} ellipsizeMode="tail" style={{ color: colors.ink }}>{model.id}</Text>
+          <DataRow label="Prepared by" value={`${model.generatedBy.name} (${model.generatedBy.role})`} />
+          <DataRow label="Tanks / period" value={`${model.tanks.map((tank) => tank.name).join(', ')} · ${from} to ${to} PHT`} />
+          <DataRow label="Generated" value={`${formatManilaDateTime(model.generatedAt)} PHT`} />
+        </View>
+        {sections.includes('summary') && <View style={{ borderLeftWidth: 3, borderLeftColor: colors.teal, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={{ color: colors.ink }}>{model.summary}</Text></View>}
+        {sections.includes('statistics') && <ScrollView horizontal accessibilityLabel="Report statistics table">
+          <View>
+            <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderColor: colors.border, paddingVertical: uiScale.spacing[2] }}>
+              {['Parameter', 'Min', 'Max', 'Mean', 'Std dev', 'In range', 'Excursions', 'Longest (h)'].map((value, index) => <Text key={value} style={[caption, { width: index === 0 ? 110 : 92, textAlign: index ? 'right' : 'left' }]}>{value}</Text>)}
+            </View>
+            {model.statistics.map((row) => <View key={row.parameter} style={{ flexDirection: 'row', borderBottomWidth: 1, borderColor: colors.border, paddingVertical: uiScale.spacing[3] }}>
+              <Text style={{ color: colors.ink, width: 110 }}>{row.parameter === 'do' ? 'DO' : row.parameter === 'ph' ? 'pH' : 'Temperature'}</Text>
+              {[row.min?.toFixed(2) ?? '—', row.max?.toFixed(2) ?? '—', row.mean?.toFixed(2) ?? '—', row.standardDeviation?.toFixed(2) ?? '—', row.percentInRange == null ? '—' : `${row.percentInRange.toFixed(1)}%`, String(row.excursions), row.longestExcursionHours.toFixed(1)].map((value, index) => <Text key={index} style={[numeric, { width: 92 }]}>{value}</Text>)}
+            </View>)}
+          </View>
+        </ScrollView>}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>
+          {sections.includes('alerts') && <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Alerts</Text><Text style={{ color: colors.ink }}>{model.alertCounts.critical} critical · {model.alertCounts.warning} warning · {model.alertCounts.open} open · {model.alertCounts.acknowledged} acknowledged · {model.alertCounts.resolved} resolved</Text></View>}
+          <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Thresholds used</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[1] }}>{model.thresholds.map((threshold) => <Chip key={threshold.parameter} label={`${threshold.parameter} ${threshold.min ?? '—'}–${threshold.max ?? '—'}`} />)}</View></View>
+          <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Expected readings</Text><Text style={{ color: colors.ink }}>Expected {model.dataQuality.expectedReadings} · Received {model.dataQuality.receivedReadings} ({model.dataQuality.receivedPercent.toFixed(1)}%)</Text></View>
+          <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Activity logs</Text><Text style={numeric}>{model.activityLogs.length}</Text></View>
+          {canAccess(user?.role ?? null, 'canCalibrate') && <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Calibration</Text><Text style={numeric}>{model.calibrationLogs.length}</Text></View>}
+          {canAccess(user?.role ?? null, 'validation') && <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Validation</Text><Text style={numeric}>{model.validationRows.length}</Text></View>}
+        </View>
+        {sections.includes('raw-readings') && <View>
+          <Text style={caption}>Showing first {Math.min(10, model.rawReadings.length)} of {model.rawReadings.length} readings</Text>
+          {model.rawReadings.slice(0, 10).map((row) => <View key={row.id} style={{ paddingVertical: uiScale.spacing[3], borderBottomWidth: 1, borderColor: colors.border, gap: uiScale.spacing[1] }}>
+            <Text style={{ color: colors.ink }}>{formatManilaDateTime(row.timestamp)} · {model.tanks.find((tank) => tank.id === row.tankId)?.name ?? 'Unknown tank'}</Text>
+            <Text style={numeric}>Temp {row.temperature.toFixed(2)} · DO {row.doMgL.toFixed(2)} · pH {row.ph.toFixed(2)}</Text>
+          </View>)}
+        </View>}
+        {user && !can(user.role, 'exportReports') && <Text style={{ color: colors.muted }}>Operators may view reports; export is available to managers and administrators.</Text>}
+      </>}
     </Card>
-    <Text style={{ color: colors.muted, fontSize: 12 }}>Prepared by {user?.name ?? 'user'}.</Text>
   </Page>;
 }
 

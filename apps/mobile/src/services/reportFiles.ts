@@ -4,6 +4,22 @@ import { toCsv } from '@hydrosense/shared';
 import type { ReportModel } from '@hydrosense/shared';
 
 type ReportRow = [string, string, string];
+export type ReportDataset = 'readings' | 'alerts' | 'activity' | 'calibration' | 'validation';
+
+export function reportDatasetRows(model: ReportModel, dataset: ReportDataset): unknown[][] {
+  switch (dataset) {
+    case 'readings':
+      return [['Timestamp (ISO)', 'Tank', 'Temperature °C', 'DO mg/L', 'pH'], ...model.rawReadings.map((row) => [row.timestamp, row.tankId, row.temperature, row.doMgL, row.ph])];
+    case 'alerts':
+      return [['Created (ISO)', 'Tank', 'Parameter', 'Value', 'Threshold', 'Severity', 'Status', 'Acknowledged by', 'Response note'], ...model.alerts.map((row) => [row.createdAt, row.tankId, row.parameter, row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? ''])];
+    case 'activity':
+      return [['Occurred (ISO)', 'Kind', 'Type', 'Tank / scope', 'Details', 'Operator'], ...model.activityLogs.map((row) => [row.occurredAt, row.kind, row.type, row.tankId, row.notes, row.operator])];
+    case 'calibration':
+      return [['Date (ISO)', 'Tank', 'Parameter', 'Standard', 'Before', 'After', 'User', 'Next due (ISO)'], ...model.calibrationLogs.map((row) => [row.date, row.tankId, row.parameter, row.standard, row.before, row.after, row.user, row.nextDue])];
+    case 'validation':
+      return [['Parameter', 'HydroSense mean', 'Reference', 'Error', '% error', 'Tolerance', 'Result'], ...model.validationRows.map((row) => [row.parameter, row.hydrosenseMean, row.reference, row.error, row.pctError, row.tolerance, row.pass ? 'pass' : 'fail'])];
+  }
+}
 
 export function reportRows(report: ReportModel): ReportRow[] {
   const rows: ReportRow[] = [

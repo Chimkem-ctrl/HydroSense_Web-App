@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PropsWithChildren } from 'react';
-import { Image, ImageBackground, Pressable, StatusBar, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Image, ImageBackground, Pressable, StatusBar, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { useTheme } from './theme';
 
 const SPLASH_OVERLAY_TOP = 'rgba(0,0,0,0.15)';
 const SPLASH_OVERLAY_BOTTOM = 'rgba(0,0,0,0.45)';
@@ -11,16 +12,24 @@ const SPLASH_SCRIM_COLOR = '#000000';
 const SPLASH_SCRIM_OPACITY = 0.45;
 
 export default function SplashScreen({ onGetStarted }: { onGetStarted: () => void }) {
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
+  const { reduceMotion } = useTheme();
+  const opacity = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
   const styles = createStyles(width);
   const [focused, setFocused] = useState(false);
-  const backgroundImage = width >= 768 || width > height
-    ? require('../../web/public/assets/images/welcome-page-web.jpg')
-    : require('../../web/public/assets/images/welcome-page-mobile.jpg');
+  useEffect(() => {
+    if (reduceMotion) {
+      opacity.setValue(1);
+      return undefined;
+    }
+    const animation = Animated.timing(opacity, { toValue: 1, duration: 600, easing: Easing.out(Easing.ease), useNativeDriver: true });
+    animation.start();
+    return () => animation.stop();
+  }, [opacity, reduceMotion]);
 
   return (
     <ImageBackground
-      source={backgroundImage}
+      source={require('../../web/public/assets/images/deep-blue-ocean.jpg')}
       resizeMode="cover"
       style={styles.container}
       imageStyle={styles.backgroundImage}
@@ -44,7 +53,7 @@ export default function SplashScreen({ onGetStarted }: { onGetStarted: () => voi
         <Rect width="100%" height="100%" fill="url(#splash-text-scrim)" />
       </Svg>
       <SafeAreaView edges={['top', 'right', 'bottom', 'left']} style={styles.safeArea}>
-        <View style={styles.content}>
+        <Animated.View style={[styles.content, { opacity }]}>
           <Image
             source={require('../assets/hydrosense-logo.png')}
             resizeMode="contain"
@@ -67,7 +76,7 @@ export default function SplashScreen({ onGetStarted }: { onGetStarted: () => voi
           >
             <Text style={styles.ctaText}>Get Started</Text>
           </Pressable>
-        </View>
+        </Animated.View>
       </SafeAreaView>
     </ImageBackground>
   );

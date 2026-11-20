@@ -594,7 +594,7 @@ describe('themed dashboard routes', () => {
 describe('themed authentication routes', () => {
   const authRoutes = [
     ['/signin', 'Welcome Back'],
-    ['/signup', 'Request an account'],
+    ['/signup', "Let's Get Started"],
     ['/forgot-password', 'Reset your password'],
     ['/pending-approval', 'Request submitted'],
   ] as const;

@@ -14,6 +14,22 @@ export const uiScale = {
   radius: { control: 12, card: 20, pill: 999 },
 } as const;
 
+export const authColors = {
+  ink: '#ffffff',
+  muted: 'rgba(255,255,255,0.85)',
+  caption: 'rgba(255,255,255,0.7)',
+  placeholder: 'rgba(255,255,255,0.55)',
+  border: 'rgba(255,255,255,0.28)',
+  panel: 'rgba(3,14,28,0.62)',
+  solidPanel: 'rgba(3,14,28,0.96)',
+  panelTop: 'rgba(3,14,28,0.42)',
+  accent: '#aacaff',
+  focus: '#2563eb',
+  background: '#0b1118',
+  scrimTop: 'rgba(0,0,0,0.15)',
+  scrimBottom: 'rgba(0,0,0,0.45)',
+} as const;
+
 export const palettes = {
   light: {
     ink: '#0b1b33', muted: '#41526e', surface: '#ffffff', canvas: '#eaf3ff',
@@ -21,6 +37,7 @@ export const palettes = {
     offline: '#fff3d4', selected: '#e5eeff', card: 'rgba(255,255,255,0.82)',
     cardBorder: '#ffffff', backgroundVia: '#dfeafe', backgroundTo: '#f3eefe',
     normal: '#146b35', overlay: 'rgba(5,11,26,0.65)', onPrimary: '#ffffff',
+    glassControl: 'rgba(255,255,255,0.25)',
   },
   dark: {
     ink: '#eaf1ff', muted: '#b6c4e0', surface: '#182a54', canvas: '#050b1a',
@@ -28,6 +45,7 @@ export const palettes = {
     offline: '#493b1e', selected: '#243d6d', card: '#122040',
     cardBorder: '#43567c', backgroundVia: '#0a1a38', backgroundTo: '#0b1030',
     normal: '#86efac', overlay: 'rgba(0,0,0,0.75)', onPrimary: '#ffffff',
+    glassControl: 'rgba(255,255,255,0.04)',
   },
 } as const;
 

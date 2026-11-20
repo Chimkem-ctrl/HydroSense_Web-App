@@ -153,7 +153,7 @@ export function AdminUsersPage() {
                     if (nextRole === 'admin' || nextRole === 'operator' || nextRole === 'manager') setSelectedRoles((roles) => ({ ...roles, [request.id]: nextRole }));
                     else setSelectedRoles((roles) => ({ ...roles, [request.id]: undefined }));
                   }}>
-                    <option value="">Select role</option><option value="admin">Admin</option><option value="manager">Manager</option><option value="operator">Operator</option>
+                    <option value="">Select role</option><option value="manager">Manager</option><option value="operator">Operator</option>
                   </Select>
                 </label></td>
                 <td><div className="admin-request-action-buttons">

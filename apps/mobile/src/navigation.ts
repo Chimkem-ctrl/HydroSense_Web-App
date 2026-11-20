@@ -24,8 +24,9 @@ export function isBottomBarRoute(name: string): name is BottomBarRoute {
 }
 
 export type RootStackParamList = {
-  Login: undefined;
+  Login: { verified?: string } | undefined;
   SignUp: undefined;
+  VerifyEmail: { email: string };
   ForgotPassword: undefined;
   PendingApproval: undefined;
   Main: undefined;

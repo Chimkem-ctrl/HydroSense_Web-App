@@ -19,20 +19,21 @@ vi.mock('react-native', () => ({
   Text: 'Text',
   TextInput: 'TextInput',
   View: 'View',
-  useWindowDimensions: () => ({ width: 440 }),
+  useWindowDimensions: () => ({ width: 440, height: 900 }),
 }));
 vi.mock('expo-linear-gradient', () => ({ LinearGradient: 'LinearGradient' }));
 vi.mock('expo-blur', () => ({ BlurTargetView: 'blur-target', BlurView: 'blur-view' }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }));
 vi.mock('react-native-paper', () => ({ Dialog: 'dialog', Portal: 'portal' }));
 vi.mock('../theme', () => ({
+  authColors: { ink: '#fff', muted: '#ddd', caption: '#ddd', placeholder: '#aaa', border: '#888', panel: '#123', panelTop: '#123', solidPanel: '#123', background: '#000', accent: '#abc', focus: '#2563eb', scrimTop: '#000', scrimBottom: '#000' },
   uiScale: { spacing: { 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32 }, type: {}, radius: { card: 20 } },
-  useTheme: () => ({ colors: { canvas: '#eaf3ff', surface: '#ffffff', backgroundVia: '#dfeafe', backgroundTo: '#f3eefe' }, reduceTransparency: themeState.reduceTransparency }),
+  useTheme: () => ({ colors: { canvas: '#eaf3ff', surface: '#ffffff', glassControl: 'rgba(255,255,255,0.25)', backgroundVia: '#dfeafe', backgroundTo: '#f3eefe' }, reduceTransparency: themeState.reduceTransparency }),
 }));
 
 import { BlurTargetContext, Card, Chip, FilterField, GlassDialog, Page } from './ui';
 
-type ElementProps = { children?: ReactNode; style?: unknown; contentContainerStyle?: unknown; intensity?: number; blurReductionFactor?: number; tint?: string; ref?: unknown; accessibilityLabel?: string; accessibilityState?: unknown; onChangeText?: (value: string) => void; onPress?: () => void; edges?: string[] };
+type ElementProps = { children?: ReactNode; style?: unknown; contentContainerStyle?: unknown; resizeMode?: string; intensity?: number; blurReductionFactor?: number; tint?: string; ref?: unknown; accessibilityLabel?: string; accessibilityState?: unknown; onChangeText?: (value: string) => void; onPress?: () => void; edges?: string[] };
 
 function findElement(node: ReactNode, type: string): ReactElement<ElementProps> | undefined {
   if (!isValidElement<ElementProps>(node)) return undefined;
@@ -65,6 +66,15 @@ describe('log filter controls', () => {
     chip?.props.onPress?.();
     expect(onPress).toHaveBeenCalledOnce();
     expect(findElement(Chip({ label: 'Environment' }), 'Pressable')).toBeUndefined();
+  });
+
+  it('uses the themed glass input only in redesigned pages', () => {
+    vi.mocked(useContext).mockReturnValueOnce(true);
+    const redesigned = findElement(FilterField({ label: 'From', value: '', onChangeText: () => {} }), 'TextInput');
+    expect(flattenStyle(redesigned?.props.style).backgroundColor).toBe('rgba(255,255,255,0.25)');
+    vi.mocked(useContext).mockReturnValueOnce(false);
+    const standard = findElement(FilterField({ label: 'From', value: '', onChangeText: () => {} }), 'TextInput');
+    expect(flattenStyle(standard?.props.style).backgroundColor).toBe('#ffffff');
   });
 });
 
@@ -160,15 +170,47 @@ describe('page background layers', () => {
     });
   });
 
-  it('blurs the authentication gradient through transparent page wrappers', () => {
+  it('fills the authentication viewport with a covered image behind scrolling content', () => {
     const page = Page({ auth: true, children: 'Content' });
     const target = findElement(page, 'blur-target');
+    expect(flattenStyle(page.props.style)).toMatchObject({ minHeight: 900, width: '100%' });
+    expect(flattenStyle(target?.props.style)).toMatchObject({ position: 'absolute', width: '100%', height: '100%' });
+    const image = findElement(target, 'Image');
+    expect(image?.props.resizeMode).toBe('cover');
+    expect(flattenStyle(image?.props.style)).toMatchObject({ width: '100%', height: '100%' });
     expect(findElement(target, 'LinearGradient')).toBeDefined();
     const provider = Children.toArray(page.props.children).find((child) => isValidElement(child) && child.type === BlurTargetContext.Provider);
     expect(isValidElement<{ value: unknown }>(provider) && provider.props.value).toBe(target?.props.ref);
     const scroll = findElement(page, 'ScrollView');
     expect(flattenStyle(scroll?.props.contentContainerStyle)).toMatchObject({ flexGrow: 1, backgroundColor: 'transparent' });
     expect(flattenStyle(findElement(scroll?.props.children, 'View')?.props.style).backgroundColor).toBe('transparent');
+  });
+
+  it('uses a lighter dark blur for auth cards without changing other cards', () => {
+    vi.mocked(useContext).mockReturnValueOnce({ current: null }).mockReturnValueOnce(false).mockReturnValueOnce(false);
+    const blur = findElement(Card({ auth: true, children: 'Content' }), 'blur-view');
+    expect(blur?.props.tint).toBe('dark');
+    expect(blur?.props.intensity! / blur?.props.blurReductionFactor!).toBe(8);
+  });
+
+  it('uses a lighter backdrop blur on web and retains the reduced-transparency fallback', () => {
+    themeState.platform = 'web';
+    vi.stubGlobal('CSS', { supports: () => true });
+    try {
+      vi.mocked(useContext).mockReturnValueOnce(null).mockReturnValueOnce(false).mockReturnValueOnce(false);
+      const card = Card({ auth: true, children: 'Content' });
+      const blur = Children.toArray(findElement(card, 'View')?.props.children)[0];
+      expect(flattenStyle(findElement(blur, 'View')?.props.style).backdropFilter).toBe('blur(8px) saturate(120%)');
+      themeState.reduceTransparency = true;
+      vi.mocked(useContext).mockReturnValueOnce(null).mockReturnValueOnce(false).mockReturnValueOnce(false);
+      const fallback = Card({ auth: true, children: 'Content' });
+      expect(flattenStyle(findElement(fallback, 'View')?.props.style).backgroundColor).toBe('#123');
+      expect(findElement(fallback, 'LinearGradient')).toBeUndefined();
+    } finally {
+      themeState.reduceTransparency = false;
+      themeState.platform = 'android';
+      vi.unstubAllGlobals();
+    }
   });
 
   it('uses the page blur target for dialogs and keeps a reduced-transparency fallback', () => {

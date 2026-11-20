@@ -29,7 +29,7 @@ export interface DeviceStatus {
   deviceId: string;
   online: boolean;
   lastSeen: string;
-  batteryPct: number;
+  batteryPct: number | null;
   powerSource: 'solar' | 'grid' | 'battery';
   wifiRssi: number;
   pendingSyncCount: number;

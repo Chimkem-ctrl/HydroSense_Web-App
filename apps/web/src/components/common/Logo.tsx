@@ -4,15 +4,16 @@ import { ASSETS } from '../../config/assets';
 interface LogoProps {
   size?: number;
   className?: string;
+  autoWidth?: boolean;
 }
 
-export default function Logo({ size = 100, className = '' }: LogoProps) {
+export default function Logo({ size = 100, className = '', autoWidth = false }: LogoProps) {
   const [hasError, setHasError] = useState(false);
 
   return (
     <div
       className={`logo-frame${hasError ? ' logo-missing' : ''} ${className}`.trim()}
-      style={{ width: size, aspectRatio: '700 / 1000' }}
+      style={{ width: autoWidth ? 'auto' : size, aspectRatio: '700 / 1000' }}
       aria-label="HydroSense logo"
     >
       {!hasError && (

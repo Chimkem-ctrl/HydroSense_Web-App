@@ -34,7 +34,7 @@ import {
   StatusScreen,
   TrendsScreen,
 } from './screens';
-import { LoginScreen, SignUpScreen, PendingApprovalScreen, ForgotPasswordScreen } from './authScreens';
+import { LoginScreen, SignUpScreen, PendingApprovalScreen, ForgotPasswordScreen, VerifyEmailScreen } from './authScreens';
 import { useSession, SessionProvider, TankProvider } from './state';
 import { ThemeProvider, uiScale, useTheme } from './theme';
 import { HeaderToolbar } from './components/HeaderToolbar';
@@ -88,7 +88,7 @@ if (Platform.OS !== 'web') Notifications.setNotificationHandler({
 
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: ['hydrosense://'],
-  config: { screens: { AlertDetail: 'alerts/:alertId' } },
+  config: { screens: { AlertDetail: 'alerts/:alertId', Login: 'signin' } },
 };
 
 function MainTabs() {
@@ -220,9 +220,10 @@ function AppNavigation() {
       <Stack.Navigator screenOptions={{ contentStyle: { backgroundColor: user ? 'transparent' : colors.canvas }, headerStyle: { backgroundColor: user ? 'transparent' : colors.canvas }, headerTintColor: colors.ink, headerShadowVisible: false, headerTitleStyle: { fontWeight: '700' } }}>
         {!user ? <>
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="SignUp" component={SignUpScreen} options={{ title: 'Request an account' }} />
-          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ title: 'Reset your password' }} />
-          <Stack.Screen name="PendingApproval" component={PendingApprovalScreen} options={{ title: 'Account request' }} />
+          <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="PendingApproval" component={PendingApprovalScreen} options={{ headerShown: false }} />
         </> : <>
           <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
           <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert detail' }} />

@@ -13,6 +13,75 @@ afterEach(() => {
 });
 
 describe('API account review', () => {
+  it('returns the verification route and email after API signup', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: 'verify-email',
+      email: 'jane@example.test',
+    }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { authService } = await import('./authService');
+    const result = await authService.signUp({
+      firstName: 'Jane',
+      lastName: 'Smith',
+      employeeId: 'EMP-123',
+      phone: '+639175550100',
+      email: 'jane@example.test',
+      password: 'TestPass123',
+      hatcheryId: 'camiguin-sagay',
+      requestedRole: 'operator',
+      address: { country: 'PH', province: '1001800000', city: '1001805000', barangay: '1001805001', street: 'Main Street' },
+      emergencyContactName: 'John Smith',
+      emergencyContactPhone: '+639175550101',
+      confirmPassword: 'TestPass123',
+      termsAccepted: true,
+    });
+
+    expect(result).toEqual({
+      status: 'verify-email',
+      email: 'jane@example.test',
+      redirectPath: '/verify-email',
+    });
+  });
+
+  it('resends signup verification emails through Supabase Auth', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { authService } = await import('./authService');
+
+    await authService.resendVerification('Jane@Example.test');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/v1/resend'),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          apikey: expect.any(String),
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({ type: 'signup', email: 'jane@example.test' }),
+      }),
+    );
+  });
+
+  it('maps resend rate limits to the verification cooldown error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 429 })));
+    const { authService } = await import('./authService');
+
+    await expect(authService.resendVerification('jane@example.test'))
+      .rejects.toThrow('Please wait before requesting another email.');
+  });
+
+  it('throws a typed error when Supabase reports an unconfirmed email', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: 'email_not_confirmed',
+      msg: 'Email not confirmed',
+    }), { status: 400 })));
+    const { authService, EmailNotVerifiedError } = await import('./authService');
+
+    await expect(authService.signIn('jane@example.test', 'password'))
+      .rejects.toBeInstanceOf(EmailNotVerifiedError);
+  });
+
   it('maps pending and approved profile sites from the API', async () => {
     window.localStorage.setItem('hydrosense.auth.user', JSON.stringify({ id: 'admin', role: 'admin' }));
     window.localStorage.setItem('hydrosense.auth.access-token', 'token');
@@ -41,10 +110,29 @@ describe('API account review', () => {
     vi.stubGlobal('fetch', fetchMock);
     const { authService, getCurrentUser } = await import('./authService');
     const result = await authService.signIn('jane@example.test', 'password');
-    expect(result.user?.hatcheryId).toBe('Original site');
+    if (result.status !== 'approved') throw new Error('Expected the account to be approved.');
+    expect(result.user.hatcheryId).toBe('Original site');
     expect(getCurrentUser()?.hatcheryId).toBe('Original site');
-    expect(await authService.getProfileSite(result.user!)).toBe('Updated site');
+    expect(await authService.getProfileSite(result.user)).toBe('Updated site');
     expect(fetchMock.mock.calls[2][0]).toContain('/rest/v1/profiles?id=eq.1&select=site');
+  });
+
+  it('routes verified sign-ins with pending profiles to admin approval', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{
+        id: '1',
+        first_name: 'Jane',
+        last_name: 'Smith',
+        email: 'jane@example.test',
+        status: 'pending',
+        role: null,
+        created_at: '2026-01-01',
+      }]), { status: 200 })));
+    const { authService } = await import('./authService');
+
+    await expect(authService.signIn('jane@example.test', 'password'))
+      .resolves.toEqual({ status: 'pending', redirectPath: '/pending-approval' });
   });
 
   it('reports a profile site lookup failure', async () => {

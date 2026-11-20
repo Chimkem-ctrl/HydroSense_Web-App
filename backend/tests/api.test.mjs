@@ -3,32 +3,43 @@ import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
+import { timingSafeEqual, webcrypto } from 'node:crypto';
 
 const source = await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8');
 const javascript = stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, ''), { mode: 'strip' });
 
 function setup(role = 'admin', status = 'approved') {
   const profiles = [
-    { id: 'actor', first_name: 'Admin', last_name: 'User', email: 'admin@example.test', role, status },
+    { id: 'actor', first_name: 'Admin', last_name: 'User', email: 'admin@example.test', role, status, active: true },
     { id: 'pending', first_name: 'Jane', last_name: 'Smith', email: 'jane@example.test', role: null, status: 'pending', requested_role: null },
     { id: 'member', first_name: 'John', last_name: 'Smith', email: 'john@example.test', role: 'operator', status: 'approved', site: 'site', active: true, last_active: 'today' },
     { id: 'other-admin', first_name: 'Other', last_name: 'Admin', email: 'other@example.test', role: 'admin', status: 'approved' },
   ];
-  const tables = { profiles, tanks: [{ id: 'tank', device_id: 'node' }], sms_alert_queue: [], thresholds: [{ parameter: 'temperature', min_value: 26, max_value: 30 }, { parameter: 'do', min_value: 4, max_value: null }, { parameter: 'ph', min_value: 6, max_value: 8 }], alerts: [], alert_responses: [], device_statuses: [], audit_logs: [], manual_entries: [], activity_logs: [], validation_rows: [], readings: [], advisory_settings: [{ id: true, salinity_watch_temperature_c: 31, salinity_high_temperature_c: 32, ammonia_watch_temperature_c: 31, ammonia_high_ph: 7.8 }] };
+  const tables = { profiles, tanks: [{ id: 'tank', device_id: 'node' }], sms_alert_queue: [], thresholds: [{ parameter: 'temperature', min_value: 26, max_value: 30 }, { parameter: 'do', min_value: 4, max_value: null }, { parameter: 'ph', min_value: 6, max_value: 8 }], alerts: [], alert_responses: [], device_statuses: [], audit_logs: [], manual_entries: [], activity_logs: [], calibration_logs: [], validation_rows: [], readings: [], advisory_settings: [{ id: true, salinity_watch_temperature_c: 31, salinity_high_temperature_c: 32, ammonia_watch_temperature_c: 31, ammonia_high_ph: 7.8 }] };
   const failures = {};
-  let createdUser;
+  let signupRequest;
   const db = {
-    auth: { admin: { createUser: async (body) => { createdUser = body; return { data: { user: { id: 'new', email: body.email } }, error: null }; } } },
+    auth: { admin: { deleteUser: async () => ({ error: failures.auth ? { message: failures.auth } : null }) } },
     async rpc(name, args) {
+      if (name === 'latest_tank_readings') {
+        if (failures.readings) return { data: null, error: { message: failures.readings } };
+        const latest = new Map();
+        for (const row of tables.readings) {
+          if (!latest.has(row.tank_id) || row.timestamp > latest.get(row.tank_id).timestamp) latest.set(row.tank_id, row);
+        }
+        return { data: [...latest.values()], error: null };
+      }
       assert.equal(name, 'claim_alert_sms');
       const item = tables.sms_alert_queue.find((row) => row.tank_id === args.p_tank_id && row.status === 'pending');
       if (item) item.status = 'claimed';
       return { data: item ? [item] : [], error: null };
     },
     from(table) {
+      if (table === 'api_activity_logs') table = 'activity_logs';
       let rows = tables[table];
       let updates;
       let insertError;
+      let deleting = false;
       const query = {
         select() { return this; },
         order(field, options = {}) {
@@ -42,9 +53,18 @@ function setup(role = 'admin', status = 'approved') {
         limit(count) { rows = rows.slice(0, count); return this; },
         eq(field, value) { rows = rows.filter((row) => row[field] === value); return this; },
         in(field, values) { rows = rows.filter((row) => values.includes(row[field])); return this; },
+        gte(field, value) { rows = rows.filter((row) => row[field] >= value); return this; },
+        lte(field, value) { rows = rows.filter((row) => row[field] <= value); return this; },
+        not(field, operator, value) { assert.equal(operator, 'is'); rows = rows.filter((row) => row[field] !== value && row[field] !== undefined); return this; },
+        delete() { deleting = true; return this; },
         update(value) { updates = value; return this; },
         insert(value) {
-          if (table === 'readings' && value.source_id && tables.readings.some((row) => row.tank_id === value.tank_id && row.source_id === value.source_id)) {
+          if (table === 'alerts' && failures.alertInsert) {
+            insertError = failures.alertInsert;
+            rows = [];
+          } else if (failures[table]) {
+            rows = [];
+          } else if (table === 'readings' && value.source_id && tables.readings.some((row) => row.tank_id === value.tank_id && row.source_id === value.source_id)) {
             insertError = { code: '23505', message: 'duplicate reading' };
             rows = [];
           } else {
@@ -54,10 +74,20 @@ function setup(role = 'admin', status = 'approved') {
           }
           return this;
         },
-        upsert(value) { tables[table].push(value); rows = [value]; return this; },
+        upsert(value) {
+          if (!failures[table]) {
+            rows = Array.isArray(value) ? value : [value];
+            for (const item of rows) {
+              const existing = tables[table].find((row) => table === 'thresholds' ? row.parameter === item.parameter : row.device_id === item.device_id);
+              if (existing) Object.assign(existing, item); else tables[table].push(item);
+            }
+          }
+          return this;
+        },
         result() {
           if (failures[table]) return { data: null, error: { message: failures[table] } };
           if (updates) rows.forEach((row) => Object.assign(row, updates));
+          if (deleting) tables[table] = tables[table].filter((row) => !rows.includes(row));
           return { data: rows, error: insertError ?? null };
         },
         async maybeSingle() { const result = this.result(); return { ...result, data: result.data?.[0] ?? null }; },
@@ -69,19 +99,35 @@ function setup(role = 'admin', status = 'approved') {
   };
   let handler;
   const context = {
-    Deno: { env: { get: (name) => name === 'SUPABASE_SERVICE_ROLE_KEY' ? 'service' : name === 'HARDWARE_INGEST_API_KEY' ? 'hardware-key' : 'anon' }, serve: (fn) => { handler = fn; } },
-    createClient: (_url, key) => key === 'service' ? db : { auth: { getUser: async () => ({ data: { user: { id: 'actor' } }, error: null }) } },
+    Deno: { env: { get: (name) => ({
+      SUPABASE_SERVICE_ROLE_KEY: 'service',
+      SUPABASE_URL: 'https://supabase.test',
+      SUPABASE_ANON_KEY: 'anon',
+      SITE_URL: 'https://hydrosense.test',
+      HARDWARE_INGEST_API_KEY: 'hardware-key',
+    })[name] }, serve: (fn) => { handler = fn; } },
+    createClient: (_url, key) => key === 'service' ? db : {
+      auth: {
+        getUser: async () => ({ data: { user: { id: 'actor' } }, error: null }),
+        signInWithPassword: async () => ({ data: { user: { id: 'actor' }, session: { access_token: 'access', refresh_token: 'refresh' } }, error: null }),
+        signUp: async (body) => {
+          signupRequest = body;
+          return { data: { user: { id: 'new', email: body.email } }, error: null };
+        },
+      },
+    },
     getAddressByBarangayCode: (code) => code === 'barangay' ? {
       barangay: { name: 'Alangilan' }, municipality: { psgcCode: 'city', provinceCode: 'province', name: 'Sagay' },
       province: { psgcCode: 'province', name: 'Camiguin' }, region: { psgcCode: 'region', name: 'Region X' },
     } : undefined,
-    Request, Response, URL, console,
+    Request, Response, URL, console, crypto: webcrypto, timingSafeEqual, TextEncoder,
   };
   runInNewContext(javascript, context);
   return {
     tables,
     failures,
-    get createdUser() { return createdUser; },
+    get signupRequest() { return signupRequest; },
+    raw: (request) => handler(request),
     hardwareRequest: (path, body, key = 'hardware-key') => handler(new Request(`https://example.test/functions/v1/api${path}`, {
       method: 'POST', headers: { 'X-Hardware-Api-Key': key, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -144,16 +190,32 @@ test('hardware SMS claims are scoped, single-use, and require the hardware key',
   assert.equal((await (await claim('device-a')).json()).message, null);
 });
 
-test('signup accepts required fields without requested role and stores a readable address', async () => {
+test('signup requests email verification and stores profile metadata for the auth trigger', async () => {
   const app = setup();
-  const response = await app.request('/v1/auth/signup', 'POST', {
+  const signupBody = {
     firstName: 'Jane', lastName: 'Smith', email: 'jane@example.test', password: 'password123', employeeId: '123',
     phone: '+639123456789', emergencyContactName: 'John', emergencyContactPhone: '+639123456789',
     hatcheryId: 'camiguin-sagay', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
-  });
+  };
+  const response = await app.request('/v1/auth/signup', 'POST', signupBody);
   assert.equal(response.status, 201);
-  assert.equal(app.createdUser.user_metadata.address, 'Main St, Alangilan, Sagay, Camiguin, Philippines');
-  assert.equal('requestedRole' in app.createdUser.user_metadata, false);
+  assert.deepEqual(await response.json(), { status: 'verify-email', email: 'jane@example.test' });
+  assert.equal(app.signupRequest.email, 'jane@example.test');
+  assert.equal(app.signupRequest.password, 'password123');
+  assert.equal(app.signupRequest.options.emailRedirectTo, 'https://hydrosense.test/signin?verified=1');
+  assert.deepEqual(JSON.parse(JSON.stringify(app.signupRequest.options.data)), {
+    firstName: 'Jane',
+    lastName: 'Smith',
+    employeeId: '123',
+    phone: '+639123456789',
+    address: 'Main St, Alangilan, Sagay, Camiguin, Philippines',
+    emergencyContactName: 'John',
+    emergencyContactPhone: '+639123456789',
+    hatcheryId: 'camiguin-sagay',
+  });
+  const benoniResponse = await app.request('/v1/auth/signup', 'POST', { ...signupBody, hatcheryId: 'camiguin-benoni' });
+  assert.equal(benoniResponse.status, 201);
+  assert.equal(app.signupRequest.options.data.hatcheryId, 'camiguin-benoni');
   assert.equal((await app.request('/v1/auth/signup', 'POST', {})).status, 400);
 });
 
@@ -163,8 +225,8 @@ test('CORS preflight permits settings and role updates', async () => {
   assert.match(response.headers.get('access-control-allow-methods'), /\bPUT\b/);
 });
 
-test('only approved admins can review pending requests and assign any approval role', async () => {
-  for (const role of ['operator', 'manager', 'admin']) {
+test('only approved admins can review pending requests and assign non-admin roles', async () => {
+  for (const role of ['operator', 'manager']) {
     const app = setup();
     const pending = await app.request('/v1/admin/pending-requests');
     assert.equal((await pending.json()).length, 1);
@@ -180,8 +242,7 @@ test('only approved admins can review pending requests and assign any approval r
   assert.equal((await app.request('/v1/admin/pending-requests/pending/approve', 'PUT', { role: 'invalid' })).status, 400);
   assert.equal((await app.request('/v1/admin/pending-requests/pending/reject', 'PUT')).status, 200);
   const legacy = setup();
-  assert.equal((await legacy.request('/v1/admin/users/pending', 'PATCH', { status: 'approved', role: 'admin' })).status, 200);
-  assert.equal(legacy.tables.profiles[1].role, 'admin');
+  assert.equal((await legacy.request('/v1/admin/users/pending', 'PATCH', { status: 'approved', role: 'admin' })).status, 400);
 });
 
 test('profile endpoint returns the signed-in profile and hatchery details', async () => {
@@ -325,6 +386,8 @@ test('device warnings reflect each tank latest persisted reading and clear after
     { tank_id: 'tank', timestamp: '2026-01-02T00:00:00Z', temperature: 126, do_mg_l: -1, ph: 15 },
   );
   const invalid = await (await app.request('/v1/devices/status')).json();
+  assert.equal(invalid[0].batteryPct, null);
+  assert.equal(invalid[0].powerSource, 'grid');
   assert.deepEqual(invalid[0].invalidParameters, ['temperature', 'do', 'ph']);
   assert.equal(invalid[0].probeCheckedAt, '2026-01-02T00:00:00Z');
   app.tables.readings.push({ tank_id: 'tank', timestamp: '2026-01-03T00:00:00Z', temperature: -55, do_mg_l: 0, ph: 14 });
@@ -340,7 +403,7 @@ test('device status reports errors loading the latest probe reading', async () =
   app.failures.readings = 'readings unavailable';
   const response = await app.request('/v1/devices/status');
   assert.equal(response.status, 500);
-  assert.match((await response.json()).error, /readings unavailable/);
+  assert.equal((await response.json()).error, 'Internal server error.');
 });
 
 test('device warning physical limits match the shared inclusive boundaries', async () => {
@@ -377,7 +440,7 @@ test('advisories use configured thresholds and recorded water events', async () 
   assert.equal(result[0].level, 'high');
   assert.equal(result[1].level, 'watch');
   assert.equal(result[0].inputs.temperatureC, 33);
-  app.tables.activity_logs.push({ tank_id: 'hatchery', kind: 'ENVIRONMENT', type: 'Rainfall' });
+  app.tables.activity_logs.push({ tank_id: 'hatchery', kind: 'ENVIRONMENT', type: 'Rainfall', occurred_at: new Date().toISOString() });
   result = await (await app.request('/v1/tanks/tank/advisories')).json();
   assert.equal(result[0].level, 'watch');
   assert.equal(result[0].inputs.recentRainEvent, 'yes');
@@ -393,12 +456,173 @@ test('advisories apply event impacts to salinity and ammonia', async () => {
   const app = setup();
   app.tables.readings.push({ tank_id: 'tank', timestamp: '2026-01-01T00:00:00Z', temperature: 25, ph: 7 });
   app.tables.activity_logs.push(
-    { tank_id: 'tank', kind: 'OPERATION', type: 'Water change / exchange' },
-    { tank_id: 'hatchery', kind: 'ENVIRONMENT', type: 'Power interruption' },
+    { tank_id: 'tank', kind: 'OPERATION', type: 'Water change / exchange', occurred_at: new Date().toISOString() },
+    { tank_id: 'hatchery', kind: 'ENVIRONMENT', type: 'Power interruption', occurred_at: new Date().toISOString() },
   );
   const result = await (await app.request('/v1/tanks/tank/advisories')).json();
   assert.equal(result[0].level, 'watch');
   assert.match(result[0].firedRule, /Salinity check recommended/);
   assert.equal(result[1].level, 'high');
   assert.match(result[1].firedRule, /Monitor TAN levels/);
+});
+
+test('advisories ignore stale events and retain high impact above a watch base', async () => {
+  const app = setup();
+  const recent = new Date(Date.now() - 3600000).toISOString();
+  const old = new Date(Date.now() - 49 * 3600000).toISOString();
+  app.tables.readings.push({ tank_id: 'tank', timestamp: recent, temperature: 33, ph: 8 });
+  app.tables.manual_entries.push({ tank_id: 'tank', type: 'rain_event', timestamp: old });
+  app.tables.activity_logs.push(
+    { tank_id: 'hatchery', kind: 'ENVIRONMENT', type: 'Rainfall', occurred_at: old },
+    { tank_id: 'tank', kind: 'ENVIRONMENT', type: 'Power interruption', occurred_at: recent },
+  );
+  const result = await (await app.request('/v1/tanks/tank/advisories')).json();
+  assert.equal(result[0].level, 'high');
+  assert.equal(result[0].inputs.recentRainEvent, 'no');
+  assert.equal(result[1].level, 'high');
+  assert.doesNotMatch(result[1].firedRule, /high feeding load/);
+});
+
+test('alert deduplication includes acknowledged alerts and tolerates a unique-index race', async () => {
+  const app = setup();
+  app.tables.alerts.push({ tank_id: 'tank', parameter: 'temperature', status: 'acknowledged' });
+  assert.equal((await app.ingest({ deviceId: 'node', temperature: 33, doMgL: 5, ph: 7 })).status, 201);
+  assert.equal(app.tables.alerts.length, 1);
+  app.failures.alertInsert = { code: '23505', message: 'duplicate' };
+  assert.equal((await app.ingest({ deviceId: 'node', temperature: 28, doMgL: 2, ph: 7 })).status, 201);
+  assert.equal(app.tables.device_statuses.length, 1);
+});
+
+test('alert and threshold failures do not prevent device status updates', async () => {
+  for (const failure of ['alerts', 'thresholds']) {
+    const app = setup();
+    app.failures[failure] = 'private database detail';
+    const response = await app.ingest({ deviceId: 'node', temperature: 33, doMgL: 5, ph: 7 });
+    assert.equal(response.status, 201);
+    assert.equal(app.tables.readings.length, 1);
+    assert.equal(app.tables.device_statuses.length, 1);
+  }
+});
+
+test('severity uses the violated bound and parameter-specific critical margins', async () => {
+  for (const [parameter, reading, severity] of [
+    ['temperature', { temperature: 31 }, 'warning'],
+    ['temperature', { temperature: 32 }, 'critical'],
+    ['temperature', { temperature: 25.9 }, 'critical'],
+    ['do', { doMgL: 3.5 }, 'warning'],
+    ['do', { doMgL: 3 }, 'critical'],
+    ['ph', { ph: 8.3 }, 'warning'],
+    ['ph', { ph: 8.5 }, 'critical'],
+    ['ph', { ph: 5.5 }, 'critical'],
+  ]) {
+    const app = setup();
+    await app.ingest({ deviceId: 'node', temperature: 28, doMgL: 5, ph: 7, ...reading });
+    assert.equal(app.tables.alerts.find((alert) => alert.parameter === parameter)?.severity, severity, JSON.stringify(reading));
+  }
+});
+
+test('authenticated routes and signin reject inactive profiles', async () => {
+  const app = setup();
+  app.tables.profiles[0].active = false;
+  assert.equal((await app.request('/v1/profile')).status, 403);
+  assert.equal((await app.request('/v1/auth/signin', 'POST', { email: 'admin@example.test', password: 'pass' })).status, 403);
+});
+
+test('alert actions enforce transitions and use the authenticated actor', async () => {
+  const app = setup();
+  app.tables.alerts.push({ id: 'a', status: 'open', tank_id: 'tank', parameter: 'ph' });
+  assert.equal((await app.request('/v1/alerts/a/acknowledge', 'POST', { user: 'Imposter', note: '' })).status, 200);
+  assert.equal(app.tables.alerts[0].acknowledged_by, 'Admin User');
+  assert.equal(app.tables.alert_responses[0].created_by, 'Admin User');
+  assert.equal((await app.request('/v1/alerts/a/acknowledge', 'POST', { user: 'Imposter', note: '' })).status, 409);
+  assert.equal((await app.request('/v1/alerts/a/resolve', 'POST', { note: 'Done' })).status, 200);
+  assert.equal((await app.request('/v1/alerts/a/resolve', 'POST', { note: 'Done' })).status, 409);
+});
+
+test('manager tank operations are scoped to mapped site aliases', async () => {
+  const app = setup('manager');
+  app.tables.profiles[0].site = 'camiguin-sagay';
+  app.tables.tanks.push(
+    { id: 'same', name: 'Same', site: 'Camiguin, Sagay Multispecies Hatchery', device_id: 'same' },
+    { id: 'other', name: 'Other', site: 'Camiguin, Benoni Experimental Station', device_id: 'other' },
+  );
+  assert.deepEqual((await (await app.request('/v1/tanks')).json()).map((tank) => tank.id), ['same']);
+  const tank = { name: 'New', site: 'Camiguin, Benoni Experimental Station', deviceId: 'new', rearingStartDate: '2026-01-01', changedBy: 'Imposter' };
+  assert.equal((await app.request('/v1/tanks', 'POST', tank)).status, 403);
+  assert.equal((await app.request('/v1/tanks', 'POST', { ...tank, site: ' camiguin-sagay ' })).status, 201);
+  assert.equal(app.tables.tanks.at(-1).site, 'camiguin-sagay');
+  assert.equal(app.tables.audit_logs[0].user_name, 'Admin User');
+  assert.equal((await app.request('/v1/tanks/other', 'DELETE')).status, 404);
+  assert.equal((await app.request('/v1/tanks/same', 'DELETE')).status, 204);
+  assert.equal(app.tables.audit_logs[1].action, 'Tank deleted');
+});
+
+test('readings validate parameters and clamp limits without changing response shape', async () => {
+  const app = setup();
+  for (let i = 0; i < 510; i++) app.tables.readings.push({ id: String(i), tank_id: 'tank', timestamp: String(i).padStart(4, '0'), temperature: i, do_mg_l: 5, ph: 7 });
+  assert.equal((await app.request('/v1/readings?parameter=unknown')).status, 400);
+  assert.equal((await (await app.request('/v1/readings?parameter=do&limit=NaN')).json()).length, 500);
+  assert.equal((await (await app.request('/v1/readings?limit=0')).json()).length, 1);
+  assert.equal((await (await app.request('/v1/readings?limit=3000')).json()).length, 510);
+  app.tables.readings[509].do_mg_l = null;
+  assert.equal((await (await app.request('/v1/readings?parameter=do&limit=2000')).json()).length, 509);
+});
+
+test('settings validate inputs and surface database errors', async () => {
+  const app = setup();
+  const cases = [
+    ['/v1/settings/thresholds', { thresholds: [{ parameter: 'ph', min: 8, max: 7 }] }, 'thresholds', { thresholds: [{ parameter: 'ph', min: 7, max: 8 }] }],
+    ['/v1/settings/advisory-rules', { settings: {} }, 'advisory_settings', { settings: { salinityWatchTemperatureC: 31, salinityHighTemperatureC: 33, ammoniaWatchTemperatureC: 30, ammoniaHighPh: 8 } }],
+    ['/v1/validation/tolerances', { tolerances: { temperature: -1, do: 1, ph: 1 } }, 'validation_tolerances', { tolerances: { temperature: 1, do: 1, ph: 1 } }],
+  ];
+  app.tables.validation_tolerances = [{ id: true }];
+  for (const [path, invalid, table, valid] of cases) {
+    assert.equal((await app.request(path, 'PUT', invalid)).status, 400);
+    app.failures[table] = 'sensitive detail';
+    const response = await app.request(path, 'PUT', valid);
+    assert.equal(response.status, 500);
+    assert.equal((await response.json()).error, 'Internal server error.');
+    delete app.failures[table];
+  }
+  assert.equal((await app.request('/v1/settings/thresholds', 'PUT', { thresholds: [{ parameter: ['ph'], min: 7 }] })).status, 400);
+});
+
+test('operational mutations validate input and use the authenticated actor', async () => {
+  const app = setup();
+  for (const path of ['/v1/tanks', '/v1/calibrations', '/v1/manual-entries', '/v1/activity-logs']) {
+    assert.equal((await app.request(path, 'POST', {})).status, 400, path);
+  }
+  assert.equal((await app.request('/v1/manual-entries', 'POST', { tankId: 'tank', type: 'rain_event', enteredBy: 'Imposter' })).status, 201);
+  assert.equal((await app.request('/v1/activity-logs', 'POST', { tankId: 'tank', kind: 'OPERATION', type: 'Feeding', operator: 'Imposter' })).status, 201);
+  assert.equal((await app.request('/v1/calibrations', 'POST', { tankId: 'tank', parameter: 'ph', standard: '7', before: 7, after: 7, date: '2026-01-01', nextDue: '2026-02-01', user: 'Imposter' })).status, 201);
+  assert.equal(app.tables.manual_entries[0].entered_by, 'Admin User');
+  assert.equal(app.tables.activity_logs[0].operator, 'Admin User');
+  assert.equal(app.tables.calibration_logs[0].user_name, 'Admin User');
+});
+
+test('deletion reports partial failure and reviews retain their existing role', async () => {
+  const app = setup();
+  app.failures.auth = 'sensitive detail';
+  const deleted = await app.request('/v1/admin/users/member', 'DELETE');
+  assert.equal(deleted.status, 500);
+  assert.doesNotMatch((await deleted.json()).error, /sensitive detail/);
+  assert.equal(app.tables.profiles.some((user) => user.id === 'member'), false);
+  assert.match(app.tables.audit_logs[0].detail, /auth deletion failed/);
+  app.tables.profiles.find((user) => user.id === 'pending').role = 'operator';
+  assert.equal((await app.request('/v1/admin/pending-requests/pending/reject', 'PUT')).status, 200);
+  assert.equal(app.tables.profiles.find((user) => user.id === 'pending').role, 'operator');
+  assert.equal(app.tables.audit_logs[1].action, 'Request rejected');
+});
+
+test('malformed JSON returns 400 and signup trims email', async () => {
+  const app = setup();
+  const malformed = new Request('https://example.test/functions/v1/api/v1/auth/signup', { method: 'POST', body: '{' });
+  assert.equal((await app.raw(malformed)).status, 400);
+  const body = {
+    firstName: 'Jane', lastName: 'Smith', email: ' jane@example.test ', password: 'password123', employeeId: '123',
+    phone: '+639123456789', emergencyContactName: 'John', emergencyContactPhone: '+639123456789',
+    hatcheryId: 'camiguin-sagay', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
+  };
+  assert.equal((await (await app.request('/v1/auth/signup', 'POST', body)).json()).email, 'jane@example.test');
+  assert.equal(app.signupRequest.email, 'jane@example.test');
 });
