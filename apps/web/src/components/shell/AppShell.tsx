@@ -26,7 +26,7 @@ import type { LucideIcon } from 'lucide-react';
 import { canAccessRole } from '@hydrosense/shared';
 import { liveClient } from '../../app/api';
 import { NAV_ITEMS, ROLE_LABELS } from '../../app/config';
-import { useRole } from '../../app/auth/RoleContext';
+import { useAuth, useRole } from '../../app/auth/RoleContext';
 import { signOut } from '../../services/authService';
 import { useSelectedTank } from '../../app/tank/TankContext';
 import { useLatestReading, useOpenAlerts, usePendingRequests } from '../../app/data/hooks';
@@ -55,6 +55,8 @@ const SIDEBAR_MIN = 220;
 const SIDEBAR_MAX = 380;
 const clampSidebar = (value: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(value)));
 
+export type ShellOutletContext = { notifyActivityExport: () => void };
+
 function readSidebarWidth() {
   try {
     const stored = Number(window.localStorage.getItem(SIDEBAR_KEY));
@@ -66,6 +68,8 @@ function readSidebarWidth() {
 
 export function AppShell() {
   const { role, userName } = useRole();
+  const user = useAuth();
+  if (!user) throw new Error('AppShell must be used by an authenticated user.');
   const { tankId } = useSelectedTank();
   const latestReading = useLatestReading(tankId);
   const alerts = useOpenAlerts();
@@ -74,6 +78,8 @@ export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [exportNotifications, setExportNotifications] = useState<Array<{ id: number; userId: string; createdAt: string }>>([]);
+  const nextExportNotificationId = useRef(0);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
@@ -83,6 +89,10 @@ export function AppShell() {
     Date.now() - new Date(latestReading.data.timestamp).getTime() <= 15 * 60 * 1000,
   );
   const displayConnection = connection === 'connected' || latestReadingIsRecent ? 'connected' : connection;
+
+  useEffect(() => {
+    setExportNotifications([]);
+  }, [user.id]);
 
   useEffect(() => {
     const unsubscribe = liveClient.subscribeConnection(setConnection);
@@ -160,11 +170,17 @@ export function AppShell() {
   const criticalAlerts = openAlerts.filter((alert) => alert.severity === 'critical');
   const pendingCount = role === 'admin' ? (pendingRequests.data?.length ?? 0) : 0;
   const alertCount = openAlerts.length + pendingCount;
+  const visibleExportNotifications = exportNotifications.filter((notification) => notification.userId === user.id);
+  const notificationCount = alertCount + visibleExportNotifications.length;
   const alertLabel = `${alertCount} open ${alertCount === 1 ? 'alert' : 'alerts'}${role === 'admin' && pendingRequests.isError
     ? ', account requests unavailable'
     : role === 'admin' && pendingRequests.isLoading
       ? ', loading account requests'
-      : pendingCount ? `, including ${pendingCount} pending account ${pendingCount === 1 ? 'request' : 'requests'}` : ''}`;
+      : pendingCount ? `, including ${pendingCount} pending account ${pendingCount === 1 ? 'request' : 'requests'}` : ''}${visibleExportNotifications.length ? `, ${visibleExportNotifications.length} export ${visibleExportNotifications.length === 1 ? 'notification' : 'notifications'}` : ''}`;
+  const notifyActivityExport = () => {
+    const notification = { id: nextExportNotificationId.current++, userId: user.id, createdAt: new Date().toISOString() };
+    setExportNotifications((current) => [notification, ...current]);
+  };
   return (
     <div className="app-shell glass-shell" data-role={role} style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}>
       {menuOpen && <button className="drawer-backdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
@@ -206,21 +222,28 @@ export function AppShell() {
             </span>
             <div className="notification-menu" ref={notificationsRef}>
               <button type="button" className="icon-button header-alert-link" aria-haspopup="dialog" aria-expanded={notificationsOpen} aria-label={alertLabel} title={alertLabel} onClick={() => { setAccountMenuOpen(false); setNotificationsOpen((open) => !open); }}>
-                <Bell size={18} /><span className="header-alert-count">{alertCount}</span>
+                <Bell size={18} /><span className="header-alert-count">{notificationCount}</span>
                 {role === 'admin' && pendingRequests.isError && <span aria-hidden="true">!</span>}
                 {role === 'admin' && pendingRequests.isLoading && <span aria-hidden="true">…</span>}
               </button>
               {notificationsOpen && <div className="notification-popover" role="dialog" aria-label="Current notifications">
-                <div className="notification-popover-head"><strong>Notifications</strong><span>{alertCount} current</span></div>
+                <div className="notification-popover-head"><strong>Notifications</strong><span>{notificationCount} current</span></div>
                 <ul className="notification-list">
-                  {pendingCount > 0 && <li><Link to="/admin/users" className="notification-item"><span className="notification-dot notification-dot-info" aria-hidden="true" /><span><strong>{pendingCount} pending account {pendingCount === 1 ? 'request' : 'requests'}</strong><small>Review in Users &amp; Roles</small></span></Link></li>}
+                  {visibleExportNotifications.map((notification) => (
+                    <li key={notification.id} className="notification-item notification-export">
+                      <FileDown size={18} className="notification-icon notification-icon-info" aria-hidden="true" />
+                      <span><strong>Activity logs exported.</strong><small>{formatManilaDateTime(notification.createdAt)} PHT</small></span>
+                      <button type="button" className="notification-dismiss" aria-label="Dismiss activity logs export notification" onClick={() => setExportNotifications((current) => current.filter((item) => item.id !== notification.id))}><X size={16} aria-hidden="true" /></button>
+                    </li>
+                  ))}
+                  {pendingCount > 0 && <li><Link to="/admin/users" className="notification-item"><UserRound size={18} className="notification-icon notification-icon-info" aria-hidden="true" /><span><strong>{pendingCount} pending account {pendingCount === 1 ? 'request' : 'requests'}</strong><small>Review in Users &amp; Roles</small></span></Link></li>}
                   {openAlerts.map((alert) => (
                     <li key={alert.id}><Link to="/alerts" className="notification-item">
-                      <span className={`notification-dot notification-dot-${alert.severity}`} aria-hidden="true" />
+                      <AlertTriangle size={18} className={`notification-icon notification-icon-${alert.severity}`} aria-hidden="true" />
                       <span><strong>{alert.parameter} {alert.severity}</strong><small>{alert.value} · {alert.threshold} · {formatManilaDateTime(alert.createdAt)}</small></span>
                     </Link></li>
                   ))}
-                  {alertCount === 0 && <li className="notification-empty">No current notifications.</li>}
+                  {notificationCount === 0 && <li className="notification-empty">No current notifications.</li>}
                 </ul>
                 <Link to="/alerts" className="notification-view-all">View all</Link>
               </div>}
@@ -239,7 +262,7 @@ export function AppShell() {
               </div>}
             </div>
           </div>
-          <div className="page-view"><Outlet /></div>
+          <div className="page-view"><Outlet context={{ notifyActivityExport } satisfies ShellOutletContext} /></div>
         </main>
       </div>
     </div>

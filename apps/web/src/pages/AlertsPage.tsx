@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { UserRound } from 'lucide-react';
 import { can, formatManilaDateTime, resolveAlertWithActivityLog, validateAcknowledgeNote } from '@hydrosense/shared';
 import type { AlertItem } from '@hydrosense/shared';
 import { api } from '../app/api';
@@ -145,12 +146,15 @@ export default function AlertsPage() {
       {activityError && <p className="state-error" role="alert">The alert was resolved, but its activity log could not be saved: {activityError}</p>}
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
       {role === 'admin' && tab === 'open' && (pendingRequests.isLoading || pendingRequests.isError || Boolean(pendingRequests.data?.length)) && (
-        <section className="card stack" aria-label="Pending account requests">
+        <section className="card stack account-requests-card" aria-label="Pending account requests">
           <h2 className="card-title">Pending account requests</h2>
           {pendingRequests.isLoading ? <LoadingState label="Loading account requests" /> : pendingRequests.isError ? <ErrorState error={pendingRequests.error} onRetry={() => void pendingRequests.refetch()} /> : pendingRequests.data?.map((request) => (
-            <div key={request.id}>
-              <strong>New account request: {request.firstName} {request.lastName}</strong>
-              <p className="small muted">Submitted {formatManilaDateTime(request.createdAt)} PHT</p>
+            <div className="account-request-alert" key={request.id}>
+              <UserRound size={18} aria-hidden="true" />
+              <div>
+                <strong>New account request: {request.firstName} {request.lastName}</strong>
+                <p className="small muted">Submitted {formatManilaDateTime(request.createdAt)} PHT</p>
+              </div>
             </div>
           ))}
           {!pendingRequests.isLoading && !pendingRequests.isError && <Link className="button" to="/admin/users">Review account requests</Link>}

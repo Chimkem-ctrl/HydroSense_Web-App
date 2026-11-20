@@ -5,6 +5,7 @@ import App from '../App';
 import { queryClient } from './query';
 import { api } from './api';
 import { authService } from '../services/authService';
+import * as csvDownload from '../services/downloadCsv';
 
 function render(ui: ReactElement) {
   const result = renderBase(ui);
@@ -162,6 +163,32 @@ describe('themed dashboard routes', () => {
     const button = await screen.findByRole('button', { name: /3 open alerts/ });
     fireEvent.click(button);
     expect(within(screen.getByRole('dialog', { name: 'Current notifications' })).getAllByRole('link').length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('adds dismissible activity export notifications that remain when navigating', async () => {
+    vi.spyOn(api, 'listActivityLogs').mockResolvedValue([{ id: 'log-1', tankId: 'hatchery', kind: 'OPERATION', type: 'Check', occurredAt: '2026-01-01T00:00:00Z', operator: 'Test', notes: 'Checked' }]);
+    const download = vi.spyOn(csvDownload, 'downloadCsv').mockImplementation(() => {});
+    window.history.replaceState({}, '', '/entries');
+    render(<App />);
+    const exportButton = await screen.findByRole('button', { name: 'Export CSV' });
+    await waitFor(() => expect(exportButton).toBeEnabled());
+    expect(exportButton.querySelector('svg.lucide-file-down')).not.toBeNull();
+    expect(exportButton.textContent).toBe('');
+    fireEvent.click(exportButton);
+    fireEvent.click(exportButton);
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Activity logs exported.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('link', { name: 'Alerts Center' }));
+    await screen.findByRole('heading', { name: 'Alerts Center' });
+    fireEvent.click(screen.getByRole('button', { name: /2 export notifications/ }));
+    const notifications = screen.getByRole('dialog', { name: 'Current notifications' });
+    expect(within(notifications).getAllByText('Activity logs exported.')).toHaveLength(2);
+    fireEvent.click(within(notifications).getAllByRole('button', { name: 'Dismiss activity logs export notification' })[0]);
+    expect(within(notifications).getAllByText('Activity logs exported.')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /1 export notification/ })).toBeInTheDocument();
+    fireEvent.click(within(notifications).getByRole('button', { name: 'Dismiss activity logs export notification' }));
+    expect(within(notifications).queryByText('Activity logs exported.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /export notification/ })).not.toBeInTheDocument();
   });
 
   it('keeps the tank table available when probe readings are invalid', async () => {

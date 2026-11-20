@@ -219,6 +219,12 @@
 .trends-footer-note, .trends-export-message { margin: 0; color: var(--text-secondary); font-size: 12px; }
 .trends-export-message { color: var(--text-primary); }
 .alerts-screen { gap: var(--space-4); }
+.account-requests-card { gap: var(--space-3); }
+.account-requests-card .card-title { margin: 0; }
+.account-requests-card > .button { justify-self: start; max-width: 100%; }
+.account-request-alert { display: flex; align-items: flex-start; gap: var(--space-2); }
+.account-request-alert > svg { flex: 0 0 auto; margin-top: 2px; }
+.account-request-alert p { margin: var(--space-1) 0 0; }
 .alerts-status-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border: 1px solid var(--control-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
 .alerts-status-banner::before { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; background: currentColor; content: ''; }
 .alerts-status-banner.no-open-alerts { border-color: color-mix(in srgb, var(--ok-text) 30%, var(--control-border)); background: color-mix(in srgb, var(--ok-text) 10%, var(--glass-bg-strong)); color: var(--ok-text); }

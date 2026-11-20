@@ -250,8 +250,10 @@
 .glass-screen .dash-report-raw-readings p + p { border-top: 1px solid var(--control-border); }
 .glass-screen .history-filters,
 .glass-screen .activity-log-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); align-items: end; gap: var(--space-4); }
-.glass-screen .activity-log-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); align-items: stretch; gap: var(--space-3); }
-.glass-screen .activity-log-actions .button { width: 100%; min-height: 44px; justify-content: center; padding: 0 14px; font-size: inherit; }
+.glass-screen .activity-log-actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: var(--space-3); }
+.glass-screen .activity-log-actions .button { flex: 1 1 160px; min-height: 44px; justify-content: center; padding: 0 14px; font-size: inherit; }
+.glass-screen .activity-log-actions .activity-log-export { flex: 0 0 44px; padding: 0; }
+.activity-log-dialog-title { display: flex; align-items: center; gap: var(--space-2); }
 .glass-screen .history-records,
 .glass-screen .activity-log-records { min-width: 0; }
 .glass-screen .history-table-wrap,

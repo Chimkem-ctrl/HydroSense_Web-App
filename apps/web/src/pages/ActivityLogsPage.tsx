@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useOutletContext } from 'react-router-dom';
+import { ClipboardList, CloudSun, FileDown } from 'lucide-react';
 import {
   ACTIVITY_EVENT_TYPES,
   ACTIVITY_OPERATION_TYPES,
@@ -17,6 +19,7 @@ import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 import { activityLogCsv, manilaDate } from './activityLogs';
 import { downloadCsv } from '../services/downloadCsv';
+import type { ShellOutletContext } from '../components/shell/AppShell';
 
 type FormKind = Extract<ActivityLogKind, 'OPERATION' | 'ENVIRONMENT'>;
 type ReadingField = 'dissolvedOxygen' | 'temperature' | 'ph' | 'salinity' | 'ammonia';
@@ -49,6 +52,7 @@ function parsedReadings(raw: RawReadings) {
 }
 
 export default function ActivityLogsPage() {
+  const { notifyActivityExport } = useOutletContext<ShellOutletContext>();
   const { tankId } = useSelectedTank();
   const { userName, role } = useRole();
   const queryClient = useQueryClient();
@@ -161,7 +165,7 @@ export default function ActivityLogsPage() {
   function exportLogs() {
     if (!filteredLogs.length) return;
     downloadCsv(activityLogCsv(filteredLogs, tanks.data ?? []), 'hydrosense-activity-logs.csv');
-    setStatusMessage('Activity logs exported.');
+    notifyActivityExport();
   }
 
   return (
@@ -171,9 +175,9 @@ export default function ActivityLogsPage() {
         description="Log operations, water-quality checks, and environmental events for shift handover."
       />
       <div className="inline activity-log-actions">
-        <button type="button" className="button" onClick={() => openLog('OPERATION')}>Log operation</button>
-        <button type="button" className="button" onClick={() => openLog('ENVIRONMENT')}>Log weather / event</button>
-        {canExport && <button type="button" className="button" disabled={!filteredLogs.length} onClick={exportLogs}>Export CSV</button>}
+        <button type="button" className="button" onClick={() => openLog('OPERATION')}><ClipboardList size={18} aria-hidden="true" />Log operation</button>
+        <button type="button" className="button" onClick={() => openLog('ENVIRONMENT')}><CloudSun size={18} aria-hidden="true" />Log weather / event</button>
+        {canExport && <button type="button" className="button activity-log-export" aria-label="Export CSV" title="Export CSV" disabled={!filteredLogs.length} onClick={exportLogs}><FileDown size={18} aria-hidden="true" /></button>}
       </div>
       {statusMessage && <p className="small muted" role="status">{statusMessage}</p>}
       <StaleQueryState updatedAt={logs.dataUpdatedAt} />
@@ -210,7 +214,7 @@ export default function ActivityLogsPage() {
         <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setModalKind(null); }}>
           <section className="dialog card stack" role="dialog" aria-modal="true" aria-labelledby="activity-log-title">
             <header>
-              <h2 id="activity-log-title" className="card-title">{modalKind === 'OPERATION' ? 'Log hatchery operation' : 'Log weather or event'}</h2>
+              <h2 id="activity-log-title" className="card-title activity-log-dialog-title">{modalKind === 'OPERATION' ? <ClipboardList size={20} aria-hidden="true" /> : <CloudSun size={20} aria-hidden="true" />}{modalKind === 'OPERATION' ? 'Log hatchery operation' : 'Log weather or event'}</h2>
               <p className="small muted">Add an activity record for shift handover.</p>
             </header>
             <form className="stack activity-log-form" onSubmit={submitLog}>

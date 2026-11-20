@@ -107,10 +107,13 @@
 .glass-shell .notification-item:hover { background: rgba(255, 255, 255, .16); }
 .glass-shell .notification-item strong { display: block; font-size: 13px; text-transform: capitalize; }
 .glass-shell .notification-item small { display: block; font-size: 12px; opacity: .75; }
-.glass-shell .notification-dot { flex: none; width: 9px; height: 9px; margin-top: 5px; border-radius: 50%; }
-.glass-shell .notification-dot-critical { background: #f87171; }
-.glass-shell .notification-dot-warning { background: #fbbf24; }
-.glass-shell .notification-dot-info { background: #60a5fa; }
+.glass-shell .notification-icon { flex: none; margin-top: 2px; }
+.glass-shell .notification-icon-critical { color: #f87171; }
+.glass-shell .notification-icon-warning { color: #fbbf24; }
+.glass-shell .notification-icon-info { color: #60a5fa; }
+.glass-shell .notification-export > span { flex: 1; min-width: 0; }
+.glass-shell .notification-dismiss { display: grid; flex: none; place-items: center; min-width: 32px; min-height: 32px; margin: -7px -6px -7px 0; border: 0; border-radius: 6px; background: transparent; color: inherit; }
+.glass-shell .notification-dismiss:hover { background: rgba(255, 255, 255, .16); }
 .glass-shell .notification-empty { padding: 14px 8px; text-align: center; font-size: 13px; opacity: .75; }
 .glass-shell .notification-view-all {
   display: block; text-align: center; padding: 9px; border-radius: 9px; font-weight: 600; color: #fff; text-decoration: none;

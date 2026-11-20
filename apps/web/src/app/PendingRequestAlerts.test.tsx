@@ -46,6 +46,18 @@ afterEach(() => {
 });
 
 describe('admin account request alerts', () => {
+  it('distinguishes account requests from reading alerts with icons', async () => {
+    window.localStorage.setItem(accountsKey, JSON.stringify([pendingAccount]));
+    render(<App />);
+    const request = await screen.findByText('New account request: Jane Smith');
+    expect(request.closest('.account-request-alert')?.querySelector('svg.lucide-user-round')).not.toBeNull();
+
+    fireEvent.click(await screen.findByRole('button', { name: /including 1 pending account request/ }));
+    const notifications = screen.getByRole('dialog', { name: 'Current notifications' });
+    expect(within(notifications).getByRole('link', { name: /1 pending account request/ }).querySelector('svg.lucide-user-round')).not.toBeNull();
+    await waitFor(() => expect(notifications.querySelector('a[href="/alerts"] svg.lucide-triangle-alert')).not.toBeNull());
+  });
+
   it('detects a new request while the admin is on the alerts page', async () => {
     render(<App />);
     await screen.findByRole('heading', { name: 'Alerts Center' });
