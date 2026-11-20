@@ -6,6 +6,14 @@ workspace dependencies and run `npm run dev:mobile`. For an Android development
 build, run `npm run android:mobile`; the Android SDK is required. Run
 `npm run typecheck --workspace @hydrosense/mobile` and
 `npm run test --workspace @hydrosense/mobile` to validate this package.
+To open the app in Expo Go on a physical device, connect the phone and computer
+to the same Wi-Fi network, run `npm run dev:mobile -- --go --lan --clear` and
+scan the QR code from that running Expo process. If Windows Firewall blocks the
+connection, allow Node.js on private networks. If the networks differ or LAN
+fails, use a tunnel: sign in once with `npx expo login`, then run
+`npm run dev:mobile -- --go --tunnel`. Without logging in, use
+`-- --tunnel ngrok` instead. If port 8081 is already occupied, use the QR code
+printed by the current process rather than an older Expo session.
 The workspace scripts configure Node's module search path so the hoisted Expo
 Metro tools can resolve the mobile workspace's Expo installation. Use
 `npm run export --workspace @hydrosense/mobile -- --platform android` to export
