@@ -742,7 +742,7 @@ export function HistoryScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const layout = createLogScreenStyles(colors);
   const record = createRecordStyles(colors);
-  const { tankId } = useTankSelection();
+  const { tanks, tankId } = useTankSelection();
   const [parameter, setParameter] = useState<'all' | 'temperature' | 'do' | 'ph'>('all');
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - 7 * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
@@ -798,14 +798,19 @@ export function ReportsScreen() {
   const { colors } = useTheme();
   const { tankId, tanks, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const { user } = useSession();
+  const tankName = tanks.find((tank) => tank.id === tankId)?.name ?? tankId;
   const [selectedTanks, setSelectedTanks] = useState<string[] | null>(null);
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - 7 * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
   const [format, setFormat] = useState<'pdf' | 'csv' | 'xlsx'>('pdf');
   const [sections, setSections] = useState<ReportSection[]>(['summary', 'statistics', 'alerts', 'raw-readings']);
   const [sharing, setSharing] = useState(false);
-  const selectedIds = selectedTanks ?? (tankId ? [tankId] : []);
-  async function shareReport() {
+  const csv = useMemo(() => {
+    const header = ['Timestamp (ISO)', 'Tank', 'Temperature °C', 'DO mg/L', 'pH'];
+    const rows = (readings.data ?? []).map((row) => [row.timestamp, tankName, row.temperature, row.doMgL, row.ph]);
+    return toCsv([header, ...rows]);
+  }, [readings.data, tankName]);
+  async function shareCsv() {
     setSharing(true);
     try {
       if (!user || !can(user.role, 'exportReports')) throw new Error('You do not have permission to export reports.');
@@ -855,6 +860,16 @@ export function ReportsScreen() {
     <Card title="Format">
       {(['pdf', 'csv', 'xlsx'] as const).map((value) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: format === value }} onPress={() => setFormat(value)} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{format === value ? '●' : '○'} {value.toUpperCase()}</Text></Pressable>)}
       <Button label={sharing ? 'Preparing report…' : 'Share report'} disabled={sharing} onPress={() => void shareReport()} />
+    <Title detail="Share sensor readings for hatchery records">Export</Title>
+    <TankPicker />
+    <Card title="CSV export">
+      {readings.isLoading || alerts.isLoading ? <StateMessage message="Preparing export…" loading /> : readings.isError ? <StateMessage message="Could not load readings." /> : <>
+        <DataRow label="Tank" value={tankName} />
+        <DataRow label="Readings" value={`${readings.data?.length ?? 0}`} />
+        <DataRow label="Alerts" value={`${alerts.data?.length ?? 0}`} />
+        <Text style={{ color: colors.muted }}>The shared export includes formula-injection protection and preserves ISO timestamps.</Text>
+        <Button label={sharing ? 'Opening share sheet…' : 'Share readings CSV'} disabled={sharing || !readings.data?.length} onPress={() => void shareCsv()} />
+      </>}
     </Card>
     <Text style={{ color: colors.muted, fontSize: 12 }}>Prepared by {user?.name ?? 'user'}.</Text>
   </Page>;
