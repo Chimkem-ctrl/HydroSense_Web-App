@@ -12,6 +12,7 @@ import type {
 } from './types';
 import { DEFAULT_THRESHOLDS } from './rules/status';
 import { isValidMeasurement } from './rules/reading';
+import { activityInHatchery, hatcheryId } from './hatcheries';
 
 export type ReportSection =
   | 'summary'
@@ -180,7 +181,11 @@ export function buildReport(spec: ReportSpec, data: ReportData, generatedAt = ne
   if (tanks.length !== tankIds.size) throw new Error('One or more selected tanks could not be found.');
   const readings = data.readings.filter((reading) => tankIds.has(reading.tankId) && isWithinRange(reading.timestamp, from, to));
   const alerts = data.alerts.filter((alert) => tankIds.has(alert.tankId) && isWithinRange(alert.createdAt, from, to));
-  const activityLogs = data.activityLogs.filter((log) => (log.tankId === 'hatchery' || tankIds.has(log.tankId)) && isWithinRange(log.occurredAt, from, to));
+  const activityLogs = data.activityLogs.filter((log) => (
+    log.tankId === 'hatchery'
+      ? tanks.some((tank) => activityInHatchery(log, data.tanks, hatcheryId(tank.site)))
+      : tankIds.has(log.tankId)
+  ) && isWithinRange(log.occurredAt, from, to));
   const calibrationLogs = data.calibrationLogs.filter((log) => tankIds.has(log.tankId) && isWithinRange(log.date, from, to));
   const thresholds = data.thresholds;
   const statisticsRows = (['temperature', 'do', 'ph'] as const).map((parameter) => calculateParameterStatistics(parameter, readings, thresholds));
@@ -211,7 +216,7 @@ export function buildReport(spec: ReportSpec, data: ReportData, generatedAt = ne
     advisories: Object.fromEntries(tanks.map((tank) => [tank.id, data.advisories[tank.id] ?? []])),
     activityLogs,
     calibrationLogs,
-    validationRows: data.validationRows,
+    validationRows: data.validationRows.filter((row) => row.tankId ? tankIds.has(row.tankId) : false),
     deviceStatuses: data.deviceStatuses.filter((status) => tanks.some((tank) => tank.deviceId === status.deviceId)),
     dataQuality: {
       expectedReadings,

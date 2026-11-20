@@ -2,6 +2,7 @@ import type { ActivityLog, AdvisoryRuleSettings, AlertItem, CalibrationLog, Dash
 import { mapManualEntryToActivityLog } from '../activity';
 import { DEFAULT_ADVISORY_RULES, getAmmoniaAdvisory, getSalinityAdvisory } from '../rules/advisory';
 import { isValidMeasurement } from '../rules/reading';
+import { activityInHatchery, hatcheryId } from '../hatcheries';
 import { DEFAULT_VALIDATION_TOLERANCES } from '../validation';
 import {
   mockAdvisoryStates,
@@ -167,8 +168,9 @@ export class MockApiClient implements HydroSenseApi {
     return clone(created);
   }
   async listActivityLogs(tankId?: string) {
+    const tank = this.tanks.find((item) => item.id === tankId);
     return clone(this.activityLogs
-      .filter((log) => !tankId || log.tankId === tankId || log.tankId === 'hatchery')
+      .filter((log) => !tankId || log.tankId === tankId || (log.tankId === 'hatchery' && Boolean(tank && activityInHatchery(log, this.tanks, hatcheryId(tank.site)))))
       .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)));
   }
   async createActivityLog(entry: Omit<ActivityLog, 'id' | 'occurredAt'>) {
@@ -226,7 +228,7 @@ export class MockApiClient implements HydroSenseApi {
     }
     for (const entry of advisoryEntries) {
       if (entry.tankId === 'hatchery') {
-        this.entries.unshift(...this.tanks.map((tank) => ({
+        this.entries.unshift(...this.tanks.filter((tank) => activityInHatchery(created, this.tanks, hatcheryId(tank.site))).map((tank) => ({
           ...entry,
           id: `${entry.id}-${tank.id}`,
           tankId: tank.id,
@@ -237,7 +239,7 @@ export class MockApiClient implements HydroSenseApi {
     }
     if (created.tankId !== 'hatchery') this.refreshAdvisories(created.tankId, created.occurredAt);
     for (const tank of this.tanks) {
-      if (created.tankId === 'hatchery' && advisoryEntries.length > 0) {
+      if (created.tankId === 'hatchery' && advisoryEntries.length > 0 && activityInHatchery(created, this.tanks, hatcheryId(tank.site))) {
         this.refreshAdvisories(tank.id, created.occurredAt);
       }
     }
@@ -290,8 +292,9 @@ export class MockApiClient implements HydroSenseApi {
     const latest = readings[readings.length - 1];
     if (!latest) return;
     const entries = this.entries.filter((entry) => entry.tankId === tankId);
+    const tank = this.tanks.find((item) => item.id === tankId);
     const events = this.activityLogs
-      .filter((event) => event.tankId === tankId || event.tankId === 'hatchery')
+      .filter((event) => event.tankId === tankId || (event.tankId === 'hatchery' && Boolean(tank && activityInHatchery(event, this.tanks, hatcheryId(tank.site)))))
       .map(({ type, tankId: scope }) => ({ type, scope }));
     const previousAmmonia = this.advisories[tankId]?.find((item) => item.kind === 'ammonia');
     this.advisories[tankId] = [

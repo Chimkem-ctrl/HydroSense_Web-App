@@ -1,4 +1,5 @@
 import type { ActivityLog, Tank } from '@hydrosense/shared';
+import { activityHatcheryName } from '@hydrosense/shared';
 
 function manilaTimestamp(value: string) {
   return new Intl.DateTimeFormat('en-PH', {
@@ -19,8 +20,9 @@ function csvCell(value: string) {
 
 export function activityLogCsv(logs: ActivityLog[], tanks: Tank[]) {
   const rows: string[][] = [
-    ['Timestamp (PHT)', 'Tank', 'Type', 'Activity', 'Operator', 'Water change (%)', 'Manual salinity (ppt)', 'Manual DO (mg/L)', 'Manual temperature (°C)', 'Manual pH', 'Manual method', 'Impact', 'Notes'],
+    ['Hatchery', 'Timestamp (PHT)', 'Tank', 'Type', 'Activity', 'Operator', 'Water change (%)', 'Water source', 'Manual salinity (ppt)', 'Manual DO (mg/L)', 'Manual temperature (°C)', 'Manual pH', 'Manual ammonia (mg/L)', 'Manual method', 'Impact', 'Notes'],
     ...logs.map((log) => [
+      activityHatcheryName(log, tanks),
       manilaTimestamp(log.occurredAt),
       log.tankId === 'hatchery'
         ? 'Hatchery-wide'
@@ -29,10 +31,12 @@ export function activityLogCsv(logs: ActivityLog[], tanks: Tank[]) {
       log.type,
       log.operator,
       log.waterChangePercent === undefined ? '' : String(log.waterChangePercent),
+      log.waterSource ?? '',
       log.manualReadings?.salinity === undefined ? '' : String(log.manualReadings.salinity),
       log.manualReadings?.dissolvedOxygen === undefined ? '' : String(log.manualReadings.dissolvedOxygen),
       log.manualReadings?.temperature === undefined ? '' : String(log.manualReadings.temperature),
       log.manualReadings?.ph === undefined ? '' : String(log.manualReadings.ph),
+      log.manualReadings?.ammonia === undefined ? '' : String(log.manualReadings.ammonia),
       log.manualReadings?.method ?? '',
       log.impact ?? '',
       log.notes,

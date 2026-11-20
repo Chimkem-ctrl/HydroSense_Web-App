@@ -21,6 +21,13 @@ function invalidProbeParameters(temperature: number, oxygen: number, ph: number)
   ];
 }
 
+function hatcheryId(site: string) {
+  const value = site.trim();
+  if (/\bsagay\b/i.test(value)) return "camiguin-sagay";
+  if (/\bbenoni\b/i.test(value)) return "camiguin-benoni";
+  return value;
+}
+
 function evaluateEventImpact(event: { type: string; scope: string }) {
   switch (event.type) {
     case "Rainfall":
@@ -67,7 +74,7 @@ Deno.serve(async (request) => {
     const required = ["firstName", "lastName", "employeeId", "phone", "email", "emergencyContactName", "emergencyContactPhone"];
     if (required.some((key) => typeof body[key] !== "string" || !body[key].trim()) ||
         typeof body.password !== "string" || body.password.length < 8 ||
-        body.hatcheryId !== "camiguin-sagay" ||
+        !["camiguin-sagay", "camiguin-benoni"].includes(body.hatcheryId) ||
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim()) ||
         !/^[+()\d\s.-]{7,20}$/.test(body.phone.trim()) ||
         !/^[+()\d\s.-]{7,20}$/.test(body.emergencyContactPhone.trim())) {
@@ -444,8 +451,12 @@ Deno.serve(async (request) => {
     }
     const { data: entries, error: entriesError } = await admin.from("manual_entries").select("type").eq("tank_id", tankId);
     if (entriesError) return json({ error: entriesError.message }, 500);
-    const { data: events, error: eventsError } = await admin.from("activity_logs").select("kind,type,tank_id").in("tank_id", [tankId, "hatchery"]);
+    const { data: tank, error: tankError } = await admin.from("tanks").select("site").eq("id", tankId).maybeSingle();
+    if (tankError) return json({ error: tankError.message }, 500);
+    const { data: allEvents, error: eventsError } = await admin.from("activity_logs").select("kind,type,tank_id,hatchery_id").in("tank_id", [tankId, "hatchery"]);
     if (eventsError) return json({ error: eventsError.message }, 500);
+    const events = allEvents.filter((event) => event.tank_id !== "hatchery" ||
+      Boolean(tank?.site && hatcheryId(event.hatchery_id ?? "camiguin-sagay") === hatcheryId(tank.site)));
     const rain = entries.some((entry) => entry.type === "rain_event") || events.some((event) => event.kind === "ENVIRONMENT" && event.type === "Rainfall");
     const dosing = entries.some((entry) => entry.type === "freshwater_dosing") || events.some((event) => event.kind === "OPERATION" && event.type === "Freshwater dosing (log only)");
     const impacts = events
@@ -623,11 +634,20 @@ Deno.serve(async (request) => {
   if (action === "/v1/activity-logs" && ["GET", "POST"].includes(request.method)) {
     if (request.method === "GET") {
       let query = admin.from("activity_logs").select("*");
-      if (url.searchParams.get("tank_id")) query = query.in("tank_id", [url.searchParams.get("tank_id"), "hatchery"]);
+      const requestedTank = url.searchParams.get("tank_id");
+      if (requestedTank) query = query.in("tank_id", [requestedTank, "hatchery"]);
       const { data, error } = await query.order("occurred_at", { ascending: false });
       if (error) return json({ error: error.message }, 500);
-      return json(data?.map((row) => ({
+      let site: string | null = null;
+      if (requestedTank) {
+        const { data: tank, error: tankError } = await admin.from("tanks").select("site").eq("id", requestedTank).maybeSingle();
+        if (tankError) return json({ error: tankError.message }, 500);
+        site = tank?.site ?? null;
+      }
+      return json(data?.filter((row) => !requestedTank || row.tank_id !== "hatchery" ||
+        Boolean(site && hatcheryId(row.hatchery_id ?? "camiguin-sagay") === hatcheryId(site))).map((row) => ({
         id: row.id, tankId: row.tank_id, kind: row.kind, type: row.type,
+        hatcheryId: row.hatchery_id ?? undefined,
         occurredAt: row.occurred_at, operator: row.operator, notes: row.notes,
         waterChangePercent: row.water_change_percent, waterSource: row.water_source,
         impact: row.impact, manualReadings: row.manual_readings,
@@ -635,8 +655,12 @@ Deno.serve(async (request) => {
     }
 
     const body = await request.json();
+    const location = typeof body.hatcheryId === "string" && body.hatcheryId.trim()
+      ? body.hatcheryId.trim() : typeof profile.site === "string" ? profile.site.trim() : "";
+    if (body.tankId === "hatchery" && !location) return json({ error: "A hatchery location is required for hatchery-wide activity." }, 400);
     const { data, error } = await admin.from("activity_logs").insert({
       tank_id: body.tankId, kind: body.kind, type: body.type,
+      hatchery_id: body.tankId === "hatchery" ? hatcheryId(location) : null,
       operator: body.operator, notes: body.notes ?? "", water_change_percent: body.waterChangePercent ?? null,
       water_source: body.waterSource ?? null, impact: body.impact ?? null,
       manual_readings: body.manualReadings ?? null,
@@ -644,6 +668,7 @@ Deno.serve(async (request) => {
     if (error) return json({ error: error.message }, 400);
     return json({
       id: data.id, tankId: data.tank_id, kind: data.kind, type: data.type,
+      hatcheryId: data.hatchery_id ?? undefined,
       occurredAt: data.occurred_at, operator: data.operator, notes: data.notes,
       waterChangePercent: data.water_change_percent, waterSource: data.water_source,
       impact: data.impact, manualReadings: data.manual_readings,

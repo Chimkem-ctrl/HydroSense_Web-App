@@ -10,7 +10,7 @@ export function useTanks() {
   return useQuery({ queryKey: ['tanks'], queryFn: () => api.listTanks() });
 }
 
-export function useProfileSite() {
+export function useProfileSite(enabled = true) {
   const user = useAuth();
   return useQuery({
     queryKey: ['profile-site', user?.id],
@@ -18,7 +18,7 @@ export function useProfileSite() {
       if (!user) throw new Error('Sign in to load your hatchery assignment.');
       return (await authService.getProfileSite(user)) ?? null;
     },
-    enabled: Boolean(user),
+    enabled: Boolean(user) && enabled,
   });
 }
 

@@ -23,15 +23,16 @@ import {
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { canAccessRole } from '@hydrosense/shared';
+import { canAccessRole, hatcheryId } from '@hydrosense/shared';
 import { liveClient } from '../../app/api';
 import { NAV_ITEMS, ROLE_LABELS } from '../../app/config';
 import { useAuth, useRole } from '../../app/auth/RoleContext';
 import { signOut } from '../../services/authService';
 import { useSelectedTank } from '../../app/tank/TankContext';
-import { useLatestReading, useOpenAlerts, usePendingRequests } from '../../app/data/hooks';
+import { useLatestReading, useOpenAlerts, usePendingRequests, useProfileSite } from '../../app/data/hooks';
 import { formatManilaDateTime } from '@hydrosense/shared';
 import { CriticalAlertModal } from './CriticalAlertModal';
+import { HatcherySelect } from '../common/HatcherySelect';
 
 const icons: Record<string, LucideIcon> = {
   '/': LayoutDashboard,
@@ -70,10 +71,11 @@ export function AppShell() {
   const { role, userName } = useRole();
   const user = useAuth();
   if (!user) throw new Error('AppShell must be used by an authenticated user.');
-  const { tankId } = useSelectedTank();
+  const { tankId, hatchery, tanks } = useSelectedTank();
   const latestReading = useLatestReading(tankId);
   const alerts = useOpenAlerts();
   const pendingRequests = usePendingRequests();
+  const site = useProfileSite(role !== 'admin');
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -166,9 +168,9 @@ export function AppShell() {
   }, [accountMenuOpen]);
 
   const visibleItems = NAV_ITEMS.filter((item) => canAccessRole(role, item.roles));
-  const openAlerts = (alerts.data ?? []).filter((alert) => alert.status === 'open');
+  const openAlerts = (alerts.data ?? []).filter((alert) => alert.status === 'open' && tanks.some((tank) => tank.id === alert.tankId));
   const criticalAlerts = openAlerts.filter((alert) => alert.severity === 'critical');
-  const pendingCount = role === 'admin' ? (pendingRequests.data?.length ?? 0) : 0;
+  const pendingCount = role === 'admin' ? (pendingRequests.data ?? []).filter((request) => hatchery === 'all' || Boolean(request.hatcheryId && hatcheryId(request.hatcheryId) === hatchery)).length : 0;
   const alertCount = openAlerts.length + pendingCount;
   const visibleExportNotifications = exportNotifications.filter((notification) => notification.userId === user.id);
   const notificationCount = alertCount + visibleExportNotifications.length;
@@ -217,6 +219,7 @@ export function AppShell() {
         <main className="page-content glass-screen">
           <div className="page-controls" aria-label="Dashboard controls">
             <button type="button" className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMenuOpen(true)}><Menu size={19} /></button>
+            {role === 'admin' && <HatcherySelect />}
             <span className={`connection-pill ${displayConnection === 'connected' ? 'connection-online' : 'connection-offline'}`} aria-label={`Connection ${displayConnection}`}>
               {displayConnection === 'connected' ? <Wifi size={16} aria-hidden="true" /> : <WifiOff size={16} aria-hidden="true" />}<span>{displayConnection === 'connected' ? 'Live' : displayConnection === 'connecting' ? 'Connecting' : 'Offline'}</span>
             </span>
@@ -262,7 +265,11 @@ export function AppShell() {
               </div>}
             </div>
           </div>
-          <div className="page-view"><Outlet context={{ notifyActivityExport } satisfies ShellOutletContext} /></div>
+          <div className="page-view">
+            {role !== 'admin' && site.isError && <p className="state-error" role="alert">Hatchery assignment could not be loaded. <button type="button" className="button" onClick={() => void site.refetch()}>Retry</button></p>}
+            {role !== 'admin' && site.isSuccess && !site.data?.trim() && <p className="state-error" role="status">Hatchery assignment unavailable. Contact an administrator.</p>}
+            <Outlet context={{ notifyActivityExport } satisfies ShellOutletContext} />
+          </div>
         </main>
       </div>
     </div>

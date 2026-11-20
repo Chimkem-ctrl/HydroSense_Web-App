@@ -6,7 +6,9 @@ import { ClipboardList, CloudSun, FileDown } from 'lucide-react';
 import {
   ACTIVITY_EVENT_TYPES,
   ACTIVITY_OPERATION_TYPES,
+  activityInHatchery,
   formatManilaDateTime,
+  hatcheryId,
   validateActivityLog,
 } from '@hydrosense/shared';
 import type { ActivityLog, ActivityLogKind } from '@hydrosense/shared';
@@ -53,7 +55,7 @@ function parsedReadings(raw: RawReadings) {
 
 export default function ActivityLogsPage() {
   const { notifyActivityExport } = useOutletContext<ShellOutletContext>();
-  const { tankId } = useSelectedTank();
+  const { tankId, hatchery, tanks: scopedTanks } = useSelectedTank();
   const { userName, role } = useRole();
   const queryClient = useQueryClient();
   const tanks = useTanks();
@@ -103,6 +105,7 @@ export default function ActivityLogsPage() {
   }, [modalKind]);
 
   const filteredLogs = (logs.data ?? [])
+    .filter((log) => activityInHatchery(log, tanks.data ?? [], hatchery))
     .filter((log) => kindFilter === 'all' || log.kind === kindFilter)
     .filter((log) => {
       const date = manilaDate(log.occurredAt);
@@ -126,6 +129,12 @@ export default function ActivityLogsPage() {
   function submitLog(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!modalKind) return;
+    const selectedTank = (tanks.data ?? []).find((tank) => tank.id === tankId);
+    const selectedHatchery = hatchery === 'all' ? (selectedTank ? hatcheryId(selectedTank.site) : '') : hatchery;
+    if (scope === 'hatchery' && !selectedHatchery) {
+      setFormError('Select a tank or hatchery before recording a hatchery-wide event.');
+      return;
+    }
     const rawPercent = waterChangePercent.trim();
     const parsedPercent = rawPercent ? Number(rawPercent) : undefined;
     const manualReadings = modalKind === 'OPERATION' && activityType === 'Manual water quality check'
@@ -133,6 +142,7 @@ export default function ActivityLogsPage() {
       : undefined;
     const entry: Omit<ActivityLog, 'id' | 'occurredAt'> = {
       tankId: scope,
+      ...(scope === 'hatchery' ? { hatcheryId: selectedHatchery } : {}),
       kind: modalKind,
       type: activityType,
       operator: userName,
@@ -174,15 +184,17 @@ export default function ActivityLogsPage() {
         title="Activity Logs"
         description="Log operations, water-quality checks, and environmental events for shift handover."
       />
-      <div className="inline activity-log-actions">
+      {role !== 'admin' && <div className="inline activity-log-actions">
         <button type="button" className="button" onClick={() => openLog('OPERATION')}><ClipboardList size={18} aria-hidden="true" />Log operation</button>
         <button type="button" className="button" onClick={() => openLog('ENVIRONMENT')}><CloudSun size={18} aria-hidden="true" />Log weather / event</button>
-        {canExport && <button type="button" className="button activity-log-export" aria-label="Export CSV" title="Export CSV" disabled={!filteredLogs.length} onClick={exportLogs}><FileDown size={18} aria-hidden="true" /></button>}
-      </div>
+      </div>}
       {statusMessage && <p className="small muted" role="status">{statusMessage}</p>}
       <StaleQueryState updatedAt={logs.dataUpdatedAt} />
       <section className="card stack activity-log-records">
-        <h2 className="card-title">Activity records</h2>
+        <header className="activity-log-records-header">
+          <h2 className="card-title">Activity records</h2>
+          {canExport && <button type="button" className="icon-button activity-log-export" aria-label="Export CSV" title="Export CSV" disabled={!filteredLogs.length || logs.isLoading || logs.isError || tanks.isLoading || tanks.isError} onClick={exportLogs}><FileDown size={18} aria-hidden="true" /></button>}
+        </header>
         <div className="form-grid filter-row activity-log-filters">
           <label className="field">Kind
             <Select value={kindFilter === 'all' ? '' : kindFilter} clearable placeholder="Kind" onChange={(event) => setKindFilter((event.target.value || 'all') as ActivityLogKind | 'all')}>
@@ -194,7 +206,7 @@ export default function ActivityLogsPage() {
           <label className="field">From date (PHT)<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
           <label className="field">To date (PHT)<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
         </div>
-        {logs.isLoading ? <LoadingState /> : logs.isError ? <ErrorState error={logs.error} onRetry={() => void logs.refetch()} /> : !filteredLogs.length ? <EmptyState>No activity logs match the selected filters.</EmptyState> : (
+        {logs.isLoading || tanks.isLoading ? <LoadingState /> : logs.isError ? <ErrorState error={logs.error} onRetry={() => void logs.refetch()} /> : tanks.isError ? <ErrorState error={tanks.error} onRetry={() => void tanks.refetch()} /> : !filteredLogs.length ? <EmptyState>No activity logs match the selected filters.</EmptyState> : (
           <div className="table-wrap activity-log-table-wrap"><table className="activity-log-table"><thead><tr><th>Time (PHT)</th><th>Kind</th><th>Type</th><th>Tank/scope</th><th>Details</th><th>Operator</th></tr></thead><tbody>
             {filteredLogs.map((log) => (
               <tr key={log.id}>
@@ -221,7 +233,7 @@ export default function ActivityLogsPage() {
               <label className="field">{modalKind === 'OPERATION' ? 'Tank or scope' : 'Event scope'}
                 <Select value={scope} onChange={(event) => setScope(event.target.value)}>
                   <option value="hatchery">Entire hatchery</option>
-                  {(tanks.data ?? []).map((tank) => <option value={tank.id} key={tank.id}>{tank.name}</option>)}
+                  {scopedTanks.map((tank) => <option value={tank.id} key={tank.id}>{tank.name}</option>)}
                 </Select>
               </label>
               <label className="field">{modalKind === 'OPERATION' ? 'Operation type' : 'Event type'}

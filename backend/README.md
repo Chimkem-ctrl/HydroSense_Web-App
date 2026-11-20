@@ -79,6 +79,7 @@ Important relationships:
 - Alert responses belong to an alert.
 - Deleting a tank cascades to readings, alerts, and calibration records associated with it.
 - Every Supabase Auth user is linked to a profile with the same UUID.
+- Hatchery-wide activity records carry a hatchery ID. Migration `20261120120000_activity_hatchery.sql` assigns existing unlabelled hatchery-wide records to Sagay; tank-scoped records use the tank's site. Apply this migration before deploying the updated API function.
 
 ## Authentication and authorization
 

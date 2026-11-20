@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { UserRound } from 'lucide-react';
-import { can, formatManilaDateTime, resolveAlertWithActivityLog, validateAcknowledgeNote } from '@hydrosense/shared';
+import { ChevronLeft, ChevronRight, UserRound, UsersRound } from 'lucide-react';
+import { can, formatManilaDateTime, hatcheryId, resolveAlertWithActivityLog, validateAcknowledgeNote } from '@hydrosense/shared';
 import type { AlertItem } from '@hydrosense/shared';
 import { api } from '../app/api';
 import { useRole } from '../app/auth/RoleContext';
@@ -43,9 +43,10 @@ function getPaginationItems(pageCount: number, currentPage: number): Array<numbe
 
 export default function AlertsPage() {
   const { role, userName } = useRole();
-  const { tankId } = useSelectedTank();
+  const { tankId, hatchery } = useSelectedTank();
   const tanks = useTanks();
   const pendingRequests = usePendingRequests();
+  const visibleRequests = (pendingRequests.data ?? []).filter((request) => hatchery === 'all' || Boolean(request.hatcheryId && hatcheryId(request.hatcheryId) === hatchery));
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<AlertTab>('open');
   const [severity, setSeverity] = useState<'all' | AlertItem['severity']>('all');
@@ -118,6 +119,8 @@ export default function AlertsPage() {
 
   useEffect(() => {
     setAlertsPage(0);
+    setSelected(null);
+    setResolveDialog(false);
   }, [period, severity, tab, tankId]);
 
   useEffect(() => {
@@ -145,10 +148,13 @@ export default function AlertsPage() {
       <PageHeading title="Alerts Center" description={`Review alerts, record notes, and check response history for ${tankNames.get(tankId) ?? 'the selected tank'}.`} />
       {activityError && <p className="state-error" role="alert">The alert was resolved, but its activity log could not be saved: {activityError}</p>}
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
-      {role === 'admin' && tab === 'open' && (pendingRequests.isLoading || pendingRequests.isError || Boolean(pendingRequests.data?.length)) && (
+      {role === 'admin' && tab === 'open' && (pendingRequests.isLoading || pendingRequests.isError || visibleRequests.length > 0) && (
         <section className="card stack account-requests-card" aria-label="Pending account requests">
-          <h2 className="card-title">Pending account requests</h2>
-          {pendingRequests.isLoading ? <LoadingState label="Loading account requests" /> : pendingRequests.isError ? <ErrorState error={pendingRequests.error} onRetry={() => void pendingRequests.refetch()} /> : pendingRequests.data?.map((request) => (
+          <header className="account-requests-header">
+            <h2 className="card-title">Pending account requests</h2>
+            {!pendingRequests.isLoading && !pendingRequests.isError && <Link className="button" to="/admin/users"><UsersRound size={16} aria-hidden="true" />Review account requests</Link>}
+          </header>
+          {pendingRequests.isLoading ? <LoadingState label="Loading account requests" /> : pendingRequests.isError ? <ErrorState error={pendingRequests.error} onRetry={() => void pendingRequests.refetch()} /> : visibleRequests.map((request) => (
             <div className="account-request-alert" key={request.id}>
               <UserRound size={18} aria-hidden="true" />
               <div>
@@ -157,7 +163,6 @@ export default function AlertsPage() {
               </div>
             </div>
           ))}
-          {!pendingRequests.isLoading && !pendingRequests.isError && <Link className="button" to="/admin/users">Review account requests</Link>}
         </section>
       )}
       {!query.isLoading && !query.isError && <section className={`alerts-status-banner ${statusCounts.open ? 'has-open-alerts' : 'no-open-alerts'}`} role="status">
@@ -237,11 +242,11 @@ export default function AlertsPage() {
                 </Select>
               </div>
               <nav className="trends-alert-page-buttons" aria-label="Alert history pages">
-                <button className="button" type="button" disabled={currentAlertsPage === 0} onClick={() => setAlertsPage((page) => Math.max(0, page - 1))}>‹ Previous</button>
+                <button className="icon-button" type="button" aria-label="Previous" title="Previous page" disabled={currentAlertsPage === 0} onClick={() => setAlertsPage((page) => Math.max(0, page - 1))}><ChevronLeft size={18} aria-hidden="true" /></button>
                 {alertPaginationItems.map((item, index) => item === 'ellipsis'
                   ? <span className="trends-alert-page-ellipsis" key={`ellipsis-${index}`} aria-hidden="true">…</span>
                   : <button className="button" type="button" key={item} aria-label={`Page ${item + 1}`} aria-current={item === currentAlertsPage ? 'page' : undefined} onClick={() => setAlertsPage(item)}>{item + 1}</button>)}
-                <button className="button" type="button" disabled={currentAlertsPage >= alertsPageCount - 1} onClick={() => setAlertsPage((page) => Math.min(alertsPageCount - 1, page + 1))}>Next ›</button>
+                <button className="icon-button" type="button" aria-label="Next" title="Next page" disabled={currentAlertsPage >= alertsPageCount - 1} onClick={() => setAlertsPage((page) => Math.min(alertsPageCount - 1, page + 1))}><ChevronRight size={18} aria-hidden="true" /></button>
               </nav>
             </div>
           </>

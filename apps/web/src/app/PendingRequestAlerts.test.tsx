@@ -51,10 +51,13 @@ describe('admin account request alerts', () => {
     render(<App />);
     const request = await screen.findByText('New account request: Jane Smith');
     expect(request.closest('.account-request-alert')?.querySelector('svg.lucide-user-round')).not.toBeNull();
+    const requestCard = screen.getByRole('region', { name: 'Pending account requests' });
+    expect(within(requestCard).getByRole('link', { name: 'Review account requests' }).closest('header')).toContainElement(within(requestCard).getByRole('heading', { name: 'Pending account requests' }));
 
     fireEvent.click(await screen.findByRole('button', { name: /including 1 pending account request/ }));
     const notifications = screen.getByRole('dialog', { name: 'Current notifications' });
     expect(within(notifications).getByRole('link', { name: /1 pending account request/ }).querySelector('svg.lucide-user-round')).not.toBeNull();
+    expect(within(notifications).getByRole('link', { name: /1 pending account request/ })).toHaveClass('notification-item');
     await waitFor(() => expect(notifications.querySelector('a[href="/alerts"] svg.lucide-triangle-alert')).not.toBeNull());
   });
 
