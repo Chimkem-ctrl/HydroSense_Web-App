@@ -16,15 +16,14 @@ import { BlurTargetView } from 'expo-blur';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 import { Activity, AlertTriangle, LayoutDashboard, MoreHorizontal, Waves } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { enableScreens } from 'react-native-screens';
 import { isBottomBarRoute } from './navigation';
 import type { BottomBarRoute, MainTabParamList, RootStackParamList } from './navigation';
 import {
   ActivityLogsScreen,
   AlertDetailScreen,
   AlertsScreen,
-  CalibrationAndMaintenanceScreen,
   ConnectionNotice,
-  FieldEntryScreen,
   HistoryScreen,
   HomeScreen,
   TanksScreen,
@@ -65,6 +64,8 @@ const roleBackgrounds: Record<Role, Record<ThemeMode, number>> = {
     dark: require('../../web/public/assets/images/operator bg app.png'),
   },
 };
+// Web needs screen detachment to hide inactive transparent tabs.
+if (Platform.OS === 'web') enableScreens(true);
 onlineManager.setEventListener((setOnline) => NetInfo.addEventListener((state) => {
   setOnline(Boolean(state.isConnected));
 }));
@@ -100,8 +101,6 @@ function MainTabs() {
     <Tabs.Screen name="Trends" component={TrendsScreen} />
     <Tabs.Screen name="More" component={MoreScreen} />
     <Tabs.Screen name="Activity" component={ActivityLogsScreen} />
-    <Tabs.Screen name="FieldEntry" component={FieldEntryScreen} options={{ title: 'Field water-quality entry' }} />
-    {canAccess(user?.role ?? null, 'canCalibrate') && <Tabs.Screen name="Calibration" component={CalibrationAndMaintenanceScreen} />}
     <Tabs.Screen name="Reports" component={ReportsScreen} />
     <Tabs.Screen name="Status" component={StatusScreen} />
     {canAccess(user?.role ?? null, 'history') && <Tabs.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />}

@@ -46,7 +46,8 @@ function SplashRoute({ onSeen }: { onSeen: () => void }) {
 
 function ProtectedAppShell({ splashSeen }: { splashSeen: boolean }) {
   const location = useLocation();
-  if (location.pathname === '/' && !splashSeen) {
+  const user = useAuth();
+  if (!splashSeen && (location.pathname === '/' || !user?.role)) {
     return <Navigate to="/splash" replace />;
   }
   return <RequireAuth><AppShell /></RequireAuth>;
@@ -54,29 +55,32 @@ function ProtectedAppShell({ splashSeen }: { splashSeen: boolean }) {
 
 export default function AppRoutes() {
   const location = useLocation();
-  const [splashSeen, setSplashSeen] = useState(() => location.pathname !== '/' && location.pathname !== '/splash');
+  const user = useAuth();
+  const [splashSeen, setSplashSeen] = useState(() => Boolean(user?.role && location.pathname !== '/' && location.pathname !== '/splash'));
   const markSplashSeen = useCallback(() => setSplashSeen(true), []);
-  // Any visit to another route (e.g. sign-in) means the app was already launched.
   useEffect(() => {
-    if (location.pathname !== '/' && location.pathname !== '/splash') setSplashSeen(true);
+    if (['/signup', '/forgot-password', '/pending-approval'].includes(location.pathname)) setSplashSeen(true);
   }, [location.pathname]);
 
   return (
     <Routes>
       <Route path="/splash" element={<SplashRoute onSeen={markSplashSeen} />} />
-      <Route path="/signin" element={<PublicOnly><SignInPage /></PublicOnly>} />
+      <Route path="/signin" element={!splashSeen && !user?.role ? <Navigate to="/splash" replace /> : <PublicOnly><SignInPage /></PublicOnly>} />
       <Route path="/signup" element={<PublicOnly><SignUpPage /></PublicOnly>} />
       <Route path="/verify-email" element={<PublicOnly><VerifyEmailPage /></PublicOnly>} />
       <Route path="/forgot-password" element={<PublicOnly><ForgotPasswordPage /></PublicOnly>} />
       <Route path="/pending-approval" element={<PendingApprovalPage />} />
       <Route element={<ProtectedAppShell splashSeen={splashSeen} />}>
         <Route index element={<LiveMonitorPage />} />
+        <Route path="dashboard" element={<Navigate to="/" replace />} />
+        <Route path="live-monitor" element={<Navigate to="/" replace />} />
         <Route path="tanks" element={<TankOverviewPage />} />
         <Route path="health" element={<Navigate to="/tanks" replace />} />
         <Route path="trends" element={<TrendsPage />} />
         <Route path="history" element={<Guarded path="history"><HistoryPage /></Guarded>} />
         <Route path="alerts" element={<AlertsPage />} />
         <Route path="entries" element={<ActivityLogsPage />} />
+        <Route path="activity-logs" element={<Navigate to="/entries" replace />} />
         <Route path="calibration" element={<Guarded path="calibration"><CalibrationPage /></Guarded>} />
         <Route path="reports" element={<Guarded path="reports"><ReportsPage /></Guarded>} />
         <Route path="validation" element={<Guarded path="validation"><ValidationPage /></Guarded>} />

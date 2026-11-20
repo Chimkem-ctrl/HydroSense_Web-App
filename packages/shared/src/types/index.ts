@@ -33,6 +33,7 @@ export interface DeviceStatus {
   powerSource: 'solar' | 'grid' | 'battery';
   wifiRssi: number;
   pendingSyncCount: number;
+  reportedFields?: Array<'batteryPct' | 'wifiRssi' | 'pendingSyncCount'>;
   invalidParameters?: MeasuredParameter[];
   probeCheckedAt?: string;
 }
@@ -97,6 +98,7 @@ export type ActivityLogKind = 'OPERATION' | 'ENVIRONMENT' | 'ALERT RESOLUTION';
 export interface ActivityLog {
   id: string;
   tankId: string | 'hatchery';
+  hatcheryId?: string;
   kind: ActivityLogKind;
   type: string;
   occurredAt: string;
@@ -128,6 +130,7 @@ export interface CalibrationLog {
 }
 
 export interface ValidationRow {
+  tankId?: string | null;
   parameter: string;
   hydrosenseMean: number;
   reference: number;

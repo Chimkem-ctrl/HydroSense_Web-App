@@ -1,8 +1,8 @@
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, FileDown, Printer } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { buildReport, can, formatManilaDateTime, getManilaDateString, toCsv } from '@hydrosense/shared';
-import type { ReportData, ReportSection } from '@hydrosense/shared';
+import { activityHatcheryName, activityInHatchery, buildReport, can, formatManilaDateTime, getManilaDateString, tankInHatchery, toCsv } from '@hydrosense/shared';
+import type { Reading, ReportData, ReportSection } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
 import { tierConfig } from '../app/config';
 import { api } from '../app/api';
@@ -11,6 +11,7 @@ import { useSelectedTank } from '../app/tank/TankContext';
 import { PageHeading } from '../components/common/PageHeading';
 import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
+import { activityLogCsv } from './activityLogs';
 
 type ExportType = 'readings' | 'alerts' | 'activity' | 'calibration' | 'validation';
 type FilterPopoverPosition = { top: number; left: number; width: number; maxHeight: number };
@@ -37,6 +38,24 @@ function manilaEnd(date: string) {
   return new Date(`${date}T23:59:59.999+08:00`).toISOString();
 }
 
+async function loadReportReadings(tankId: string, from: number, to: number): Promise<Reading[]> {
+  const readings = await api.listReadings({
+    tankId,
+    from: new Date(from).toISOString(),
+    to: new Date(to).toISOString(),
+    limit: 500,
+  });
+  if (readings.length < 500) return readings;
+  if (to - from <= 1) {
+    throw new Error('Too many readings occur within one millisecond to produce a complete report.');
+  }
+  const midpoint = from + Math.floor((to - from) / 2);
+  // Overlap the inclusive boundaries so sub-millisecond timestamps are not lost.
+  const earlier = await loadReportReadings(tankId, from, midpoint);
+  const later = await loadReportReadings(tankId, midpoint, to);
+  return [...new Map([...earlier, ...later].map((reading) => [reading.id, reading])).values()];
+}
+
 const reportRangeDateFormatter = new Intl.DateTimeFormat('en-PH', {
   timeZone: 'Asia/Manila',
   month: 'short',
@@ -55,7 +74,7 @@ function formatThresholdRange(min?: number, max?: number) {
 }
 
 export default function ReportsPage() {
-  const { tankId } = useSelectedTank();
+  const { tankId, hatchery } = useSelectedTank();
   const { userName, role } = useRole();
   const canExport = can(role, 'exportReports');
   const canViewValidation = can(role, 'validation');
@@ -79,6 +98,37 @@ export default function ReportsPage() {
   const filterPanelId = useId();
   const availableReportSections = reportSections.filter(({ value }) => (value !== 'validation' || canViewValidation) && (value !== 'calibration' || canViewCalibration));
   const selectedReportSectionCount = availableReportSections.filter(({ value }) => sections.includes(value)).length;
+  useEffect(() => {
+    const root = document.documentElement;
+    const property = '--report-print-header-time';
+    let printing = false;
+    let previousValue = '';
+    let previousPriority = '';
+    const beforePrint = () => {
+      if (!printing) {
+        previousValue = root.style.getPropertyValue(property);
+        previousPriority = root.style.getPropertyPriority(property);
+        printing = true;
+      }
+      const time = new Date().toLocaleString(undefined, {
+        year: '2-digit', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      });
+      root.style.setProperty(property, JSON.stringify(time));
+    };
+    const afterPrint = () => {
+      if (!printing) return;
+      if (previousValue) root.style.setProperty(property, previousValue, previousPriority);
+      else root.style.removeProperty(property);
+      printing = false;
+    };
+    window.addEventListener('beforeprint', beforePrint);
+    window.addEventListener('afterprint', afterPrint);
+    return () => {
+      window.removeEventListener('beforeprint', beforePrint);
+      window.removeEventListener('afterprint', afterPrint);
+      afterPrint();
+    };
+  }, []);
   useEffect(() => {
     if (tankId) setSelectedTankIds([tankId]);
   }, [tankId]);
@@ -105,27 +155,27 @@ export default function ReportsPage() {
     };
   }, [filtersOpen]);
   const dataQuery = useQuery({
-    queryKey: ['report-data', role],
+    queryKey: ['report-data', role, hatchery, from, to],
     queryFn: async (): Promise<ReportData> => {
-      const [tanks, readings, alerts, thresholds, activityLogs, calibrationLogs, deviceStatuses] = await Promise.all([
-        api.listTanks(),
-        api.listReadings(),
-        api.listAlerts(),
+      const tanks = (await api.listTanks()).filter((tank) => tankInHatchery(tank, hatchery));
+      const [readingGroups, alertGroups, thresholds, activityLogs, calibrationLogs, deviceStatuses, validationGroups] = await Promise.all([
+        Promise.all(tanks.map((tank) => loadReportReadings(tank.id, Date.parse(manilaStart(from)), Date.parse(manilaEnd(to))))),
+        Promise.all(tanks.map((tank) => api.listAlerts(tank.id))),
         api.listThresholds(),
         api.listActivityLogs(),
         canViewCalibration ? api.listCalibrationLogs() : Promise.resolve([]),
         api.listDeviceStatuses(),
+        canViewValidation ? Promise.all(tanks.map((tank) => api.listValidationRows(tank.id))) : Promise.resolve([]),
       ]);
-      const validationRows = canViewValidation ? await api.listValidationRows() : [];
       return {
         tanks,
-        readings,
-        alerts,
+        readings: readingGroups.flat(),
+        alerts: alertGroups.flat(),
         thresholds,
         advisories: {},
         activityLogs,
         calibrationLogs,
-        validationRows,
+        validationRows: validationGroups.flat(),
         deviceStatuses,
       };
     },
@@ -166,23 +216,33 @@ export default function ReportsPage() {
     };
   }, [filtersOpen, dataQuery.data]);
   const model = useMemo(() => {
-    if (!dataQuery.data || !tankId) return null;
+    if (!dataQuery.data) return null;
+    const availableTanks = dataQuery.data.tanks.filter((tank) => tankInHatchery(tank, hatchery));
+    const selected = selectedTankIds.filter((id) => availableTanks.some((tank) => tank.id === id));
+    const ids = selected.length ? selected : availableTanks.some((tank) => tank.id === tankId) ? [tankId] : availableTanks[0] ? [availableTanks[0].id] : [];
+    if (!ids.length) return null;
+    const siteData = {
+      ...dataQuery.data,
+      activityLogs: dataQuery.data.activityLogs.filter((log) => activityInHatchery(log, dataQuery.data!.tanks, hatchery)),
+      validationRows: hatchery === 'all' ? dataQuery.data.validationRows : dataQuery.data.validationRows.filter((row) => row.tankId && ids.includes(row.tankId)),
+    };
     return buildReport({
-      tankIds: selectedTankIds.length ? selectedTankIds : [tankId],
+      tankIds: ids,
       from: manilaStart(from),
       to: manilaEnd(to),
       sections,
       format: 'pdf',
       generatedBy: { name: userName, role },
-    }, dataQuery.data);
-  }, [dataQuery.data, from, role, sections, selectedTankIds, tankId, to, userName]);
+    }, siteData);
+  }, [dataQuery.data, from, hatchery, role, sections, selectedTankIds, tankId, to, userName]);
   const rows = useMemo((): unknown[][] => {
     if (!model) return [];
-    if (type === 'readings') return model.rawReadings.map((row) => [row.timestamp, row.tankId, row.temperature, row.doMgL, row.ph]);
-    if (type === 'alerts') return model.alerts.map((row) => [row.createdAt, row.tankId, row.parameter, row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? '']);
-    if (type === 'activity') return model.activityLogs.map((row) => [row.occurredAt, row.kind, row.type, row.tankId, row.notes, row.operator]);
-    if (type === 'calibration') return model.calibrationLogs.map((row) => [row.date, row.tankId, row.parameter, row.standard, row.before, row.after, row.user, row.nextDue]);
-    return model.validationRows.map((row) => [row.parameter, row.hydrosenseMean, row.reference, row.error, row.pctError, row.tolerance, row.pass ? 'pass' : 'fail']);
+    const site = (id: string) => model.tanks.find((tank) => tank.id === id)?.site ?? '';
+    if (type === 'readings') return model.rawReadings.map((row) => [site(row.tankId), row.timestamp, row.tankId, row.temperature, row.doMgL, row.ph]);
+    if (type === 'alerts') return model.alerts.map((row) => [site(row.tankId), row.createdAt, row.tankId, row.parameter, row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? '']);
+    if (type === 'activity') return model.activityLogs.map((row) => [activityHatcheryName(row, model.tanks), row.occurredAt, row.kind, row.type, row.tankId, row.notes, row.operator]);
+    if (type === 'calibration') return model.calibrationLogs.map((row) => [site(row.tankId), row.date, row.tankId, row.parameter, row.standard, row.before, row.after, row.user, row.nextDue]);
+    return model.validationRows.map((row) => [row.tankId ? site(row.tankId) : '', row.parameter, row.hydrosenseMean, row.reference, row.error, row.pctError, row.tolerance, row.pass ? 'pass' : 'fail']);
   }, [model, type]);
   const headers: Record<ExportType, string[]> = {
     readings: ['Timestamp (ISO)', 'Tank', 'Temperature °C', 'DO mg/L', 'pH'],
@@ -203,7 +263,9 @@ export default function ReportsPage() {
   }
 
   function downloadCsv() {
-    const csv = toCsv([headers[type], ...rows]);
+    const csv = type === 'activity' && model
+      ? activityLogCsv(model.activityLogs, model.tanks)
+      : toCsv([['Hatchery', ...headers[type]], ...rows]);
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -236,7 +298,7 @@ export default function ReportsPage() {
             <span className="dash-report-result-label">RECORDS MATCHED</span>
             <div className="dash-report-count">
               <strong>{rows.length}</strong>
-              <span>readings</span>
+              <span>records</span>
             </div>
             <span className="dash-report-date-range">{formatReportRangeDate(from)} → {formatReportRangeDate(to)}</span>
           </div>
@@ -246,7 +308,7 @@ export default function ReportsPage() {
               {notice && <p role="status">{notice}</p>}
             </div>
             <div className={`dash-report-action-buttons${canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError ? ' has-csv' : ''}`}>
-              {canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError && <button className="button button-primary" type="button" onClick={downloadCsv}>Download CSV</button>}
+              {canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError && <button className="button button-primary" type="button" onClick={downloadCsv}><FileDown size={18} aria-hidden="true" />Download CSV</button>}
               <button
                 ref={filterButtonRef}
                 className="button dash-report-filter-button"
@@ -266,19 +328,43 @@ export default function ReportsPage() {
         <section className="card stack dash-card dash-report-preview print-preview" aria-labelledby="report-preview-title">
           <div className="dash-report-preview-header">
             <h2 id="report-preview-title" className="card-title">Report preview</h2>
-            {canExport && model && <button className="button button-primary" type="button" onClick={() => window.print()}>Print / Save PDF</button>}
+            {canExport && model && <button className="button button-primary" type="button" onClick={() => window.print()}><Printer size={18} aria-hidden="true" />Print / Save PDF</button>}
           </div>
-          {dataQuery.isLoading ? <LoadingState label="Preparing report..." /> : dataQuery.isError ? <ErrorState error={dataQuery.error} onRetry={() => void dataQuery.refetch()} /> : !model ? <EmptyState>Select a tank to generate the report.</EmptyState> : (
+          {dataQuery.isLoading ? <LoadingState label="Preparing report..." /> : dataQuery.isError ? <ErrorState error={dataQuery.error} onRetry={() => void dataQuery.refetch()} /> : !model ? <EmptyState>No tanks are available for the selected hatchery.</EmptyState> : (
             <div className="dash-report-body">
+              <header className="report-print-only report-print-header">
+                <div className="report-print-brand">HydroSense</div>
+                <h1>Water Quality Report</h1>
+                <p>Monitoring results and operational overview</p>
+              </header>
               <dl className="dash-report-meta">
                 <div><dt>Report ID</dt><dd className="dash-report-id" title={model.id}>{model.id}</dd></div>
+                <div><dt>Hatchery</dt><dd>{[...new Set(model.tanks.map((tank) => tank.site))].join(', ')}</dd></div>
                 <div><dt>Tanks / period</dt><dd>{model.tanks.map((tank) => tank.name).join(', ')} · {from} to {to} PHT</dd></div>
                 <div><dt>Prepared by</dt><dd>{model.generatedBy.name} ({model.generatedBy.role})</dd></div>
                 <div><dt>Generated</dt><dd>{formatManilaDateTime(model.generatedAt)} PHT</dd></div>
               </dl>
-              {sections.includes('summary') && <section className="dash-report-section"><p className="dash-report-summary">{model.summary}</p></section>}
+              {sections.includes('summary') && <section className="dash-report-section"><h2 className="report-print-only report-print-section-title">Executive Summary</h2><p className="dash-report-summary">{model.summary}</p></section>}
               {sections.includes('statistics') && (
                 <section className="dash-report-section" aria-label="Report statistics">
+                  <h2 className="report-print-only report-print-section-title">Water Quality Statistics</h2>
+                  <div className="report-bar-chart" role="img" aria-label={`Readings in range: ${model.statistics.map((row) => `${reportParameterLabels[row.parameter]} ${row.percentInRange === null ? 'no data' : `${row.percentInRange.toFixed(1)}%`}`).join(', ')}`}>
+                    <h3>Readings in range</h3>
+                    <p>Percentage of valid readings within the configured thresholds</p>
+                    <div className="report-bar-axis" aria-hidden="true">
+                      <div><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+                    </div>
+                    {model.statistics.map((row) => <div className="report-bar-row" key={row.parameter}>
+                      <span>{reportParameterLabels[row.parameter]}</span>
+                      <div className="report-bar-plot">
+                        <div className="report-bar-track"><div className="report-bar-fill" style={{ width: `${row.percentInRange ?? 0}%` }} /></div>
+                        <div className="report-bar-tooltip" aria-hidden="true">
+                          {reportParameterLabels[row.parameter]} · {row.percentInRange === null ? 'No data' : `${row.percentInRange.toFixed(1)}% in range`}
+                        </div>
+                      </div>
+                      <strong>{row.percentInRange === null ? 'No data' : `${row.percentInRange.toFixed(1)}%`}</strong>
+                    </div>)}
+                  </div>
                   <div className="table-wrap dash-report-table-frame">
                     <table className="dash-report-stats-table">
                       <thead><tr><th scope="col">Parameter</th><th className="table-numeric" scope="col">Min</th><th className="table-numeric" scope="col">Max</th><th className="table-numeric" scope="col">Mean</th><th className="table-numeric" scope="col">Std dev</th><th className="table-numeric" scope="col">In range</th><th className="table-numeric" scope="col">Excursions</th><th className="table-numeric" scope="col">Longest (h)</th></tr></thead>
@@ -290,7 +376,8 @@ export default function ReportsPage() {
                 </section>
               )}
               {(sections.includes('alerts') || sections.includes('data-quality') || sections.includes('thresholds') || sections.includes('activity') || sections.includes('calibration') || sections.includes('validation')) && (
-                <section className="dash-report-section" aria-label="Report facts">
+                <section className="dash-report-section dash-report-facts-section" aria-label="Report facts">
+                  <h2 className="report-print-only report-print-section-title">Operations And Data Quality</h2>
                   <div className="dash-report-facts">
                     {sections.includes('alerts') && <div className="dash-report-fact"><span className="dash-report-fact-label">Alerts</span><p className="dash-report-fact-value">{model.alertCounts.critical} critical · {model.alertCounts.warning} warning · {model.alertCounts.open} open · {model.alertCounts.acknowledged} acknowledged · {model.alertCounts.resolved} resolved</p></div>}
                     {sections.includes('data-quality') && <div className="dash-report-fact"><span className="dash-report-fact-label">Expected readings</span><p className="dash-report-fact-value">Expected {model.dataQuality.expectedReadings} · Received {model.dataQuality.receivedReadings} ({model.dataQuality.receivedPercent.toFixed(1)}%)</p></div>}
@@ -303,6 +390,7 @@ export default function ReportsPage() {
               )}
               {sections.includes('raw-readings') && (
                 <section className="dash-report-section">
+                  <h2 className="report-print-only report-print-section-title">Reading Sample</h2>
                   <p className="dash-report-raw-caption">Showing first {rawReadingsPreview.length} of {model.rawReadings.length} readings</p>
                   <div className="table-wrap dash-report-table-frame dash-report-raw-readings">
                     <table className="dash-report-raw-table">
@@ -340,9 +428,9 @@ export default function ReportsPage() {
               <fieldset className="dash-report-filter-group">
                 <legend>Tanks</legend>
                 <div className="dash-report-options dash-report-tank-options">
-                  {(dataQuery.data?.tanks ?? []).map((tank) => (
+                  {(dataQuery.data?.tanks ?? []).filter((tank) => tankInHatchery(tank, hatchery)).map((tank) => (
                     <label className="dash-report-option" key={tank.id}>
-                      <input type="checkbox" checked={selectedTankIds.includes(tank.id)} disabled={selectedTankIds.length === 1 && selectedTankIds.includes(tank.id)} onChange={(event) => setSelectedTankIds((current) => event.target.checked ? [...current, tank.id] : current.filter((id) => id !== tank.id))} />
+                      <input type="checkbox" checked={Boolean(model?.tanks.some((item) => item.id === tank.id))} disabled={model?.tanks.length === 1 && model.tanks[0].id === tank.id} onChange={(event) => setSelectedTankIds(event.target.checked ? [...(model?.tanks.map((item) => item.id) ?? []), tank.id] : (model?.tanks.map((item) => item.id) ?? []).filter((id) => id !== tank.id))} />
                       <span>{tank.name}</span>
                     </label>
                   ))}

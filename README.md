@@ -77,7 +77,7 @@ Copy `.env.example` to `.env.local` and set values as needed:
 | `VITE_PILOT_UNLOCK_ALL` | enabled unless `false` | Keep all tier features enabled for the pilot. Set to `false` to exercise tier gates. |
 | `VITE_ADMIN_EMAIL` | `admin@hydrosense.demo` | Demo-only administrator email for local mock authentication. |
 | `VITE_ADMIN_PASSWORD` | `AdminDemo!2026` | Demo-only administrator password for local mock authentication. Never use real credentials here. |
-| `EXPO_PUBLIC_DATA_MODE` | `api` | Mobile data adapter: `mock` or `api`. |
+| `EXPO_PUBLIC_DATA_MODE` | `api` | Mobile supports API data only; remove any old `mock` setting. |
 | `EXPO_PUBLIC_API_URL` | Deployed Supabase API | Mobile HTTP API root, including `/functions/v1/api` for the Supabase function. Use a device-reachable address for local development. `EXPO_PUBLIC_API_BASE_URL` is a legacy fallback. |
 | `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Web project's publishable key | Publishable key for mobile API requests; set this when using a different backend. Never use a service-role key. |
 | `EXPO_PUBLIC_WS_URL` | unset | Optional compatible mobile WebSocket stream URL. Set in `apps/mobile/.env.local`; API data is otherwise refreshed by polling. |
@@ -91,9 +91,14 @@ In mock mode, account records and a session containing only the user ID are stor
 
 These accounts exist only in the current browser and do not authenticate with the API. They are for testing only; never use their passwords for real accounts. New signup requests remain pending until an administrator assigns a role and approves them. API mode uses the configured backend; identity, approval and authorization must be enforced there.
 
-For administrators, pending account requests appear in the web alert count and the open Alerts center, independently of the selected tank. The list refreshes at the configured tier interval and links to Users & roles for review; approving or rejecting a request removes it from these alerts. This is an in-app notification, not an email or push notification.
+On the web, a signed-out visit to sign-in or a protected page starts at the splash screen. Get Started opens sign-in, and an approved sign-in opens the dashboard (Live Monitor). Existing signed-in sessions can open protected links directly; signup and password recovery remain public.
 
-The mobile app defaults to the shared backend for sign-in and account requests; mock sign-in is explicitly demo-only and offers all three roles. API mode signs in through `/v1/auth/signin` relative to the configured API root and stores the backend's bearer token with Expo SecureStore on native devices. Mobile query data is cached for up to 24 hours for offline viewing, and is cleared on sign-out or account changes. Tank API requests run only after session restoration and authentication; tank-loading errors are surfaced in the tank selector. Alert notification taps use the `hydrosense://alerts/{alertId}` deep link. Local notification handling and permission requests are wired; delivery/push-token registration must be connected by the production backend. See [mobile setup and limitations](apps/mobile/README.md).
+The web header provides admins with one hatchery selector across tabs; managers and operators use their assigned hatchery. The selector includes Sagay, Benoni, and API tank locations, even when a location has no tanks. Reports and activity exports use the selected hatchery; legacy hatchery-wide activity is assigned to Sagay. Audit and system records lack hatchery identifiers, so they are available only with All hatcheries selected. Apply the activity hatchery migration before deploying the updated API function.
+Report statistics chart the percentage of valid readings within configured thresholds; the chart is included in PDF exports. Web report PDFs use A4 print layouts.
+
+For administrators, pending account requests for the selected hatchery appear in the web alert count and the open Alerts center, independently of the selected tank. The list refreshes at the configured tier interval and links to Users & roles for review; approving or rejecting a request removes it from these alerts. This is an in-app notification, not an email or push notification.
+
+The mobile app uses the shared backend for sign-in and monitoring data. It signs in through `/v1/auth/signin` relative to the configured API root and stores the backend's bearer token with Expo SecureStore on native devices. Mobile query data is cached for up to 24 hours for offline viewing, and is cleared on sign-out or account changes. Tank API requests run only after session restoration and authentication; tank-loading errors are surfaced in the tank selector. Alert notification taps use the `hydrosense://alerts/{alertId}` deep link. Local notification handling and permission requests are wired; delivery/push-token registration must be connected by the production backend. See [mobile setup and limitations](apps/mobile/README.md).
 
 ## Data and live updates
 

@@ -10,12 +10,12 @@ const javascript = stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, '')
 
 function setup(role = 'admin', status = 'approved') {
   const profiles = [
-    { id: 'actor', first_name: 'Admin', last_name: 'User', email: 'admin@example.test', role, status, active: true },
+    { id: 'actor', first_name: 'Admin', last_name: 'User', email: 'admin@example.test', role, status, site: 'camiguin-sagay' },
     { id: 'pending', first_name: 'Jane', last_name: 'Smith', email: 'jane@example.test', role: null, status: 'pending', requested_role: null },
     { id: 'member', first_name: 'John', last_name: 'Smith', email: 'john@example.test', role: 'operator', status: 'approved', site: 'site', active: true, last_active: 'today' },
     { id: 'other-admin', first_name: 'Other', last_name: 'Admin', email: 'other@example.test', role: 'admin', status: 'approved' },
   ];
-  const tables = { profiles, tanks: [{ id: 'tank', device_id: 'node' }], sms_alert_queue: [], thresholds: [{ parameter: 'temperature', min_value: 26, max_value: 30 }, { parameter: 'do', min_value: 4, max_value: null }, { parameter: 'ph', min_value: 6, max_value: 8 }], alerts: [], alert_responses: [], device_statuses: [], audit_logs: [], manual_entries: [], activity_logs: [], calibration_logs: [], validation_rows: [], readings: [], advisory_settings: [{ id: true, salinity_watch_temperature_c: 31, salinity_high_temperature_c: 32, ammonia_watch_temperature_c: 31, ammonia_high_ph: 7.8 }] };
+  const tables = { profiles, tanks: [{ id: 'tank', device_id: 'node', site: 'Camiguin, Sagay Multispecies Hatchery' }], sms_alert_queue: [], thresholds: [{ parameter: 'temperature', min_value: 26, max_value: 30 }, { parameter: 'do', min_value: 4, max_value: null }, { parameter: 'ph', min_value: 6, max_value: 8 }], alerts: [], alert_responses: [], device_statuses: [], audit_logs: [], manual_entries: [], activity_logs: [], calibration_logs: [], validation_rows: [], readings: [], advisory_settings: [{ id: true, salinity_watch_temperature_c: 31, salinity_high_temperature_c: 32, ammonia_watch_temperature_c: 31, ammonia_high_ph: 7.8 }] };
   const failures = {};
   let signupRequest;
   const db = {
@@ -198,6 +198,7 @@ test('signup requests email verification and stores profile metadata for the aut
     hatcheryId: 'camiguin-sagay', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
   };
   const response = await app.request('/v1/auth/signup', 'POST', signupBody);
+
   assert.equal(response.status, 201);
   assert.deepEqual(await response.json(), { status: 'verify-email', email: 'jane@example.test' });
   assert.equal(app.signupRequest.email, 'jane@example.test');
@@ -217,6 +218,17 @@ test('signup requests email verification and stores profile metadata for the aut
   assert.equal(benoniResponse.status, 201);
   assert.equal(app.signupRequest.options.data.hatcheryId, 'camiguin-benoni');
   assert.equal((await app.request('/v1/auth/signup', 'POST', {})).status, 400);
+});
+
+test('signup accepts Benoni', async () => {
+  const app = setup();
+  const response = await app.request('/v1/auth/signup', 'POST', {
+    firstName: 'Jane', lastName: 'Smith', email: 'jane@example.test', password: 'password123', employeeId: '123',
+    phone: '+639123456789', emergencyContactName: 'John', emergencyContactPhone: '+639123456789',
+    hatcheryId: 'camiguin-benoni', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
+  });
+  assert.equal(response.status, 201);
+  assert.equal(app.createdUser.user_metadata.hatcheryId, 'camiguin-benoni');
 });
 
 test('CORS preflight permits settings and role updates', async () => {
@@ -294,6 +306,24 @@ test('operational routes use database timestamps and include hatchery-wide activ
   assert.equal((await (await app.request('/v1/activity-logs?tank_id=tank')).json()).length, 1);
   assert.equal((await app.request('/v1/validation')).status, 200);
   assert.deepEqual(await (await app.request('/v1/tanks/tank/advisories')).json(), []);
+});
+
+test('hatchery-wide activity is stored and queried for the correct location', async () => {
+  const app = setup();
+  app.tables.tanks.push({ id: 'benoni-tank', site: 'Camiguin, Benoni Experimental Station', device_id: 'benoni-node' });
+  assert.equal((await app.request('/v1/activity-logs', 'POST', { tankId: 'hatchery', hatcheryId: 'camiguin-benoni', kind: 'ENVIRONMENT', type: 'Rainfall', operator: 'Jane' })).status, 201);
+  assert.equal((await app.request('/v1/activity-logs', 'POST', { tankId: 'hatchery', kind: 'ENVIRONMENT', type: 'Power interruption', operator: 'Jane' })).status, 201);
+  assert.equal(app.tables.activity_logs[0].hatchery_id, 'camiguin-benoni');
+  const sagay = await (await app.request('/v1/activity-logs?tank_id=tank')).json();
+  const benoni = await (await app.request('/v1/activity-logs?tank_id=benoni-tank')).json();
+  assert.deepEqual(sagay.map((row) => row.type), ['Power interruption']);
+  assert.deepEqual(benoni.map((row) => row.type), ['Rainfall']);
+  app.tables.readings.push(
+    { tank_id: 'tank', timestamp: '2026-01-01T00:00:00Z', temperature: 33, ph: 7 },
+    { tank_id: 'benoni-tank', timestamp: '2026-01-01T00:00:00Z', temperature: 33, ph: 7 },
+  );
+  assert.equal((await (await app.request('/v1/tanks/tank/advisories')).json())[0].level, 'high');
+  assert.equal((await (await app.request('/v1/tanks/benoni-tank/advisories')).json())[0].level, 'watch');
 });
 
 test('operators cannot resolve alerts or access validation', async () => {

@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Clock3, Wifi, WifiOff } from 'lucide-react';
-import { formatManilaDateTime, getRaisingDay, getReadingStatuses, isValidMeasurement, readingAge, readingFreshness } from '@hydrosense/shared';
+import { formatManilaDateTime, getReadingStatuses, isValidMeasurement, readingAge, readingFreshness } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -13,7 +13,7 @@ import { PageHeading } from '../components/common/PageHeading';
 import { EmptyState, ErrorState, LoadingState, StaleState } from '../components/common/States';
 
 export default function LiveMonitorPage() {
-  const { tankId, setTankId } = useSelectedTank();
+  const { tankId, setTankId, tanks: visibleTanks } = useSelectedTank();
   const { userName } = useRole();
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -31,7 +31,6 @@ export default function LiveMonitorPage() {
   const freshness = reading.data ? readingFreshness(reading.data.timestamp, device?.online, now) : null;
   const invalidReading = reading.data && (['temperature', 'do', 'ph'] as const).some((parameter) =>
     !isValidMeasurement(parameter, parameter === 'do' ? reading.data!.doMgL : reading.data![parameter]));
-  const rearingDay = tank ? getRaisingDay(tank.rearingStartDate) : 0;
   const recentAlerts = [...(alerts.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 4);
   const readingStatuses = reading.data && thresholds.data ? Object.values(getReadingStatuses(reading.data, thresholds.data)) : [];
   const overallLevel = readingStatuses.some((status) => status.level === 'critical') ? 'critical'
@@ -42,11 +41,11 @@ export default function LiveMonitorPage() {
       <p className="live-greeting">Welcome, {userName}</p>
       <PageHeading
         title="Live Monitor"
-        description={tank ? `${tank.site} · Rearing day ${rearingDay} of 21` : 'Current water quality and device status'}
+        description={tank ? tank.site : 'Current water quality and device status'}
         actions={reading.data ? <span className="live-update"><Clock3 size={15} aria-hidden="true" /> Last reading {formatManilaDateTime(reading.data.timestamp)} PHT</span> : undefined}
       />
-      {tanks.data && tanks.data.length > 0 && <div className="live-tank-switcher" role="group" aria-label="Select tank">
-        {tanks.data.map((item) => <button key={item.id} type="button" className="button live-tank-button" aria-pressed={tankId === item.id} onClick={() => setTankId(item.id)}>{item.name}</button>)}
+      {visibleTanks.length > 0 && <div className="live-tank-switcher" role="group" aria-label="Select tank">
+        {visibleTanks.map((item) => <button key={item.id} type="button" className="button live-tank-button" aria-pressed={tankId === item.id} onClick={() => setTankId(item.id)}>{item.name}</button>)}
       </div>}
       {tanks.isLoading || reading.isLoading || thresholds.isLoading ? <LoadingState /> :
       tanks.isError ? <ErrorState error={tanks.error} onRetry={() => void tanks.refetch()} /> :

@@ -10,7 +10,7 @@ import { Brand, Button, Card, createFormStyles, GlassDialog, Page } from './comp
 import { PhoneField } from './components/PhoneField';
 import { authColors, uiScale, useTheme } from './theme';
 import { useSession } from './state';
-import { API_BASE_URL, API_KEY, DATA_MODE } from './services/client';
+import { API_BASE_URL, API_KEY } from './services/client';
 import { authenticate, HATCHERIES, requestAccount, requestPasswordReset, resendVerification, validateSignIn } from './services/auth';
 import type { SignUpValues } from './services/auth';
 

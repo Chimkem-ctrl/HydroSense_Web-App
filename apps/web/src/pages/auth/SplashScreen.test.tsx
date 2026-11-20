@@ -1,6 +1,8 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../../App';
+import { authService } from '../../services/authService';
+import { queryClient } from '../../app/query';
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
@@ -9,18 +11,43 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  queryClient.clear();
   window.localStorage.clear();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
 describe('splash routing', () => {
-  it('skips the splash for a deep link', async () => {
-    window.history.replaceState({}, '', '/reports');
+  it.each(['/signin', '/dashboard', '/live-monitor', '/reports', '/alerts', '/activity-logs', '/entries', '/admin/users', '/unknown'])('guards a direct visit to %s', async (path) => {
+    window.history.replaceState({}, '', path);
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: 'Welcome Back' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'HydroSense' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'HYDROSENSE' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/splash');
+    fireEvent.click(screen.getByRole('button', { name: 'Get Started' }));
+    expect(screen.getByRole('heading', { name: 'Welcome Back' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/signin');
+  });
+
+  it('only opens the dashboard after a successful sign-in', async () => {
+    window.history.replaceState({}, '', '/reports');
+    const signIn = vi.spyOn(authService, 'signIn').mockRejectedValueOnce(new Error('Invalid credentials')).mockImplementationOnce(async () => {
+      window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: 'demo-admin' }));
+      window.dispatchEvent(new Event('hydrosense:auth-change'));
+      return { status: 'approved', redirectPath: '/' };
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Get Started' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'test@example.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+    expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/signin');
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+    expect(await screen.findByRole('heading', { name: 'Live Monitor', level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+    expect(signIn).toHaveBeenCalledTimes(2);
   });
 
   it('stays until clicked and then routes a signed-out user to sign-in', async () => {
@@ -59,5 +86,30 @@ describe('splash routing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Get Started' }));
     expect(await screen.findByRole('heading', { name: 'Live Monitor', level: 1 })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
+  });
+
+  it.each([
+    ['/dashboard', 'Live Monitor', '/'],
+    ['/live-monitor', 'Live Monitor', '/'],
+    ['/activity-logs', 'Activity Logs', '/entries'],
+  ])('opens %s for a signed-in user', async (path, title, destination) => {
+    window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: 'demo-admin' }));
+    window.history.replaceState({}, '', path);
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: title, level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe(destination);
+  });
+
+  it('leaves protected content when a session ends', async () => {
+    window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: 'demo-admin' }));
+    window.history.replaceState({}, '', '/alerts');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Alerts Center', level: 1 })).toBeInTheDocument();
+    act(() => {
+      window.localStorage.removeItem('hydrosense.auth.session.v2');
+      window.dispatchEvent(new Event('hydrosense:auth-change'));
+    });
+    expect(await screen.findByRole('heading', { name: 'Welcome Back' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/signin');
   });
 });

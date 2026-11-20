@@ -5,8 +5,10 @@ import type { PropsWithChildren } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 import type { Role, Tank } from '@hydrosense/shared';
+import { hatcheryLocations, tankInHatchery } from '@hydrosense/shared';
+import type { HatcheryLocation } from '@hydrosense/shared';
 import { api } from './services/client';
-import { DATA_MODE, setMobileAccessToken } from './services/client';
+import { setMobileAccessToken } from './services/client';
 import { clearMobileQueryCache } from './services/queryClient';
 
 const SESSION_KEY = 'hydrosense.mobile.session.v1';
@@ -36,11 +38,11 @@ function isMobileUser(value: unknown): value is MobileUser {
   return 'role' in value && typeof value.role === 'string' && VALID_ROLES.includes(value.role as Role);
 }
 
-function isStoredSession(value: unknown): value is { version: 1; mode: 'mock' | 'api'; user: MobileUser } {
+function isStoredSession(value: unknown): value is { version: 1; mode: 'api'; user: MobileUser } {
   if (typeof value !== 'object' || value === null) return false;
   return Object.keys(value).length === 3 &&
     'version' in value && value.version === 1 &&
-    'mode' in value && value.mode === DATA_MODE &&
+    'mode' in value && value.mode === 'api' &&
     'user' in value && isMobileUser(value.user);
 }
 
@@ -84,9 +86,9 @@ export function SessionProvider({ children }: PropsWithChildren) {
           throw new Error('The saved mobile session is not valid JSON.');
         }
         if (!isStoredSession(parsed)) throw new Error('The saved mobile session has invalid user data or mode.');
-        if (DATA_MODE === 'api' && !savedToken) throw new Error('The saved API session has no secure access token.');
+        if (!savedToken) throw new Error('The saved API session has no secure access token.');
         if (!active) return;
-        setMobileAccessToken(DATA_MODE === 'api' ? savedToken : null);
+        setMobileAccessToken(savedToken);
         setUser({ id: parsed.user.id, name: parsed.user.name.trim(), role: parsed.user.role });
       } catch (error) {
         console.error('Could not restore the mobile session; the saved session will be cleared.', error);
@@ -111,7 +113,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
   const signIn = useCallback(async (nextUser: MobileUser, accessToken?: string) => {
     if (!isMobileUser(nextUser)) throw new Error('The sign-in user data is invalid.');
-    if (DATA_MODE === 'api' && !accessToken?.trim()) throw new Error('The API did not provide a secure access token.');
+    if (!accessToken?.trim()) throw new Error('The API did not provide a secure access token.');
     await clearMobileQueryCache();
     if (Platform.OS === 'web') {
       setMobileAccessToken(accessToken ?? null);
@@ -121,7 +123,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     try {
       if (accessToken) await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken);
       else await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
-      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ version: 1, mode: DATA_MODE, user: nextUser }));
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ version: 1, mode: 'api', user: nextUser }));
     } catch (error) {
       setMobileAccessToken(null);
       try {
@@ -157,6 +159,10 @@ export function useSession() {
 
 interface TankSelection {
   tanks: Tank[];
+  allTanks: Tank[];
+  hatchery: string;
+  setHatchery: (location: string) => void;
+  locations: HatcheryLocation[];
   tankId: string;
   setTankId: (tankId: string) => void;
   isLoading: boolean;
@@ -173,17 +179,23 @@ export function TankProvider({ children }: PropsWithChildren) {
     queryFn: () => api.listTanks(),
     enabled: ready && Boolean(user),
   });
-  const tanks = query.data ?? [];
+  const allTanks = query.data ?? [];
+  const [hatchery, setHatchery] = useState('all');
+  const tanks = useMemo(() => allTanks.filter((tank) => tankInHatchery(tank, hatchery)), [allTanks, hatchery]);
   const [selectedId, setSelectedId] = useState('');
   const tankId = tanks.some((tank) => tank.id === selectedId) ? selectedId : tanks[0]?.id ?? '';
   const value = useMemo<TankSelection>(() => ({
     tanks,
+    allTanks,
+    hatchery,
+    setHatchery,
+    locations: hatcheryLocations(allTanks),
     tankId,
     setTankId: setSelectedId,
     isLoading: Boolean(user) && (!ready || query.isLoading),
     error: query.error instanceof Error ? query.error : query.isError ? new Error('Could not load tanks.') : null,
     refetch: () => { void query.refetch(); },
-  }), [query.error, query.isError, query.isLoading, query.refetch, ready, tanks, tankId, user]);
+  }), [allTanks, hatchery, query.error, query.isError, query.isLoading, query.refetch, ready, tanks, tankId, user]);
   return <TankContext.Provider value={value}>{children}</TankContext.Provider>;
 }
 

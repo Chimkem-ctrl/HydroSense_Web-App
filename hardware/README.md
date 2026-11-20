@@ -39,7 +39,7 @@ voltage requirements; do not assume every module is 5 V compatible. Switch
 power off before changing connections.
 
 The firmware checks sensors about every 30 seconds, stores valid regular
-readings every five minutes, and also stores out-of-threshold checks. An alert
+readings every three hours, and also stores out-of-threshold checks. An alert
 reading is attempted immediately when online. Thresholds are fetched from the
 backend and cached in flash; before the first successful fetch, readings are
 stored but held from upload. Thresholds can be up to five minutes old during

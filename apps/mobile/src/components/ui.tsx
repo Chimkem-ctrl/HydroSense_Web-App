@@ -59,7 +59,7 @@ export function Page({ children, auth = false, redesigned = false, bottomPadding
     : <RedesignedContext.Provider value={redesigned}><View style={styles.background}>{content}</View></RedesignedContext.Provider>;
 }
 
-export function Brand({ compact = false, auth = false }: { compact?: boolean; auth?: boolean }) {
+export function Brand({ compact = false, showCaption = !compact, onLogoPress, logoExpanded, auth = false }: { compact?: boolean; showCaption?: boolean; onLogoPress?: () => void; logoExpanded?: boolean; auth?: boolean }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
   return <View style={compact || auth ? styles.brandCompact : styles.brand}>
@@ -77,7 +77,7 @@ export function Title({ children, detail, centered = false }: { children: string
   return <View style={[styles.heading, centered && styles.centered]}><Text style={[styles.title, centered && styles.centerText]}>{children}</Text>{detail ? <Text style={[styles.muted, centered && styles.centerText]}>{detail}</Text> : null}</View>;
 }
 
-export function Card({ children, title, action, auth = false }: { children: ReactNode; title?: string; action?: ReactNode; auth?: boolean }) {
+export function Card({ children, title, action, auth = false, toneColor }: { children: ReactNode; title?: string; action?: ReactNode; auth?: boolean; toneColor?: string }) {
   const { colors, reduceTransparency } = useTheme();
   const blurTarget = useContext(BlurTargetContext);
   const nested = useContext(CardContext);
@@ -85,19 +85,20 @@ export function Card({ children, title, action, auth = false }: { children: Reac
   const styles = createStyles(colors);
   const solidFallback = needsSolidFallback(reduceTransparency) || (Platform.OS === 'android' && !blurTarget && !nested);
   return <CardContext.Provider value>
-    <View style={[styles.card, redesigned && { borderColor: colors.border }, nested && styles.nestedCard, solidFallback && !nested && { backgroundColor: colors.surface }, auth && styles.authCard, auth && solidFallback && { backgroundColor: authColors.solidPanel }]}>
+    <View style={[styles.card, redesigned && { borderColor: colors.border }, nested && styles.nestedCard, solidFallback && !nested && { backgroundColor: colors.surface }, auth && styles.authCard, auth && solidFallback && { backgroundColor: authColors.solidPanel }, toneColor && { borderColor: toneColor }]}>
       {!nested && !solidFallback && glassBlur(blurTarget, styles, auth)}
       {auth && !solidFallback && <LinearGradient colors={[authColors.panelTop, authColors.panel]} style={[StyleSheet.absoluteFill, styles.cardBlur]} pointerEvents="none" />}
+      {toneColor && <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.cardBlur, { backgroundColor: `${toneColor}20` }]} />}
       {(title || action) && <View style={styles.cardHeading}>{title ? <Text style={styles.cardTitle}>{title}</Text> : <View />}{action}</View>}{children}
     </View>
   </CardContext.Provider>;
 }
 
-export function GlassDialog({ children, visible, onDismiss }: { children: ComponentProps<typeof Dialog>['children']; visible: boolean; onDismiss: () => void }) {
+export function GlassDialog({ children, visible, onDismiss, solid = false }: { children: ComponentProps<typeof Dialog>['children']; visible: boolean; onDismiss: () => void; solid?: boolean }) {
   const { colors, reduceTransparency } = useTheme();
   const blurTarget = useContext(BlurTargetContext);
   const styles = createStyles(colors);
-  const solidFallback = needsSolidFallback(reduceTransparency);
+  const solidFallback = solid || needsSolidFallback(reduceTransparency);
   if (Platform.OS === 'android' && !blurTarget && !solidFallback) throw new Error('GlassDialog requires a blur target.');
   return <Portal>
     <Dialog visible={visible} onDismiss={onDismiss} style={[styles.dialog, solidFallback && { backgroundColor: colors.surface }]}>
@@ -191,9 +192,11 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   authLogo: { width: 36, height: 36, flexShrink: 0 },
   authBrandName: { color: authColors.ink, fontWeight: '700', fontSize: 20, lineHeight: 22 },
   authBrandCaption: { color: authColors.caption, fontSize: 10, letterSpacing: 1.6, marginTop: 2 },
+  logoButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   brandName: { color: colors.ink, fontWeight: '800', fontSize: 24, letterSpacing: -0.5 },
   brandNameSmall: { color: colors.ink, fontWeight: '800', fontSize: 17 },
   brandCaption: { color: colors.muted, fontSize: uiScale.type.caption, letterSpacing: 0.9, fontWeight: '700' },
+  brandCaptionCompact: { fontSize: 10, letterSpacing: 0.2 },
   heading: { gap: uiScale.spacing[2], paddingVertical: uiScale.spacing[1] / 2 },
   centered: { alignItems: 'center' },
   centerText: { textAlign: 'center' },

@@ -26,5 +26,14 @@ describe('activity log CSV export', () => {
     expect(csv).toContain('"\'=HYPERLINK(""https://example.test"")"');
     expect(csv).toContain('"\'@SUM(1,2)"');
     expect(csv).toContain(`"'+Tank A"`);
+    expect(csv).toContain('"Hatchery","Timestamp (PHT)"');
+    expect(csv).toContain('"Sagay","Jan 2, 2025');
+    expect(csv).toContain('"Water source"');
+    expect(csv).toContain('"Manual ammonia (mg/L)"');
+  });
+
+  it('includes the location of hatchery-wide activity', () => {
+    const csv = activityLogCsv([{ id: 'b', tankId: 'hatchery', hatcheryId: 'camiguin-benoni', kind: 'ENVIRONMENT', type: 'Rainfall', occurredAt: '2025-01-01T00:00:00Z', operator: 'A', notes: '' }], []);
+    expect(csv).toContain('"Benoni"');
   });
 });

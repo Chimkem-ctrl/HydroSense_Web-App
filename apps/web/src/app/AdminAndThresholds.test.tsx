@@ -59,7 +59,7 @@ describe('users and roles', () => {
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Users & Roles', level: 1 })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Users & Roles' })).toBeInTheDocument();
-    expect(await screen.findAllByRole('heading', { name: hatchery.name })).not.toHaveLength(0);
+    expect(screen.queryByRole('heading', { name: hatchery.name })).not.toBeInTheDocument();
     expect(screen.getByText('Review operator accounts for your hatchery.')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Pending requests' })).not.toBeInTheDocument();
     expect(authService.listPendingRequests).not.toHaveBeenCalled();
@@ -122,6 +122,41 @@ describe('users and roles', () => {
       .toEqual(['Pending requests', 'Admin accounts', 'Team accounts']);
   });
 
+  it('filters pending requests and account lists using the header hatchery', async () => {
+    signIn('admin');
+    mockAccounts();
+    window.history.replaceState({}, '', '/admin/users');
+    render(<App />);
+    await screen.findByText('Other Operator');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Sagay' }));
+    expect(screen.getByText('Local Applicant')).toBeInTheDocument();
+    expect(screen.getByText('Local Operator')).toBeInTheDocument();
+    expect(screen.getByText('Local Admin')).toBeInTheDocument();
+    expect(screen.queryByText('Other Applicant')).not.toBeInTheDocument();
+    expect(screen.queryByText('Other Operator')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: hatchery.name })).not.toBeInTheDocument();
+  });
+
+  it('searches team accounts across hatcheries without per-hatchery counts', async () => {
+    signIn('admin');
+    mockAccounts();
+    window.history.replaceState({}, '', '/admin/users');
+    render(<App />);
+    const accounts = await screen.findByRole('region', { name: 'Team accounts table' });
+    expect(within(accounts).getByText('Other Operator')).toBeInTheDocument();
+    expect(within(accounts).queryByText(/^\d+ accounts?$/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search team accounts' }), { target: { value: 'operator' } });
+    expect(within(accounts).getByText('Local Operator')).toBeInTheDocument();
+    expect(within(accounts).getByText('Other Operator')).toBeInTheDocument();
+    expect(within(accounts).queryByText('Local Manager')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Sagay' }));
+    expect(within(accounts).getByText('Local Operator')).toBeInTheDocument();
+    expect(within(accounts).queryByText('Other Operator')).not.toBeInTheDocument();
+    expect(within(accounts).queryByText('Local Manager')).not.toBeInTheDocument();
+  });
+
   it('moves an approved request into its hatchery account list after refresh', async () => {
     signIn('admin');
     let approved = false;
@@ -153,7 +188,7 @@ describe('users and roles', () => {
     window.history.replaceState({}, '', '/admin/users');
     render(<App />);
     const accounts = await screen.findByRole('region', { name: 'Team accounts table' });
-    expect(within(accounts).getByRole('heading', { name: 'Other hatchery' })).toBeInTheDocument();
+    expect(within(accounts).queryByRole('heading', { name: 'Other hatchery' })).not.toBeInTheDocument();
     expect(within(accounts).getByText('Other Operator')).toBeInTheDocument();
     expect(within(accounts).queryByText('Local Operator')).not.toBeInTheDocument();
   });
@@ -205,13 +240,18 @@ describe('audit logs', () => {
     render(<App />);
     expect(await screen.findByText('27 results')).toBeInTheDocument();
     expect(screen.getAllByRole('row')).toHaveLength(26);
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next' }).querySelector('svg')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(screen.getByText('Page 2 of 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     expect(screen.getAllByRole('row')).toHaveLength(3);
     fireEvent.change(screen.getByLabelText('From date (Manila)'), { target: { value: '2026-01-02' } });
     fireEvent.change(screen.getByLabelText('To date (Manila)'), { target: { value: '2026-01-02' } });
-    fireEvent.change(screen.getByLabelText('User'), { target: { value: 'Other' } });
-    fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'Delete' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'User' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Other' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Action' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Delete' }));
     fireEvent.change(screen.getByLabelText('Search detail'), { target: { value: 'ENTRY 26' } });
     expect(screen.getByText('1 result')).toBeInTheDocument();
     expect(screen.getByText('Entry 26')).toBeInTheDocument();

@@ -24,6 +24,7 @@ export interface SelectProps {
   required?: boolean;
   placeholder?: string;
   clearable?: boolean;
+  leadingIcon?: ReactNode;
   'aria-label'?: string;
 }
 
@@ -54,7 +55,7 @@ function readOptions(children: ReactNode) {
  * Glass dropdown that lists real choices only. An `<option value="">` child is never listed;
  * its label is shown as the placeholder while nothing is selected.
  */
-export function Select({ value, onChange, children, id, className = '', disabled, required, placeholder, clearable, 'aria-label': ariaLabel }: SelectProps) {
+export function Select({ value, onChange, children, id, className = '', disabled, required, placeholder, clearable, leadingIcon, 'aria-label': ariaLabel }: SelectProps) {
   const generatedId = useId();
   const buttonId = id ?? generatedId;
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -162,6 +163,7 @@ export function Select({ value, onChange, children, id, className = '', disabled
         onClick={() => (open ? close() : openMenu())}
         onKeyDown={onKeyDown}
       >
+        {leadingIcon}
         <span className="hs-select-value">{selected?.label ?? shownPlaceholder}</span>
         <ChevronDown size={16} aria-hidden="true" className="hs-select-chevron" />
       </button>

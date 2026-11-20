@@ -120,6 +120,16 @@ describe('page background layers', () => {
       expect(flattenStyle(findElement(card, 'View')?.props.style).backgroundColor).toBe('#ffffff');
     });
 
+    it('applies a status tint above the card background', () => {
+      vi.mocked(useContext).mockReturnValueOnce(null).mockReturnValueOnce(false);
+      const card = Card({ children: 'Content', toneColor: '#146b35' });
+      const root = findElement(card, 'View');
+      expect(flattenStyle(root?.props.style)).toMatchObject({ backgroundColor: '#ffffff', borderColor: '#146b35' });
+      const tint = Children.toArray(root?.props.children).find((child) =>
+        isValidElement<ElementProps>(child) && flattenStyle(child.props.style).backgroundColor === '#146b3520');
+      expect(tint).toBeDefined();
+    });
+
     it('uses the web backdrop filter without an extra tint and falls back when unsupported', () => {
       themeState.platform = 'web';
       vi.stubGlobal('CSS', { supports: () => true });
@@ -230,5 +240,13 @@ describe('page background layers', () => {
     } finally {
       themeState.reduceTransparency = false;
     }
+  });
+
+  it('renders solid dialogs without a translucent blur layer', () => {
+    const target = { current: null };
+    vi.mocked(useContext).mockReturnValueOnce(target);
+    const dialog = findElement(GlassDialog({ visible: true, onDismiss: () => {}, solid: true, children: 'Content' }), 'dialog');
+    expect(flattenStyle(dialog?.props.style).backgroundColor).toBe('#ffffff');
+    expect(Children.toArray(dialog?.props.children)).toEqual(['Content']);
   });
 });

@@ -58,6 +58,23 @@ describe('buildReport', () => {
     expect(() => buildReport({ ...spec, tankIds: ['missing'] }, data)).toThrow('One or more selected tanks could not be found.');
   });
 
+  it('only includes hatchery-wide activity and validation for the selected tanks', () => {
+    const report = buildReport(spec, {
+      ...data,
+      tanks: [{ ...data.tanks[0], site: 'Sagay Hatchery' }, { ...data.tanks[0], id: 'tank-b', site: 'Benoni Hatchery' }],
+      activityLogs: [
+        { id: 's', tankId: 'hatchery', kind: 'ENVIRONMENT', type: 'Sagay', occurredAt: spec.from, operator: 'A', notes: '' },
+        { id: 'b', tankId: 'hatchery', hatcheryId: 'camiguin-benoni', kind: 'ENVIRONMENT', type: 'Benoni', occurredAt: spec.from, operator: 'A', notes: '' },
+      ],
+      validationRows: [
+        { tankId: 'tank-a', parameter: 'Sagay', hydrosenseMean: 1, reference: 1, error: 0, pctError: 0, tolerance: 1, pass: true },
+        { tankId: 'tank-b', parameter: 'Benoni', hydrosenseMean: 1, reference: 1, error: 0, pctError: 0, tolerance: 1, pass: true },
+      ],
+    });
+    expect(report.activityLogs.map((log) => log.type)).toEqual(['Sagay']);
+    expect(report.validationRows.map((row) => row.parameter)).toEqual(['Sagay']);
+  });
+
   it('excludes physically invalid measurements from statistics', () => {
     const report = buildReport(spec, { ...data, readings: [
       ...data.readings,

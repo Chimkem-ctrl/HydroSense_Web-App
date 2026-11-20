@@ -5,6 +5,7 @@ import App from '../App';
 import { queryClient } from './query';
 import { api } from './api';
 import { authService } from '../services/authService';
+import * as activityDownload from '../services/downloadCsv';
 
 function render(ui: ReactElement) {
   const result = renderBase(ui);
@@ -63,6 +64,211 @@ afterEach(() => {
 });
 
 describe('themed dashboard routes', () => {
+  it.each(['operator', 'manager', 'admin'] as const)('shows the shared welcome on the %s dashboard', async (role) => {
+    signInAs(role);
+    window.history.replaceState({}, '', '/');
+    render(<App />);
+    expect(await screen.findByText(`Welcome, Test ${role}`)).toHaveClass('live-greeting');
+    expect(screen.getByRole('heading', { name: 'Live Monitor' })).toBeInTheDocument();
+  });
+
+  it('labels the chart download icons by format and chart', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    signInAs('admin');
+    window.history.replaceState({}, '', '/trends');
+    render(<App />);
+    const png = await screen.findByRole('button', { name: 'Download Temperature PNG' });
+    const csv = screen.getByRole('button', { name: 'Download Temperature CSV' });
+    expect(png).toHaveAttribute('title', 'Download Temperature PNG');
+    expect(csv).toHaveAttribute('title', 'Download Temperature CSV');
+    expect(png.querySelector('svg')).not.toBeNull();
+    expect(png.textContent).toBe('');
+    expect(csv.textContent).toBe('');
+    expect(csv.querySelector('svg')).not.toBeNull();
+    expect(png.parentElement).toBe(csv.parentElement);
+  });
+
+  it('navigates historical readings with labelled arrow buttons', async () => {
+    vi.spyOn(api, 'listReadings').mockResolvedValue(Array.from({ length: 21 }, (_, index) => ({
+      id: `reading-${index}`, tankId: 'tank-1', timestamp: new Date().toISOString(), temperature: 27, doMgL: 5, ph: 7,
+    })));
+    window.history.replaceState({}, '', '/history');
+    render(<App />);
+    const pages = await screen.findByRole('navigation', { name: 'Historical log pages' });
+    expect(within(pages).getByRole('button', { name: 'Previous' })).toBeDisabled();
+    fireEvent.click(within(pages).getByRole('button', { name: 'Next' }));
+    expect(within(pages).getByText('Page 2 of 2')).toHaveAttribute('aria-current', 'page');
+    expect(within(pages).getByRole('button', { name: 'Next' })).toBeDisabled();
+    fireEvent.click(within(pages).getByRole('button', { name: 'Previous' }));
+    expect(within(pages).getByText('Page 1 of 2')).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Parameter' }));
+    fireEvent.click(screen.getByRole('option', { name: 'pH' }));
+    expect(screen.getByRole('combobox', { name: 'Parameter' })).toHaveTextContent('pH');
+  });
+
+  it('resets historical pagination when the header hatchery changes', async () => {
+    signInAs('admin');
+    vi.spyOn(api, 'listTanks').mockResolvedValue([
+      { id: 's', name: 'Sagay tank', site: 'Sagay', rearingStartDate: '2026-01-01', deviceId: 's' },
+      { id: 'b', name: 'Benoni tank', site: 'Benoni', rearingStartDate: '2026-01-01', deviceId: 'b' },
+    ]);
+    vi.spyOn(api, 'listReadings').mockImplementation(async (query) => Array.from({ length: query?.tankId === 's' ? 21 : 1 }, (_, index) => ({
+      id: `${query?.tankId}-${index}`, tankId: query?.tankId ?? '', timestamp: new Date().toISOString(), temperature: 27, doMgL: 5, ph: 7,
+    })));
+    window.history.replaceState({}, '', '/history');
+    render(<App />);
+    const pages = await screen.findByRole('navigation', { name: 'Historical log pages' });
+    fireEvent.click(within(pages).getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    await waitFor(() => expect(screen.getByRole('navigation', { name: 'Historical log pages' })).toHaveTextContent('1'));
+    expect(screen.getByRole('cell', { name: 'b' })).toBeInTheDocument();
+  });
+
+  it('filters admin activity records and CSV by hatchery and hides worker actions', async () => {
+    const now = new Date().toISOString();
+    vi.spyOn(api, 'listTanks').mockResolvedValue([
+      { id: 's', name: 'Sagay tank', site: 'Sagay Hatchery', rearingStartDate: '2026-01-01', deviceId: 's' },
+      { id: 'b', name: 'Benoni tank', site: 'Benoni Hatchery', rearingStartDate: '2026-01-01', deviceId: 'b' },
+    ]);
+    vi.spyOn(api, 'listActivityLogs').mockResolvedValue([
+      { id: 's', tankId: 'hatchery', kind: 'ENVIRONMENT', type: 'Sagay event', occurredAt: now, operator: 'S', notes: '' },
+      { id: 'b', tankId: 'hatchery', hatcheryId: 'camiguin-benoni', kind: 'ENVIRONMENT', type: 'Benoni event', occurredAt: now, operator: 'B', notes: '' },
+    ]);
+    const download = vi.spyOn(activityDownload, 'downloadCsv').mockImplementation(() => undefined);
+    window.history.replaceState({}, '', '/entries');
+    render(<App />);
+    expect(await screen.findByText('Sagay event')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log operation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log weather / event' })).not.toBeInTheDocument();
+    const records = screen.getByRole('heading', { name: 'Activity records' }).closest('section')!;
+    const exportButton = within(records).getByRole('button', { name: 'Export CSV' });
+    expect(exportButton).toHaveAttribute('title', 'Export CSV');
+    expect(within(records).queryByRole('combobox', { name: 'Hatchery' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    expect(screen.getByText('Benoni event')).toBeInTheDocument();
+    expect(screen.queryByText('Sagay event')).not.toBeInTheDocument();
+    fireEvent.click(exportButton);
+    expect(download).toHaveBeenCalledWith(expect.stringContaining('Benoni event'), 'hydrosense-activity-logs.csv');
+    expect(download.mock.calls[0][0]).not.toContain('Sagay event');
+  });
+
+  it('shows an empty Benoni monitor when the backend has only Sagay tanks', async () => {
+    vi.spyOn(api, 'listTanks').mockResolvedValue([{ id: 's', name: 'Sagay tank', site: 'Sagay Hatchery', rearingStartDate: '2026-01-01', deviceId: 's' }]);
+    window.history.replaceState({}, '', '/');
+    render(<App />);
+    await screen.findByRole('button', { name: 'Sagay tank' });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    expect(await screen.findByText('No tank or reading is available. Check the tank selector and device status.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sagay tank' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the admin hatchery selection across tabs and scopes notifications', async () => {
+    signInAs('admin');
+    vi.spyOn(api, 'listTanks').mockResolvedValue([{ id: 's', name: 'Sagay tank', site: 'Sagay', rearingStartDate: '2026-01-01', deviceId: 's' }]);
+    vi.spyOn(api, 'listActivityLogs').mockResolvedValue([
+      { id: 's', tankId: 'hatchery', hatcheryId: 'camiguin-sagay', kind: 'ENVIRONMENT', type: 'Sagay event', occurredAt: new Date().toISOString(), operator: 'S', notes: '' },
+      { id: 'b', tankId: 'hatchery', hatcheryId: 'camiguin-benoni', kind: 'ENVIRONMENT', type: 'Benoni event', occurredAt: new Date().toISOString(), operator: 'B', notes: '' },
+    ]);
+    vi.spyOn(authService, 'listPendingRequests').mockResolvedValue([
+      { id: 's', firstName: 'Sagay', lastName: 'Request', email: 's@example.com', role: null, requestedRole: 'operator', status: 'pending', hatcheryId: 'camiguin-sagay', createdAt: '2026-01-01T00:00:00Z' },
+      { id: 'b', firstName: 'Benoni', lastName: 'Request', email: 'b@example.com', role: null, requestedRole: 'operator', status: 'pending', hatcheryId: 'camiguin-benoni', createdAt: '2026-01-01T00:00:00Z' },
+    ]);
+    window.history.replaceState({}, '', '/entries');
+    render(<App />);
+    await screen.findByText('Sagay event');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    expect(screen.getByText('Benoni event')).toBeInTheDocument();
+    expect(screen.queryByText('Sagay event')).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /including 1 pending account request/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('link', { name: 'Users & Roles' }));
+    expect(await screen.findByText('Benoni Request')).toBeInTheDocument();
+    expect(screen.queryByText('Sagay Request')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Hatchery' })).toHaveTextContent('Benoni');
+    fireEvent.click(screen.getByRole('link', { name: 'Reports' }));
+    expect(await screen.findByText('No tanks are available for the selected hatchery.')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Hatchery' })).toHaveTextContent('Benoni');
+  });
+
+  it.each(['manager', 'operator'] as const)('scopes %s to their assigned hatchery without a selector', async (role) => {
+    signInAs(role);
+    vi.spyOn(api, 'listTanks').mockResolvedValue([
+      { id: 's', name: 'Sagay tank', site: 'Sagay', rearingStartDate: '2026-01-01', deviceId: 's' },
+      { id: 'b', name: 'Benoni tank', site: 'Benoni', rearingStartDate: '2026-01-01', deviceId: 'b' },
+    ]);
+    window.history.replaceState({}, '', '/');
+    render(<App />);
+    expect(await screen.findByRole('button', { name: 'Sagay tank' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Benoni tank' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Hatchery' })).not.toBeInTheDocument();
+  });
+
+  it('previews reports for the selected hatchery without mixing readings', async () => {
+    const createUrl = vi.fn((_blob: Blob) => 'blob:report');
+    vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: createUrl, revokeObjectURL: vi.fn() }));
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    vi.spyOn(api, 'listTanks').mockResolvedValue([
+      { id: 's', name: 'Sagay tank', site: 'Sagay Hatchery', rearingStartDate: '2026-01-01', deviceId: 's' },
+      { id: 'b', name: 'Benoni tank', site: 'Benoni Hatchery', rearingStartDate: '2026-01-01', deviceId: 'b' },
+    ]);
+    vi.spyOn(api, 'listReadings').mockImplementation(async (query) => [{
+      id: `${query?.tankId}-reading`, tankId: query?.tankId ?? '', timestamp: new Date().toISOString(),
+      temperature: query?.tankId === 'b' ? 31 : 22, doMgL: 5, ph: 7,
+    }]);
+    vi.spyOn(api, 'listAlerts').mockResolvedValue([]);
+    vi.spyOn(api, 'listActivityLogs').mockResolvedValue([]);
+    vi.spyOn(api, 'listCalibrationLogs').mockResolvedValue([]);
+    vi.spyOn(api, 'listValidationRows').mockResolvedValue([]);
+    window.history.replaceState({}, '', '/reports');
+    render(<App />);
+    const settings = screen.getByRole('heading', { name: 'Export settings' }).closest('section')!;
+    expect(within(settings).queryByRole('combobox', { name: 'Hatchery' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    const preview = screen.getByRole('heading', { name: 'Report preview' }).closest('section')!;
+    expect(await within(preview).findByText(/Benoni tank ·/)).toBeInTheDocument();
+    expect(within(preview).getAllByText('31.00').length).toBeGreaterThan(0);
+    expect(within(preview).queryByText('22.00')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }));
+    const csv = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(createUrl.mock.calls[0][0]);
+    });
+    expect(csv).toContain('Benoni');
+    expect(csv).not.toContain('Sagay');
+  });
+
+  it('does not present unscoped audit records as hatchery-filtered', async () => {
+    signInAs('admin');
+    window.history.replaceState({}, '', '/admin/logs');
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Audit & System Logs' });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    expect(screen.getByText(/Audit and system logs cannot be filtered by hatchery/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Export CSV' })).not.toBeInTheDocument();
+  });
+
+  it('disables report export when Benoni has no tanks', async () => {
+    vi.spyOn(api, 'listTanks').mockResolvedValue([{ id: 's', name: 'Sagay tank', site: 'Sagay Hatchery', rearingStartDate: '2026-01-01', deviceId: 's' }]);
+    window.history.replaceState({}, '', '/reports');
+    render(<App />);
+    await screen.findByText(/Sagay tank ·/);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    expect(await screen.findByText('No tanks are available for the selected hatchery.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Download CSV' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Print / Save PDF' })).not.toBeInTheDocument();
+  });
   it('displays the fetched profile site rather than a stale session assignment', async () => {
     signInAs('operator');
     vi.spyOn(authService, 'getProfileSite').mockResolvedValue('North Hatchery');
@@ -108,6 +314,7 @@ describe('themed dashboard routes', () => {
     expect(await screen.findByRole('heading', { name: title, level: 1 })).toBeInTheDocument();
     expect(container.querySelector('.glass-shell .glass-screen')).toBeInTheDocument();
     expect(container.querySelector('main .page-controls')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('Dashboard controls')).getByRole('combobox', { name: 'Hatchery' })).toBeInTheDocument();
     expect(container.querySelector('.topbar')).not.toBeInTheDocument();
     expect(document.documentElement).toHaveAttribute('data-theme', theme);
   });
@@ -197,7 +404,7 @@ describe('themed dashboard routes', () => {
   it('lets operators access reports without requesting restricted validation data', async () => {
     const user = {
       id: 'test-operator', firstName: 'Test', lastName: 'operator', email: 'operator@example.com',
-      role: 'operator', requestedRole: 'operator', status: 'approved', createdAt: '2026-01-01T00:00:00.000Z',
+      role: 'operator', requestedRole: 'operator', status: 'approved', hatcheryId: 'camiguin-sagay', createdAt: '2026-01-01T00:00:00.000Z',
     };
     window.localStorage.setItem('hydrosense.auth.accounts.v2', JSON.stringify([{ user, passwordSalt: 'salt', passwordHash: 'hash' }]));
     window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
@@ -217,7 +424,7 @@ describe('themed dashboard routes', () => {
     expect(printButton.className).toBe(downloadButton.className);
     const statistics = screen.getByRole('region', { name: 'Report statistics' });
     expect(within(statistics).getByRole('columnheader', { name: 'Std dev' })).toBeInTheDocument();
-    expect(within(statistics).getByText('Temperature')).toBeInTheDocument();
+    expect(within(statistics).getByRole('cell', { name: 'Temperature' })).toBeInTheDocument();
     expect(screen.getByText('Temperature ≤ 32')).toBeInTheDocument();
     expect(screen.getByText('DO ≥ 5')).toBeInTheDocument();
     expect(screen.getByText('pH 7.2–8.5')).toBeInTheDocument();
@@ -253,6 +460,10 @@ describe('themed dashboard routes', () => {
     expect(screen.getByText('Median time to acknowledge')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('tab', { name: 'Acknowledged (1)' }));
     expect(await screen.findByRole('columnheader', { name: 'Date and time (PHT)' })).toBeInTheDocument();
+    const pagination = screen.getByRole('navigation', { name: 'Alert history pages' });
+    expect(within(pagination).getByRole('button', { name: 'Page 1' })).toHaveAttribute('aria-current', 'page');
+    expect(within(pagination).getByRole('button', { name: 'Previous' })).toBeDisabled();
+    expect(within(pagination).getByRole('button', { name: 'Next' }).querySelector('svg')).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: 'pH' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'DO' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Temp' })).toBeInTheDocument();
@@ -327,9 +538,12 @@ describe('themed dashboard routes', () => {
     const switcher = await screen.findByRole('group', { name: 'Select tank' });
     expect(await screen.findByText('Larval Tank A readings are within the configured ranges')).toBeInTheDocument();
     expect(within(switcher).getByRole('button', { name: 'Larval Tank A' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(switcher).getByRole('button', { name: 'Larval Tank B' })).toHaveAttribute('aria-pressed', 'false');
+    expect(document.querySelector('.page-heading')).not.toHaveTextContent(/rearing day/i);
     fireEvent.click(within(switcher).getByRole('button', { name: 'Larval Tank B' }));
     expect(await screen.findByText('Larval Tank B has readings that need attention')).toBeInTheDocument();
     expect(within(switcher).getByRole('button', { name: 'Larval Tank B' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(switcher).getByRole('button', { name: 'Larval Tank A' })).toHaveAttribute('aria-pressed', 'false');
     const summary = screen.getByRole('region', { name: 'Current reading status' });
     expect(within(summary).getByRole('link', { name: 'Activity Logs' })).toHaveAttribute('href', '/entries');
     expect(within(summary).getByRole('link', { name: 'View trends' })).toHaveAttribute('href', '/trends');
@@ -399,10 +613,7 @@ describe('themed dashboard routes', () => {
     expect(within(appearance).queryByText(/background/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Coming soon:/)).not.toBeInTheDocument();
     const maintenance = screen.getByRole('region', { name: 'Device maintenance' });
-    if (role === 'admin') {
-      fireEvent.click(await within(maintenance).findByRole('combobox', { name: 'Hatchery' }));
-      fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Sagay Multispecies Hatchery' }));
-    }
+    expect(within(maintenance).queryByRole('combobox', { name: 'Hatchery' })).not.toBeInTheDocument();
     const tankSelect = await within(maintenance).findByLabelText('Tank');
     fireEvent.click(tankSelect);
     fireEvent.click(screen.getByRole('option', { name: 'Tank 01' }));
@@ -432,8 +643,8 @@ describe('themed dashboard routes', () => {
     window.history.replaceState({}, '', '/profile');
     render(<App />);
     const maintenance = await screen.findByRole('region', { name: 'Device maintenance' });
-    fireEvent.click(await within(maintenance).findByRole('combobox', { name: 'Hatchery' }));
-    fireEvent.click(screen.getByRole('option', { name: /Camiguin/ }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Sagay' }));
     const tankSelect = await within(maintenance).findByRole('combobox', { name: 'Tank' });
     fireEvent.click(tankSelect);
     expect(screen.getByRole('option', { name: 'Tank 01' })).toBeInTheDocument();
@@ -532,7 +743,7 @@ describe('themed dashboard routes', () => {
     render(<App />);
     const accountName = await screen.findByText('Juan Dela Cruz');
     const table = accountName.closest('table')!;
-    fireEvent.change(screen.getAllByRole('searchbox', { name: /Search accounts in/ })[0], { target: { value: 'zzzz-no-match' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search team accounts' }), { target: { value: 'zzzz-no-match' } });
     expect(table).toBeInTheDocument();
     expect(within(table).getByRole('columnheader', { name: 'Email' })).toBeInTheDocument();
     expect(within(table).getByText('No accounts match your search.')).toBeInTheDocument();
@@ -573,6 +784,7 @@ describe('themed dashboard routes', () => {
   });
 
   it('opens the selected activity form without duplicate kind buttons', async () => {
+    signInAs('operator');
     window.history.replaceState({}, '', '/entries');
     render(<App />);
     await screen.findByRole('heading', { name: 'Activity Logs' });

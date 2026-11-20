@@ -1,10 +1,12 @@
 import { useContext, useMemo, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Portal } from 'react-native-paper';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertCircle, AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, Database, Droplets, FileText, FlaskConical, UserRound, Wifi } from 'lucide-react-native';
+import { Activity, AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ClipboardList, Database, FileText, UserRound, Wifi } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { fromByteArray } from 'base64-js';
@@ -14,6 +16,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   ACTIVITY_EVENT_TYPES,
   ACTIVITY_OPERATION_TYPES,
+  activityHatcheryName,
+  activityInHatchery,
   buildReport,
   calculateParameterStatistics,
   can,
@@ -23,6 +27,7 @@ import {
   getParameterStatus,
   getReadingStatuses,
   getRaisingDay,
+  hatcheryId,
   isValidMeasurement,
   readingAge,
   readingFreshness,
@@ -30,19 +35,24 @@ import {
   safeRangeGauge,
   toCsv,
   DEFAULT_THRESHOLDS,
+  toCsv,
   validateAcknowledgeNote,
   validateActivityLog,
 } from '@hydrosense/shared';
-import type { ActivityLog, ActivityLogKind, AlertItem, CalibrationLog, MeasuredParameter, Reading, ReportSection, Threshold } from '@hydrosense/shared';
+import type { ActivityLog, ActivityLogKind, AlertItem, MeasuredParameter, Reading, ReportSection, Threshold } from '@hydrosense/shared';
 import type { MainTabParamList, RootStackParamList } from './navigation';
-import { DATA_MODE, api, listPendingAccounts } from './services/client';
+import { api, getConfiguredThreshold, listConfiguredThresholds, listPendingAccounts } from './services/client';
 import { canAccess } from './access';
 import { useSession, useTankSelection } from './state';
 import { Button, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, Page, RedesignedContext, StateMessage, Title } from './components/ui';
+import { AlertFilterSection } from './components/AlertFilterSection';
+import { HatcheryPicker } from './components/HatcheryPicker';
+import { RangeBar } from './components/RangeBar';
 import { uiScale, useTheme } from './theme';
 import type { Palette, ThemeChoice } from './theme';
 import { createReportFile, reportDatasetRows } from './services/reportFiles';
 import type { ReportDataset } from './services/reportFiles';
+import { getAssignedDevices, hasReportedField, pendingRecordTotal } from './services/deviceTelemetry';
 import { TrendChart } from './components/TrendChart';
 
 type Props<T extends keyof MainTabParamList> = BottomTabScreenProps<MainTabParamList, T>;
@@ -93,14 +103,13 @@ const createLogScreenStyles = (colors: Palette) => StyleSheet.create({
   modalError: { color: colors.critical },
 });
 
-function ReadingCard({ parameter, reading, threshold, stale }: { parameter: MeasuredParameter; reading: Reading; threshold?: Threshold; stale: boolean }) {
+function ReadingCard({ parameter, reading, threshold, stale }: { parameter: MeasuredParameter; reading: Reading; threshold: Threshold; stale: boolean }) {
   const { colors } = useTheme();
-  const lineColor = parameter === 'temperature' ? '#fb923c' : parameter === 'do' ? '#2dd4bf' : '#a78bfa';
   const value = parameter === 'do' ? reading.doMgL : reading[parameter];
   const status = getParameterStatus(parameter, value, threshold);
   const label = parameter === 'temperature' ? 'Temperature' : parameter === 'do' ? 'Dissolved oxygen' : 'pH';
   const unit = parameter === 'temperature' ? '°C' : parameter === 'do' ? 'mg/L' : 'pH';
-  const configuredThreshold = threshold ?? DEFAULT_THRESHOLDS.find((item) => item.parameter === parameter);
+  const configuredThreshold = threshold;
   const min = configuredThreshold?.min;
   const max = configuredThreshold?.max;
   const safe = min !== undefined && max !== undefined ? `${min}–${max} ${unit}` : min !== undefined ? `≥${min} ${unit}` : max !== undefined ? `≤${max} ${unit}` : 'Not configured';
@@ -109,7 +118,7 @@ function ReadingCard({ parameter, reading, threshold, stale }: { parameter: Meas
   const statusColor = stale ? colors.muted : !valid ? colors.warning : status.level === 'normal' ? colors.normal : status.level === 'warning' ? colors.warning : colors.critical;
   const StatusIcon = stale || !valid ? AlertTriangle : status.level === 'normal' ? CheckCircle2 : status.level === 'warning' ? AlertTriangle : AlertCircle;
   const statusLabel = !valid ? 'Check probe' : stale ? 'Offline' : status.label;
-  return <Card>
+  return <Card toneColor={stale ? undefined : statusColor}>
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: uiScale.spacing[2] }}>
       <Text style={{ color: colors.muted, fontSize: 14, fontWeight: '700', flexShrink: 1 }}>{label}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderColor: statusColor, borderWidth: 1, borderRadius: uiScale.radius.pill, paddingHorizontal: uiScale.spacing[2], paddingVertical: uiScale.spacing[1] }}>
@@ -118,24 +127,14 @@ function ReadingCard({ parameter, reading, threshold, stale }: { parameter: Meas
       </View>
     </View>
     <Text style={{ color: stale ? colors.muted : colors.ink, fontSize: 38, fontWeight: '400', fontVariant: ['tabular-nums'] }}>{valid ? formatParameter(parameter, value) : `— ${unit}`}</Text>
+    {gauge && <RangeBar gauge={gauge} min={min} max={max} accessibilityLabel={`${label}, ${formatParameter(parameter, value)}. Safe ${safe}. ${statusLabel}.`} />}
     <Text style={{ color: colors.muted, lineHeight: 20 }}>{!valid ? 'Invalid reading excluded' : stale ? 'Last reading; status unavailable' : status.distance}{'\n'}Safe {safe}</Text>
-    {gauge && <View accessibilityRole="image" accessibilityLabel={`${label}, ${formatParameter(parameter, value)}. Safe ${safe}. ${statusLabel}.`} style={{ gap: uiScale.spacing[2], marginTop: uiScale.spacing[1] }}>
-      <View style={{ height: 8, borderRadius: 8, marginHorizontal: 7, backgroundColor: colors.border }}>
-        <View style={{ position: 'absolute', left: `${gauge.safeStart}%`, width: `${gauge.safeEnd - gauge.safeStart}%`, height: 8, borderRadius: 8, backgroundColor: stale ? colors.muted : lineColor }} />
-        <View style={{ position: 'absolute', left: `${gauge.position}%`, top: -4, marginLeft: -7, height: 16, width: 16, borderRadius: 8, borderWidth: 2, borderColor: stale ? colors.muted : lineColor, backgroundColor: colors.surface }} />
-      </View>
-      <View style={{ height: 18, marginHorizontal: 7 }}>
-        {min !== undefined && <Text style={{ position: 'absolute', left: `${gauge.safeStart}%`, color: stale ? colors.muted : lineColor, fontSize: 12 }}>{min}</Text>}
-        {max !== undefined && <Text style={{ position: 'absolute', left: `${gauge.safeEnd}%`, color: stale ? colors.muted : lineColor, fontSize: 12 }}>{max}</Text>}
-      </View>
-      <Text style={{ color: colors.muted, fontSize: 12 }}>Display scale {gauge.scaleMin}–{gauge.scaleMax} {unit}{value < gauge.scaleMin || value > gauge.scaleMax ? ' · marker at scale edge' : ''}</Text>
-    </View>}
     <Text style={{ color: colors.muted, fontSize: 12 }}>Updated {formatManilaDateTime(reading.timestamp)} PHT</Text>
   </Card>;
 }
 
-export function HomeScreen({ navigation }: Props<'Home'>) {
-  const { colors } = useTheme();
+export function HomeScreen() {
+  const { colors, mode } = useTheme();
   const { user } = useSession();
   const [now, setNow] = useState(Date.now);
   const [networkConnected, setNetworkConnected] = useState<boolean | null>(null);
@@ -148,7 +147,7 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
   const { width } = useWindowDimensions();
   const { tankId, tanks, isLoading: tanksLoading, error: tanksError } = useTankSelection();
   const { data: reading, isLoading, isError, error: readingError, refetch } = useQuery({ queryKey: ['latest-reading', tankId], queryFn: () => api.getLatestReading(tankId), enabled: Boolean(tankId) });
-  const thresholds = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
+  const thresholds = useQuery({ queryKey: ['configured-thresholds'], queryFn: listConfiguredThresholds });
   const devices = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses() });
   const alerts = useQuery({ queryKey: ['alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
   const tank = tanks.find((item) => item.id === tankId);
@@ -160,24 +159,23 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
     <View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700', letterSpacing: 1 }}>WATER QUALITY MONITORING</Text><Text style={{ color: colors.ink, fontSize: uiScale.type.title, fontWeight: '500' }}>Welcome, {user?.name}.</Text></View>
     <Title detail={tank ? `${tank.name} · ${tank.site} · rearing day ${getRaisingDay(tank.rearingStartDate)}/21` : 'Live water-quality status'}>Live monitor</Title>
     <TankPicker />
-    {tanksLoading || (Boolean(tankId) && isLoading) || thresholds.isLoading ? <StateMessage message="Loading latest readings and thresholds…" loading /> : tanksError ? null : isError || thresholds.isError ? <Card><StateMessage message={`Could not load readings or thresholds: ${(readingError ?? thresholds.error)?.message ?? 'Check your connection.'}`} /><Button label="Retry" onPress={() => { void refetch(); void thresholds.refetch(); }} secondary /></Card> : reading && statuses ? <>
-      {freshness?.stale && <Card><Text style={{ color: colors.muted }}>Offline, last reading {readingAge(freshness.ageMs)}.</Text></Card>}
+    {tanksLoading || (Boolean(tankId) && isLoading) || thresholds.isLoading ? <StateMessage message="Loading latest readings and thresholds…" loading /> : tanksError ? null : isError || thresholds.isError ? <Card><StateMessage message={`Could not load readings or thresholds: ${(readingError ?? thresholds.error)?.message ?? 'Check your connection.'}`} /><Button label="Retry" onPress={() => { void refetch(); void thresholds.refetch(); }} secondary /></Card> : reading && statuses && thresholds.data ? <>
+      {freshness?.stale && <View accessibilityLiveRegion="polite" style={{ backgroundColor: mode === 'dark' ? '#3d354d' : '#fff7e6', borderColor: mode === 'dark' ? '#b5a68f' : '#d4bd94', borderWidth: 1, borderRadius: uiScale.radius.control, paddingVertical: uiScale.spacing[3], paddingHorizontal: uiScale.spacing[4] }}>
+        <Text style={{ color: colors.ink, lineHeight: 20 }}><Text style={{ color: colors.warning, fontWeight: '700' }}>Offline, last reading {readingAge(freshness.ageMs)}.</Text>{' '}Showing the last readings received {formatManilaDateTime(reading.timestamp)} PHT.</Text>
+      </View>}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>
-        {(['temperature', 'do', 'ph'] as const).map((parameter) => <View key={parameter} style={{ width: width >= 950 ? '32%' : width >= 600 ? '48%' : '100%' }}><ReadingCard parameter={parameter} reading={reading} threshold={thresholds.data?.find((item) => item.parameter === parameter)} stale={freshness?.stale ?? false} /></View>)}
+        {(['temperature', 'do', 'ph'] as const).map((parameter) => <View key={parameter} style={{ width: width >= 950 ? '32%' : width >= 600 ? '48%' : '100%' }}><ReadingCard parameter={parameter} reading={reading} threshold={getConfiguredThreshold(thresholds.data, parameter)} stale={freshness?.stale ?? false} /></View>)}
       </View>
-      <Card title="Last update"><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text><Text style={{ color: colors.muted }}>Readings are sampled every 3 hours.</Text></Card>
+      <Card title="Last update"><View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text><Text style={{ color: colors.muted }}>Readings are sampled every 3 hours.</Text></View></Card>
       <Card title="Device connection">
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: deviceExpanded }} onPress={() => setDeviceExpanded((current) => !current)} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.teal }}>{deviceExpanded ? 'Hide device details' : 'Show device details'}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: deviceExpanded }} onPress={() => setDeviceExpanded((current) => !current)} hitSlop={{ top: 8, bottom: 8 }} style={{ paddingVertical: uiScale.spacing[1] }}><Text style={{ color: colors.teal }}>{deviceExpanded ? 'Hide device details' : 'Show device details'}</Text></Pressable>
         {deviceExpanded && (devices.isLoading ? <StateMessage message="Loading device status…" loading /> : devices.isError ? <StateMessage message={`Could not load device status: ${devices.error.message}`} /> : !device ? <StateMessage message="No device is registered for this tank." /> : <>
           <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} valueColor={device.online ? colors.normal : colors.critical} />
-          <DataRow label="Battery" value={device.batteryPct != null ? `${device.batteryPct}%` : 'Unavailable'} detail={`Power source: ${device.powerSource}`} />
           {device.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
           {alerts.isError ? <StateMessage message="Could not load alerts." /> : <DataRow label="Active alerts" value={alerts.isLoading ? 'Loading…' : `${openCount}`} />}
         </>)}
-        {canAccess(user?.role ?? null, 'canCalibrate') && <Button label="Calibration helper" secondary onPress={() => navigation.navigate('Calibration')} />}
       </Card>
     </> : <StateMessage message="No reading is available for this tank." />}
-    <Button label="Record manual water test" onPress={() => navigation.navigate('FieldEntry')} secondary />
   </Page>;
 }
 
@@ -197,15 +195,18 @@ function TankSummaryCard({ tank, onOpen, onRemove }: { tank: { id: string; name:
       return isValidMeasurement(parameter, value) ? formatParameter(parameter, value) : `${parameter}: Check probe`;
     }).join(' · ')}</Text> : <StateMessage message="No reading available." />}
     {freshness && <Text style={{ color: colors.muted }}>{freshness.stale ? 'Stale reading' : 'Last reading'} · {readingAge(freshness.ageMs)}</Text>}
-    <Button label="View live" secondary onPress={onOpen} />
-    {onRemove && <Button label="Remove tank" secondary onPress={onRemove} />}
+    <View style={{ flexDirection: 'row', gap: uiScale.spacing[2] }}>
+      <Button label="View live" secondary onPress={onOpen} style={onRemove ? { flex: 1, minWidth: 0 } : undefined} />
+      {onRemove && <Button label="Remove tank" secondary onPress={onRemove} style={{ flex: 1, minWidth: 0 }} />}
+    </View>
   </Card>;
 }
 
 export function TanksScreen({ navigation }: Props<'Tanks'>) {
-  const { tanks, setTankId, isLoading, error, refetch } = useTankSelection();
+  const { tanks, allTanks, setTankId, isLoading, error, refetch } = useTankSelection();
   const { user } = useSession();
   const { colors } = useTheme();
+  const canRegisterTank = canAccess(user?.role ?? null, 'registerTank');
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState('');
@@ -220,7 +221,7 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
   };
   const register = useMutation({
     mutationFn: async () => {
-      if (!can(user?.role, 'registerTank')) throw new Error('You do not have permission to register a tank.');
+      if (!canRegisterTank) throw new Error('You do not have permission to register a tank.');
       if (!name.trim() || !site.trim() || !deviceId.trim()) throw new Error('Enter a tank name, hatchery and hardware ID.');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(rearingStartDate) || !Number.isFinite(Date.parse(`${rearingStartDate}T00:00:00Z`)) || new Date(`${rearingStartDate}T00:00:00Z`).toISOString().slice(0, 10) !== rearingStartDate) throw new Error('Enter a valid rearing start date in YYYY-MM-DD format.');
       return api.createTank({ name: name.trim(), site: site.trim(), rearingStartDate, deviceId: deviceId.trim() }, user?.name ?? '');
@@ -239,7 +240,7 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
     onSuccess: refresh,
   });
   function confirmRemove(tank: { id: string; name: string }) {
-    if (tanks.length <= 1) {
+    if (allTanks.length <= 1) {
       Alert.alert('Cannot remove tank', 'At least one tank must remain registered.');
       return;
     }
@@ -253,17 +254,19 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
     {can(user?.role, 'registerTank') && <Button label="Register tank" onPress={() => { register.reset(); setFormOpen(true); }} />}
     {remove.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>Could not remove tank: {remove.error.message}</Text>}
     {isLoading ? <StateMessage message="Loading tanks…" loading /> : error ? <Card><StateMessage message={`Could not load tanks: ${error.message}`} /><Button label="Retry" secondary onPress={refetch} /></Card> : tanks.length ? tanks.map((tank) => <TankSummaryCard key={tank.id} tank={tank} onOpen={() => { setTankId(tank.id); navigation.navigate('Home'); }} onRemove={can(user?.role, 'removeTank') ? () => confirmRemove(tank) : undefined} />) : <StateMessage message="No tanks are available." />}
-    <Modal visible={formOpen} animationType="slide" onRequestClose={() => setFormOpen(false)}>
-      <Page>
-        <Title detail="Link monitoring hardware to a tank">Register tank</Title>
-        <Field label="Tank name" value={name} onChangeText={setName} />
-        <Field label="Hatchery" value={site} onChangeText={setSite} />
-        <Field label="Rearing start date (YYYY-MM-DD)" value={rearingStartDate} onChangeText={setRearingStartDate} />
-        <Field label="Hardware ID" value={deviceId} onChangeText={setDeviceId} />
-        {register.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>{register.error.message}</Text>}
-        <Button label={register.isPending ? 'Registering…' : 'Register tank'} disabled={register.isPending} onPress={() => register.mutate()} />
-        <Button label="Cancel" secondary onPress={() => setFormOpen(false)} disabled={register.isPending} />
-      </Page>
+    <Modal visible={formOpen && canRegisterTank} animationType="slide" onRequestClose={() => setFormOpen(false)}>
+      <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+        <Page>
+          <Title detail="Link monitoring hardware to a tank">Register tank</Title>
+          <Field label="Tank name" value={name} onChangeText={setName} />
+          <Field label="Hatchery" value={site} onChangeText={setSite} />
+          <Field label="Rearing start date (YYYY-MM-DD)" value={rearingStartDate} onChangeText={setRearingStartDate} />
+          <Field label="Hardware ID" value={deviceId} onChangeText={setDeviceId} />
+          {register.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>{register.error.message}</Text>}
+          <Button label={register.isPending ? 'Registering…' : 'Register tank'} disabled={register.isPending} onPress={() => register.mutate()} />
+          <Button label="Cancel" secondary onPress={() => setFormOpen(false)} disabled={register.isPending} />
+        </Page>
+      </SafeAreaView>
     </Modal>
   </Page>;
 }
@@ -278,9 +281,7 @@ export function MoreScreen({ navigation }: Props<'More'>) {
     { title: 'Records and tools', items: [
       { label: 'Historical logs', icon: Database, open: () => navigation.navigate('History') },
       { label: 'Reports', icon: FileText, open: () => navigation.navigate('Reports') },
-      ...(canAccess(user?.role ?? null, 'canCalibrate') ? [{ label: 'Calibration', icon: FlaskConical, open: () => navigation.navigate('Calibration') }] : []),
       { label: 'Activity logs', icon: Activity, open: () => navigation.navigate('Activity') },
-      { label: 'Manual entries', icon: Droplets, open: () => navigation.navigate('FieldEntry') },
       ...(can(user?.role, 'validation') ? [{ label: 'Validation', icon: ClipboardList, open: () => navigation.navigate('Review') }] : []),
     ] },
     { title: 'Account', items: [
@@ -303,33 +304,118 @@ function alertTitle(alert: AlertItem) {
   return `${alert.parameter} · ${alert.severity}`;
 }
 
+function alertParameterKey(parameter: string) {
+  const normalized = parameter.trim().toLowerCase();
+  if (normalized === 'do' || normalized.includes('oxygen')) return 'do';
+  if (normalized.includes('temperature')) return 'temperature';
+  return normalized;
+}
+
+function alertParameterLabel(parameter: string) {
+  if (parameter === 'temperature') return 'Temperature';
+  if (parameter === 'do') return 'Dissolved oxygen';
+  if (parameter === 'ph') return 'pH';
+  return parameter;
+}
+
 export function AlertsScreen({ navigation }: Props<'Alerts'>) {
   const { colors } = useTheme();
   const { user } = useSession();
+  const [statusFilter, setStatusFilter] = useState<AlertItem['status'] | 'all'>('all');
+  const [severityFilter, setSeverityFilter] = useState<AlertItem['severity'] | 'all'>('all');
+  const [parameterFilter, setParameterFilter] = useState<'temperature' | 'do' | 'ph' | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [expandedFilter, setExpandedFilter] = useState<'status' | 'severity' | 'parameter' | null>(null);
+  const [page, setPage] = useState(1);
   const query = useQuery({ queryKey: ['alerts', 'all'], queryFn: () => api.listAlerts(), refetchInterval: 5000 });
-  const pending = useQuery({ queryKey: ['pending-accounts', user?.id], queryFn: listPendingAccounts, enabled: user?.role === 'admin' && DATA_MODE === 'api', refetchInterval: 5000 });
-  const rows = [...(query.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const pending = useQuery({ queryKey: ['pending-accounts', user?.id], queryFn: listPendingAccounts, enabled: user?.role === 'admin', refetchInterval: 5000 });
+  const statusOptions = [
+    { value: 'all', label: 'All statuses' },
+    { value: 'open', label: 'New' },
+    { value: 'acknowledged', label: 'Acknowledged' },
+    { value: 'resolved', label: 'Resolved' },
+  ] as const;
+  const severityOptions = [
+    { value: 'all', label: 'All severities' },
+    { value: 'critical', label: 'Critical' },
+    { value: 'warning', label: 'Warning' },
+  ] as const;
+  const parameterOptions = [
+    { value: null, label: 'All parameters' },
+    { value: 'temperature', label: 'Temperature' },
+    { value: 'do', label: 'Dissolved oxygen' },
+    { value: 'ph', label: 'pH' },
+  ] as const;
+  const filterSummary = [
+    statusOptions.find((option) => option.value === statusFilter)?.label,
+    severityOptions.find((option) => option.value === severityFilter)?.label,
+    parameterOptions.find((option) => option.value === parameterFilter)?.label,
+  ].join(' · ');
+  const rows = [...(query.data ?? [])]
+    .filter((alert) => statusFilter === 'all' || alert.status === statusFilter)
+    .filter((alert) => severityFilter === 'all' || alert.severity === severityFilter)
+    .filter((alert) => parameterFilter === null || alertParameterKey(alert.parameter) === parameterFilter)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const pageCount = Math.max(1, Math.ceil(rows.length / 5));
+  const currentPage = Math.min(page, pageCount);
+  const firstPage = Math.max(1, Math.min(currentPage - 1, pageCount - 2));
+  const pageNumbers = Array.from({ length: Math.min(3, pageCount) }, (_, index) => firstPage + index);
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount));
+  }, [pageCount]);
   return <Page>
     <Title detail="Review alerts and responses">Alerts</Title>
-    {user?.role === 'admin' && DATA_MODE === 'api' && <Card title="Account requests">
+    {user?.role === 'admin' && <Card title="Account requests">
       {pending.isLoading ? <StateMessage message="Loading account requests..." loading /> : pending.isError ? <><StateMessage message={`Could not load requests: ${pending.error.message}`} /><Button label="Retry requests" secondary onPress={() => void pending.refetch()} /></> : <Button label={`${pending.data?.length ?? 0} pending requests · Review`} secondary onPress={() => navigation.navigate('Users')} />}
     </Card>}
     <Card title="Alert list">
-      {query.isLoading ? <StateMessage message="Loading alerts…" loading /> : query.isError ? <><StateMessage message={`Alert data could not be loaded: ${query.error.message}`} /><Button label="Retry alerts" secondary onPress={() => void query.refetch()} /></> : rows.length === 0 ? <StateMessage message="No alerts are recorded." /> : rows.map((alert) => {
+      <View style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3] }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Sort by: ${filterSummary}`} accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen((open) => !open)} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] }}>
+          <Text style={{ color: colors.ink, fontWeight: '700' }}>Filter by:</Text>{filtersOpen ? <ChevronUp size={20} color={colors.muted} /> : <ChevronDown size={20} color={colors.muted} />}
+        </Pressable>
+        {filtersOpen && <View style={{ paddingBottom: uiScale.spacing[2] }}>
+          <AlertFilterSection title="Status" options={statusOptions} value={statusFilter} expanded={expandedFilter === 'status'} onToggle={() => setExpandedFilter((current) => current === 'status' ? null : 'status')} onChange={(value) => { if (statusFilter !== value) { setStatusFilter(value); setPage(1); } }} />
+          <AlertFilterSection title="Severity" options={severityOptions} value={severityFilter} expanded={expandedFilter === 'severity'} onToggle={() => setExpandedFilter((current) => current === 'severity' ? null : 'severity')} onChange={(value) => { if (severityFilter !== value) { setSeverityFilter(value); setPage(1); } }} />
+          <AlertFilterSection title="Parameter" options={parameterOptions} value={parameterFilter} expanded={expandedFilter === 'parameter'} onToggle={() => setExpandedFilter((current) => current === 'parameter' ? null : 'parameter')} onChange={(value) => { if (parameterFilter !== value) { setParameterFilter(value); setPage(1); } }} />
+        </View>}
+      </View>
+      {query.isLoading ? <StateMessage message="Loading alerts…" loading /> : query.isError ? <><StateMessage message={`Alert data could not be loaded: ${query.error.message}`} /><Button label="Retry alerts" secondary onPress={() => void query.refetch()} /></> : rows.length === 0 ? <StateMessage message={statusFilter === 'all' && severityFilter === 'all' && parameterFilter === null ? 'No alerts are recorded.' : 'No alerts match these filters.'} /> : <>
+      {rows.slice((currentPage - 1) * 5, currentPage * 5).map((alert) => {
         const StatusIcon = alert.severity === 'critical' ? AlertCircle : AlertTriangle;
         const statusColor = alert.severity === 'critical' ? colors.critical : colors.warning;
-        return <Pressable key={alert.id} onPress={() => navigation.getParent()?.navigate('AlertDetail', { alertId: alert.id })} style={{ minHeight: 64, justifyContent: 'center', paddingVertical: uiScale.spacing[3], borderBottomWidth: 1, borderBottomColor: colors.border, gap: 4 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[1] }}><StatusIcon size={16} color={statusColor} /><Text style={{ color: statusColor, fontWeight: '800' }}>{alertTitle(alert)} · {alert.status}</Text></View>
-        <Text style={{ color: colors.ink }}>{alert.tankId} · {alert.value} · threshold {alert.threshold}</Text>
-        <Text style={{ color: colors.muted }}>{formatManilaDateTime(alert.createdAt)} PHT · tap for details</Text>
+        const parameter = alertParameterKey(alert.parameter);
+        const parameterLabel = ['temperature', 'do', 'ph'].includes(parameter) ? alertParameterLabel(parameter) : alert.parameter;
+        const statusLabel = alert.status === 'open' ? 'New' : alert.status === 'acknowledged' ? 'Acknowledged' : 'Resolved';
+        return <Pressable key={alert.id} accessibilityRole="button" accessibilityHint="Open alert details" onPress={() => navigation.getParent()?.navigate('AlertDetail', { alertId: alert.id })} style={{ minHeight: 64, paddingVertical: uiScale.spacing[4], borderBottomWidth: 1, borderBottomColor: colors.border, gap: uiScale.spacing[2] }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: uiScale.spacing[2] }}><StatusIcon size={18} color={statusColor} /><Text style={{ color: colors.ink, fontSize: uiScale.type.body, fontWeight: '700', flexShrink: 1 }}>{parameterLabel}</Text></View>
+          <Text style={{ color: colors.muted, fontWeight: '700' }}>{statusLabel}</Text>
+        </View>
+        <Text style={{ color: statusColor, fontWeight: '700' }}>{alert.severity === 'critical' ? 'Critical' : 'Warning'}</Text>
+        <Text style={{ color: colors.ink, lineHeight: 20 }}><Text style={{ color: colors.muted }}>Tank: </Text>{alert.tankId}</Text>
+        <Text style={{ color: colors.ink, lineHeight: 20 }}><Text style={{ color: colors.muted }}>Value: </Text>{alert.value}{'  '}<Text style={{ color: colors.muted }}>Threshold: </Text>{alert.threshold}</Text>
+        <Text style={{ color: colors.muted, lineHeight: 20 }}>{formatManilaDateTime(alert.createdAt)} PHT · tap for details</Text>
       </Pressable>;
       })}
+      {pageCount > 1 && <View style={{ alignItems: 'center', gap: uiScale.spacing[2], paddingTop: uiScale.spacing[3] }}>
+        <Text style={{ color: colors.muted }}>Page {currentPage} of {pageCount}</Text>
+        <View style={{ flexDirection: 'row', gap: uiScale.spacing[1] }}>
+          {[{ label: 'Previous page', text: '‹', target: currentPage - 1, disabled: currentPage === 1 }, ...pageNumbers.map((number) => ({ label: `Page ${number}`, text: `${number}`, target: number, disabled: false })), { label: 'Next page', text: '›', target: currentPage + 1, disabled: currentPage === pageCount }].map((item) => {
+            const selected = item.target === currentPage && !item.disabled;
+            return <Pressable key={item.label} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{ disabled: item.disabled, selected }} disabled={item.disabled} onPress={() => setPage(item.target)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: selected ? colors.teal : colors.border, borderRadius: uiScale.radius.control, backgroundColor: selected ? colors.selected : 'transparent', opacity: item.disabled ? 0.5 : 1 }}>
+              <Text style={{ color: selected ? colors.teal : colors.ink, fontWeight: '700' }}>{item.text}</Text>
+            </Pressable>;
+          })}
+        </View>
+      </View>}
+      </>}
     </Card>
   </Page>;
 }
 
 export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
   const { colors } = useTheme();
+  const record = createRecordStyles(colors);
   const { user } = useSession();
   const queryClient = useQueryClient();
   const alertQuery = useQuery({ queryKey: ['alert-detail', route.params.alertId], queryFn: async () => (await api.listAlerts()).find((item) => item.id === route.params.alertId) ?? null });
@@ -373,24 +459,86 @@ export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
       {alert.status === 'acknowledged' && can(user?.role, 'resolveAlert') && <Button label="Resolve alert" disabled={mutation.isPending} onPress={() => mutation.mutate('resolve')} />}
       {mutation.isError && <Text style={{ color: colors.critical }}>{mutation.error.message}</Text>}
       <Text style={{ color: colors.ink, fontWeight: '800', marginTop: 8 }}>Response history</Text>
-      {responses.isLoading ? <StateMessage message="Loading responses…" loading /> : responses.isError ? <><StateMessage message={`Could not load responses: ${responses.error.message}`} /><Button label="Retry responses" secondary onPress={() => void responses.refetch()} /></> : (responses.data ?? []).length === 0 ? <Text style={{ color: colors.muted }}>No responses recorded.</Text> : responses.data?.map((response) => <Text key={response.id} style={{ color: colors.muted }}>{response.status} · {response.createdBy} · {formatManilaDateTime(response.createdAt)} PHT · {response.note}</Text>)}
+      {responses.isLoading ? <StateMessage message="Loading responses…" loading /> : responses.isError ? <><StateMessage message={`Could not load responses: ${responses.error.message}`} /><Button label="Retry responses" secondary onPress={() => void responses.refetch()} /></> : (responses.data ?? []).length === 0 ? <Text style={{ color: colors.muted }}>No responses recorded.</Text> : responses.data?.map((response) => <View key={response.id} style={record.row}>
+        <Text style={record.title}>{response.status.charAt(0).toUpperCase() + response.status.slice(1)} by {response.createdBy}</Text>
+        <Text style={record.caption}>{formatManilaDateTime(response.createdAt)} PHT</Text>
+        {response.note ? <Text style={record.body}>{response.note}</Text> : null}
+      </View>)}
     </Card>}
   </Page>;
 }
 
+function TrendFilterSection({ title, options, value, expanded, onToggle, onChange }: {
+  title: string;
+  options: readonly { value: string; label: string }[];
+  value: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onChange: (value: string) => void;
+}) {
+  const { colors } = useTheme();
+  const selectedLabel = options.find((option) => option.value === value)?.label ?? 'None available';
+  const Chevron = expanded ? ChevronUp : ChevronDown;
+  return <View>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${selectedLabel}`} accessibilityState={{ expanded }} onPress={onToggle} style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: uiScale.spacing[2] }}>
+      <View style={{ flex: 1 }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{title}</Text><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{selectedLabel}</Text></View>
+      <Chevron size={18} color={colors.ink} />
+    </Pressable>
+    {expanded && <View accessibilityRole="radiogroup" accessibilityLabel={`Filter trends by ${title.toLowerCase()}`} style={{ paddingLeft: uiScale.spacing[3] }}>
+      {options.map((option) => {
+        const selected = option.value === value;
+        return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => onChange(option.value)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2] }}>
+          <Text style={{ color: colors.ink, flex: 1 }}>{option.label}</Text>
+          <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: selected ? colors.ink : colors.muted, alignItems: 'center', justifyContent: 'center' }}>{selected && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.ink }} />}</View>
+        </Pressable>;
+      })}
+    </View>}
+  </View>;
+}
+
+function HistoryFilterSection({ title, summary, expanded, onToggle, children }: {
+  title: string;
+  summary: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const { colors } = useTheme();
+  const Chevron = expanded ? ChevronUp : ChevronDown;
+  return <View>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${summary}`} accessibilityState={{ expanded }} onPress={onToggle} style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: uiScale.spacing[2] }}>
+      <View style={{ flex: 1 }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{title}</Text><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{summary}</Text></View>
+      <Chevron size={18} color={colors.ink} />
+    </Pressable>
+    {expanded && <View style={{ paddingLeft: uiScale.spacing[3] }}>{children}</View>}
+  </View>;
+}
+
 export function TrendsScreen() {
   const { colors } = useTheme();
-  const { tankId } = useTankSelection();
+  const { tanks, tankId, setTankId } = useTankSelection();
   const [days, setDays] = useState(1);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [expandedFilter, setExpandedFilter] = useState<'tank' | 'range' | null>(null);
   const [expanded, setExpanded] = useState<MeasuredParameter | null>(null);
   const from = useMemo(() => new Date(Date.now() - days * 86_400_000).toISOString(), [days]);
   const readings = useQuery({ queryKey: ['mobile-trends', tankId, from], queryFn: () => api.listReadings({ tankId, from }), enabled: Boolean(tankId) });
-  const thresholds = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
+  const thresholds = useQuery({ queryKey: ['configured-thresholds'], queryFn: listConfiguredThresholds });
   const parameters = [{ key: 'temperature', label: 'Temperature', unit: '°C' }, { key: 'do', label: 'Dissolved oxygen', unit: 'mg/L' }, { key: 'ph', label: 'pH', unit: 'pH' }] as const;
+  const tankOptions = tanks.map((tank) => ({ value: tank.id, label: tank.name }));
+  const rangeOptions = [{ value: '1', label: '24 hours' }, { value: '7', label: '7 days' }, { value: '21', label: '21 days' }];
+  const filterSummary = `${tankOptions.find((option) => option.value === tankId)?.label ?? 'Select tank'} · ${rangeOptions.find((option) => option.value === `${days}`)?.label}`;
   return <Page>
     <Title detail="Sensor readings · 3-hour sampling">Trends</Title>
-    <TankPicker />
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{[1, 7, 21].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: days === value }} onPress={() => setDays(value)} style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 16, borderRadius: uiScale.radius.pill, backgroundColor: days === value ? colors.selected : colors.surface, borderColor: colors.border, borderWidth: 1 }}><Text style={{ color: days === value ? colors.teal : colors.ink }}>{value === 1 ? '24 hours' : `${value} days`}</Text></Pressable>)}</View>
+    <View style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3] }}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Filter by: ${filterSummary}`} accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen((open) => !open)} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] }}>
+        <Text style={{ color: colors.ink, fontWeight: '700' }}>Filter by:</Text>{filtersOpen ? <ChevronUp size={20} color={colors.muted} /> : <ChevronDown size={20} color={colors.muted} />}
+      </Pressable>
+      {filtersOpen && <View style={{ paddingBottom: uiScale.spacing[2] }}>
+        <TrendFilterSection title="Tank" options={tankOptions} value={tankId ?? ''} expanded={expandedFilter === 'tank'} onToggle={() => setExpandedFilter((current) => current === 'tank' ? null : 'tank')} onChange={setTankId} />
+        <TrendFilterSection title="Date range" options={rangeOptions} value={`${days}`} expanded={expandedFilter === 'range'} onToggle={() => setExpandedFilter((current) => current === 'range' ? null : 'range')} onChange={(value) => setDays(Number(value))} />
+      </View>}
+    </View>
     {readings.isLoading || thresholds.isLoading ? <StateMessage message="Loading trend data…" loading /> : readings.isError || thresholds.isError ? <Card><StateMessage message={`Could not load trends: ${(readings.error ?? thresholds.error)?.message}`} /><Button label="Retry" secondary onPress={() => { void readings.refetch(); void thresholds.refetch(); }} /></Card> : (readings.data?.length ?? 0) >= 500 ? <StateMessage message="The reading limit was reached; trends may be incomplete. Choose a shorter range." /> : parameters.map(({ key, label, unit }) => {
       const stats = calculateParameterStatistics(key, readings.data ?? [], thresholds.data ?? []);
       return <Card key={key} title={`${label} · ${unit}`} action={<Pressable accessibilityRole="button" accessibilityLabel={`Expand ${label} chart`} onPress={() => setExpanded(key)}><Text style={{ color: colors.teal }}>Expand</Text></Pressable>}>
@@ -400,29 +548,30 @@ export function TrendsScreen() {
         <Text style={{ color: colors.muted }}>Lines break at invalid or missing samples. Times shown in Asia/Manila.</Text>
       </Card>;
     })}
-    <Modal visible={expanded !== null} animationType="slide" onRequestClose={() => setExpanded(null)}><Page><Title detail="Times shown in Asia/Manila">{`${parameters.find((item) => item.key === expanded)?.label ?? 'Trend'} trend`}</Title>{expanded && <Card><TrendChart readings={readings.data ?? []} parameter={expanded} expanded /></Card>}<Button label="Close" secondary onPress={() => setExpanded(null)} /></Page></Modal>
+    <Modal visible={expanded !== null} animationType="slide" onRequestClose={() => setExpanded(null)}><SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}><Page><Title detail="Times shown in Asia/Manila">{`${parameters.find((item) => item.key === expanded)?.label ?? 'Trend'} trend`}</Title>{expanded && <Card><TrendChart readings={readings.data ?? []} parameter={expanded} expanded /></Card>}<Button label="Close" secondary onPress={() => setExpanded(null)} /></Page></SafeAreaView></Modal>
   </Page>;
 }
 
 export function StatusScreen() {
   const { colors } = useTheme();
-  const { tanks, isLoading, error, refetch } = useTankSelection();
+  const { tanks, hatchery, isLoading, error, refetch } = useTankSelection();
   const statuses = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses() });
-  const devices = [...(statuses.data ?? [])].sort((a, b) => {
-    const nameA = tanks.find((tank) => tank.deviceId === a.deviceId)?.name ?? a.deviceId;
-    const nameB = tanks.find((tank) => tank.deviceId === b.deviceId)?.name ?? b.deviceId;
-    return nameA.localeCompare(nameB);
-  });
+  const devices = getAssignedDevices(statuses.data ?? [], tanks)
+    .filter(({ tank }) => hatchery === 'all' || hatcheryId(tank.site) === hatchery);
+  const pendingTotal = pendingRecordTotal(devices.map(({ device }) => device));
   return <Page>
     <Title detail="Sensor and connectivity health">System health</Title>
+    <HatcheryPicker />
     {statuses.isLoading || isLoading ? <StateMessage message="Loading device status…" loading /> : statuses.isError || error ? <Card><StateMessage message={`Could not load device status: ${(statuses.error ?? error)?.message}`} /><Button label="Retry" secondary onPress={() => { void statuses.refetch(); refetch(); }} /></Card> : devices.length === 0 ? <StateMessage message="No device status is available." /> : <>
-      <Card title="Overview"><DataRow label="Devices" value={`${devices.length}`} /><DataRow label="Online" value={`${devices.filter((device) => device.online).length}`} /><DataRow label="Offline" value={`${devices.filter((device) => !device.online).length}`} /><DataRow label="Pending offline records" value={`${devices.reduce((sum, device) => sum + device.pendingSyncCount, 0)}`} /></Card>
-      {devices.map((device) => <Card key={device.deviceId} title={tanks.find((tank) => tank.deviceId === device.deviceId)?.name ?? 'Unassigned device'}>
+      <Card title="Overview"><DataRow label="Devices" value={`${devices.length}`} /><DataRow label="Online" value={`${devices.filter(({ device }) => device.online).length}`} /><DataRow label="Offline" value={`${devices.filter(({ device }) => !device.online).length}`} /><DataRow label="Pending offline records" value={pendingTotal === null ? 'Unavailable' : `${pendingTotal}`} /></Card>
+      {devices.map(({ device, tank }) => <Card key={device.deviceId} title={tank.name}>
         <DataRow label="Device" value={device.deviceId} />
         <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} detail={`Last seen ${formatManilaDateTime(device.lastSeen)} PHT`} />
         <DataRow label="Battery" value={device.batteryPct != null ? `${device.batteryPct}%` : 'Unavailable'} detail={`Power source: ${device.powerSource}`} />
         <DataRow label="Wi-Fi signal" value={`${device.wifiRssi} dBm`} />
         <DataRow label="Pending offline records" value={`${device.pendingSyncCount}`} />
+        <DataRow label="Wi-Fi signal" value={hasReportedField(device, 'wifiRssi') ? `${device.wifiRssi} dBm` : 'Unavailable'} />
+        <DataRow label="Pending offline records" value={hasReportedField(device, 'pendingSyncCount') ? `${device.pendingSyncCount}` : 'Unavailable'} />
         {device.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
       </Card>)}
     </>}
@@ -463,7 +612,7 @@ export function ActivityLogsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const layout = createLogScreenStyles(colors);
   const record = createRecordStyles(colors);
-  const { tankId } = useTankSelection();
+  const { tankId, hatchery, allTanks } = useTankSelection();
   const { user } = useSession();
   const queryClient = useQueryClient();
   const tanks = useTankSelection();
@@ -479,6 +628,7 @@ export function ActivityLogsScreen() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [formError, setFormError] = useState('');
+  const [exportingLogs, setExportingLogs] = useState(false);
   const createLog = useMutation({
     mutationFn: (entry: Omit<ActivityLog, 'id' | 'occurredAt'>) => api.createActivityLog(entry),
     onSuccess: async () => {
@@ -495,13 +645,32 @@ export function ActivityLogsScreen() {
     },
   });
   const filteredLogs = (logs.data ?? [])
+    .filter((log) => activityInHatchery(log, allTanks, hatchery))
     .filter((log) => kindFilter === 'all' || log.kind === kindFilter)
     .filter((log) => {
-      const date = log.occurredAt.substring(0, 10);
+      const date = getManilaDateString(new Date(log.occurredAt));
       return (!dateFrom || date >= dateFrom) && (!dateTo || date <= dateTo);
     })
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
   const tankNames = new Map((tanks.tanks ?? []).map((tank) => [tank.id, tank.name]));
+  async function shareLogs() {
+    setExportingLogs(true);
+    try {
+      if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
+      const csv = toCsv([
+        ['Hatchery', 'Time (PHT)', 'Kind', 'Type', 'Tank / scope', 'Details', 'Operator', 'Water change (%)', 'Water source', 'Impact', 'DO (mg/L)', 'Temperature (°C)', 'pH', 'Salinity (ppt)', 'Ammonia (mg/L)', 'Method'],
+        ...filteredLogs.map((log) => [activityHatcheryName(log, allTanks), formatManilaDateTime(log.occurredAt), log.kind, log.type, log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId, log.notes, log.operator, log.waterChangePercent, log.waterSource, log.impact, log.manualReadings?.dissolvedOxygen, log.manualReadings?.temperature, log.manualReadings?.ph, log.manualReadings?.salinity, log.manualReadings?.ammonia, log.manualReadings?.method]),
+      ]);
+      const encoded = encodeURIComponent(csv).replace(/%([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+      const fileUri = `${FileSystem.documentDirectory}hydrosense-activity-logs-${Date.now()}.csv`;
+      await FileSystem.writeAsStringAsync(fileUri, fromByteArray(Uint8Array.from(encoded, (character) => character.charCodeAt(0))), { encoding: FileSystem.EncodingType.Base64 });
+      await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Share activity logs' });
+    } catch (error) {
+      Alert.alert('Export failed', error instanceof Error ? error.message : 'Could not share activity logs.');
+    } finally {
+      setExportingLogs(false);
+    }
+  }
   function openLog(kind: 'OPERATION' | 'ENVIRONMENT') {
     setModalKind(kind);
     setScope(kind === 'ENVIRONMENT' ? 'hatchery' : tankId);
@@ -514,10 +683,17 @@ export function ActivityLogsScreen() {
   }
   function submitLog() {
     if (!modalKind) return;
+    const selectedTank = allTanks.find((tank) => tank.id === tankId);
+    const selectedHatchery = hatchery === 'all' ? (selectedTank ? hatcheryId(selectedTank.site) : '') : hatchery;
+    if (scope === 'hatchery' && !selectedHatchery) {
+      setFormError('Select a tank or hatchery before recording a hatchery-wide event.');
+      return;
+    }
     const rawPercent = waterChangePercent.trim();
     const parsedPercent = rawPercent ? Number(rawPercent) : undefined;
     const entry: Omit<ActivityLog, 'id' | 'occurredAt'> = {
       tankId: scope,
+      ...(scope === 'hatchery' ? { hatcheryId: selectedHatchery } : {}),
       kind: modalKind,
       type: activityType,
       operator: user?.name ?? 'Mobile user',
@@ -559,7 +735,8 @@ export function ActivityLogsScreen() {
         </View>
       </Card>
       <Card title="Activity records">
-        {logs.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message="Could not load activity logs." /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." spacious /> : <View>{filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={record.row}>
+        {user?.role === 'admin' && <Button label={exportingLogs ? 'Preparing CSV…' : 'Share CSV'} disabled={exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0} secondary onPress={() => void shareLogs()} />}
+        {logs.isLoading || tanks.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message="Could not load activity logs." /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : tanks.error ? <StateMessage message={`Could not load tanks: ${tanks.error.message}`} /> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." spacious /> : <View>{filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={record.row}>
           <View style={record.top}>
             <Text style={record.caption}>{formatManilaDateTime(log.occurredAt)} PHT</Text>
             <Chip label={log.kind.charAt(0).toUpperCase() + log.kind.slice(1).toLowerCase()} />
@@ -738,12 +915,19 @@ export function HistoryScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const layout = createLogScreenStyles(colors);
   const record = createRecordStyles(colors);
-  const { tankId, tanks } = useTankSelection();
+  const { tanks, tankId, setTankId, tanks } = useTankSelection();
+  const [page, setPage] = useState(1);
   const [parameter, setParameter] = useState<'all' | 'temperature' | 'do' | 'ph'>('all');
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - 7 * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
   const [sortKey, setSortKey] = useState<'timestamp' | MeasuredParameter>('timestamp');
   const [ascending, setAscending] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [expandedFilter, setExpandedFilter] = useState<'tank' | 'dates' | 'parameter' | null>(null);
+  const parameterOptions = [{ value: 'all', label: 'All measured' }, { value: 'temperature', label: 'Temperature' }, { value: 'do', label: 'Dissolved oxygen' }, { value: 'ph', label: 'pH' }] as const;
+  const parameterLabel = parameterOptions.find((option) => option.value === parameter)?.label ?? 'All measured';
+  const tankOptions = tanks.map((tank) => ({ value: tank.id, label: tank.name }));
+  const tankLabel = tankOptions.find((option) => option.value === tankId)?.label ?? 'Select tank';
   const query = useQuery({
     queryKey: ['history', tankId, from, to, parameter],
     queryFn: () => api.listReadings({
@@ -759,9 +943,16 @@ export function HistoryScreen() {
     const difference = sortKey === 'timestamp' ? a.timestamp.localeCompare(b.timestamp) : parameterValue(a, sortKey) - parameterValue(b, sortKey);
     return ascending ? difference : -difference;
   });
+  const pageCount = Math.max(1, Math.ceil(rows.length / 5));
+  const currentPage = Math.min(page, pageCount);
+  const firstPage = Math.max(1, Math.min(currentPage - 1, pageCount - 2));
+  const pageNumbers = Array.from({ length: Math.min(3, pageCount) }, (_, index) => firstPage + index);
+  const pageRows = rows.slice((currentPage - 1) * 5, currentPage * 5);
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount));
+  }, [pageCount]);
   return <Page redesigned bottomPadding={tabBarHeight + uiScale.spacing[4]}>
     <Title detail="Filter and sort the measured water-quality readings.">Historical Logs</Title>
-    <TankPicker horizontal />
     <View style={layout.cards}>
       <View style={{ flexDirection: width >= 700 ? 'row' : 'column', gap: uiScale.spacing[4] }}>
       <View style={{ flex: width >= 700 ? 2 : undefined }}><Card title="Filters">
@@ -785,14 +976,15 @@ export function HistoryScreen() {
       </Card></View></View>
       <Card title="Readings">
         {query.isLoading ? <StateMessage message="Loading readings…" loading /> : query.isError ? <><StateMessage message="Could not load readings." /><Button label="Retry" secondary onPress={() => void query.refetch()} /></> : <>
-          <Text style={layout.count}>{rows.length} readings{rows.length > 50 ? ' · Showing 50' : ''}</Text>
+          <Text style={layout.count}>{rows.length} readings{rows.length > pageRows.length ? ` · Showing ${pageRows.length}` : ''}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>
             {([{ key: 'timestamp', label: 'Time' }, { key: 'temperature', label: 'Temperature' }, { key: 'do', label: 'DO' }, { key: 'ph', label: 'pH' }] as const).map(({ key, label }) => <Pressable key={key} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} onPress={() => {
               if (sortKey === key) setAscending((value) => !value);
               else { setSortKey(key); setAscending(false); }
             }} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: uiScale.spacing[2] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{label}{sortKey === key ? ascending ? ' ↑' : ' ↓' : ''}</Text></Pressable>)}
           </View>
-          {rows.length === 0 ? <StateMessage message="No readings match the selected filters." spacious /> : <View>{rows.slice(0, 50).map((row) => <View key={row.id} style={record.row}>
+          {rows.length === 0 ? <StateMessage message="No readings match the selected filters." spacious /> : <>
+          <View>{pageRows.map((row) => <View key={row.id} style={record.row}>
             <Text style={record.title}>{formatManilaDateTime(row.timestamp)} PHT</Text>
             <Text style={record.caption}>{tanks.find((tank) => tank.id === row.tankId)?.name ?? 'Unknown tank'}</Text>
             <View style={record.metrics}>
@@ -801,7 +993,19 @@ export function HistoryScreen() {
                 <Text style={[record.value, { textAlign: 'right' }]}>{Number.isFinite(metric.value) ? metric.value.toFixed(2) : '—'}</Text>
               </View>)}
             </View>
-          </View>)}</View>}
+          </View>)}</View>
+          {pageCount > 1 && <View style={{ alignItems: 'center', gap: uiScale.spacing[2], paddingTop: uiScale.spacing[3] }}>
+            <Text style={{ color: colors.muted }}>Page {currentPage} of {pageCount}</Text>
+            <View style={{ flexDirection: 'row', gap: uiScale.spacing[1] }}>
+              {[{ label: 'Previous page', text: '‹', target: currentPage - 1, disabled: currentPage === 1 }, ...pageNumbers.map((number) => ({ label: `Page ${number}`, text: `${number}`, target: number, disabled: false })), { label: 'Next page', text: '›', target: currentPage + 1, disabled: currentPage === pageCount }].map((item) => {
+                const selected = item.target === currentPage && !item.disabled;
+                return <Pressable key={item.label} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{ disabled: item.disabled, selected }} disabled={item.disabled} onPress={() => setPage(item.target)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: selected ? colors.teal : colors.border, borderRadius: uiScale.radius.control, backgroundColor: selected ? colors.selected : 'transparent', opacity: item.disabled ? 0.5 : 1 }}>
+                  <Text style={{ color: selected ? colors.teal : colors.ink, fontWeight: '700' }}>{item.text}</Text>
+                </Pressable>;
+              })}
+            </View>
+          </View>}
+          </>}
         </>}
       </Card>
     </View>
@@ -865,15 +1069,27 @@ export function ReportsScreen() {
       const [tankReadings, tankAlerts, thresholds] = await Promise.all([
         Promise.all(selectedIds.map((id) => api.listReadings({ tankId: id, from: start.toISOString(), to: end.toISOString() }))),
         Promise.all(selectedIds.map((id) => api.listAlerts(id))),
-        api.listThresholds(),
+        listConfiguredThresholds(),
       ]);
       if (tankReadings.some((rows) => rows.length >= 500)) throw new Error('The reading limit was reached. Select a shorter date range to avoid an incomplete report.');
       if (tankAlerts.some((rows) => rows.length >= 1000)) throw new Error('The alert limit may have been reached. The report cannot be generated reliably.');
-      const report = buildReport({ tankIds: selectedIds, from: start.toISOString(), to: end.toISOString(), sections, format: overrideFormat, generatedBy: { name: user.name, role: user.role } }, {
+      return buildReport({ tankIds: selectedIds, from: start.toISOString(), to: end.toISOString(), sections, format: overrideFormat, generatedBy: { name: user.name, role: user.role } }, {
         tanks, readings: tankReadings.flat(), alerts: tankAlerts.flat(), thresholds,
         advisories: {}, activityLogs: [], calibrationLogs: [], validationRows: [], deviceStatuses: [],
       });
-      const file = await createReportFile(report);
+    },
+  });
+  async function shareReport() {
+    setSharing(true);
+    try {
+      if (!user || !can(user.role, 'exportReports')) throw new Error('You do not have permission to export reports.');
+      if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
+      if (!validDates) throw new Error('Enter a valid start and end date in YYYY-MM-DD format.');
+      if (!selectedIds.length || !sections.length) throw new Error('Select at least one tank and report section.');
+      const result = await reportQuery.refetch();
+      if (result.error) throw result.error;
+      if (!result.data) throw new Error('Could not prepare report data.');
+      const file = await createReportFile(result.data);
       const fileUri = `${FileSystem.documentDirectory}hydrosense-report-${Date.now()}.${file.extension}`;
       await FileSystem.writeAsStringAsync(fileUri, fromByteArray(file.bytes), { encoding: FileSystem.EncodingType.Base64 });
       await Sharing.shareAsync(fileUri, { mimeType: file.mimeType, dialogTitle: 'Share HydroSense report' });
@@ -926,11 +1142,18 @@ export function ReportsScreen() {
     {filtersOpen && <Card title="Tanks and report sections">
       {tanksLoading ? <StateMessage message="Loading tanks…" loading /> : tanksError ? <><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry tank list" secondary onPress={refetchTanks} /></> : tanks.length === 0 ? <StateMessage message="No tanks are available for this account." /> : null}
       {tanks.map((tank) => <Pressable key={tank.id} accessibilityRole="checkbox" accessibilityState={{ checked: selectedIds.includes(tank.id) }} onPress={() => setSelectedTanks((current) => {
-        const existing = current ?? (tankId ? [tankId] : []);
+        const existing = (current ?? (tankId ? [tankId] : [])).filter((id) => tanks.some((tank) => tank.id === id));
         return existing.includes(tank.id) ? existing.filter((id) => id !== tank.id) : [...existing, tank.id];
       })} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{selectedIds.includes(tank.id) ? '☑' : '☐'} {tank.name}</Text></Pressable>)}
       {([['summary', 'Summary'], ['statistics', 'Statistics'], ['alerts', 'Alerts'], ['raw-readings', 'Readings']] as const).map(([key, label]) => <Pressable key={key} accessibilityRole="checkbox" accessibilityState={{ checked: sections.includes(key) }} onPress={() => setSections((current) => current.includes(key) ? current.filter((value) => value !== key) : [...current, key])} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{sections.includes(key) ? '☑' : '☐'} {label}</Text></Pressable>)}
-      <Text style={caption}>Additional export format</Text>
+      {sections.includes('statistics') && <Card title="Readings in range">
+      <Text style={{ color: colors.muted }}>Percentage of valid readings within configured thresholds</Text>
+      {!validDates || !selectedIds.length ? <StateMessage message="Select a tank and valid dates to view the analysis." /> : reportQuery.isLoading ? <StateMessage message="Preparing analysis…" loading /> : reportQuery.isError ? <><StateMessage message={`Could not prepare analysis: ${reportQuery.error.message}`} /><Button label="Retry" secondary onPress={() => void reportQuery.refetch()} /></> : reportQuery.data?.statistics.map((stat) => <View key={stat.parameter} style={{ gap: 5, marginTop: 10 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: colors.ink }}>{stat.parameter === 'temperature' ? 'Temperature' : stat.parameter === 'do' ? 'DO' : 'pH'}</Text><Text style={{ color: colors.ink }}>{stat.percentInRange === null ? 'No data' : `${stat.percentInRange.toFixed(1)}%`}</Text></View>
+        <View style={{ height: 16, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' }}><View style={{ height: '100%', width: `${stat.percentInRange ?? 0}%`, backgroundColor: '#087c78' }} /></View>
+      </View>)}
+    </Card>}
+    <Text style={caption}>Additional export format</Text>
       {(['pdf', 'csv', 'xlsx'] as const).map((value) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: format === value }} onPress={() => setFormat(value)} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{format === value ? '●' : '○'} {value.toUpperCase()}</Text></Pressable>)}
       <Button label={sharing ? 'Preparing report…' : 'Share report'} disabled={sharing} onPress={() => void shareReport()} />
     </Card>}

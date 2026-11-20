@@ -8,7 +8,6 @@ import PrimaryButton from '../../components/common/PrimaryButton';
 import { useAuthForm } from '../../hooks/useAuthForm';
 import { authService, EmailNotVerifiedError } from '../../services/authService';
 import type { SignInValues } from '../../types/auth.types';
-import { getSafeInAppPath } from '../../app/auth/RouteGuards';
 
 const initialValues: SignInValues = { email: '', password: '' };
 

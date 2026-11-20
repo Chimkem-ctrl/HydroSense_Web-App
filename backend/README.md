@@ -79,6 +79,7 @@ Important relationships:
 - Alert responses belong to an alert.
 - Deleting a tank cascades to readings, alerts, and calibration records associated with it.
 - Every Supabase Auth user is linked to a profile with the same UUID.
+- Hatchery-wide activity records carry a hatchery ID. Migration `20261120120000_activity_hatchery.sql` assigns existing unlabelled hatchery-wide records to Sagay; tank-scoped records use the tank's site. Apply this migration before deploying the updated API function.
 
 ## Authentication and authorization
 
@@ -118,6 +119,11 @@ alert. No extra warning table or migration is required for it.
 Hardware ingestion accepts omitted battery readings after the optional-battery
 migration. If updating device status fails after a reading is stored, the API
 returns an error identifying the partial failure rather than reporting success.
+Apply the device reported-fields migration before deploying the updated API.
+It records which telemetry fields were actually supplied by a live device;
+older status records are unverified until the next live report. The API retains
+its existing status fields for compatibility and adds `reportedFields` for
+clients that must avoid displaying default values.
 
 Account approval flow:
 
