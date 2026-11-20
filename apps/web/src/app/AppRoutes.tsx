@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { ROLE_ACCESS } from './config';
@@ -52,8 +52,13 @@ function ProtectedAppShell({ splashSeen }: { splashSeen: boolean }) {
 }
 
 export default function AppRoutes() {
-  const [splashSeen, setSplashSeen] = useState(false);
+  const location = useLocation();
+  const [splashSeen, setSplashSeen] = useState(() => location.pathname !== '/' && location.pathname !== '/splash');
   const markSplashSeen = useCallback(() => setSplashSeen(true), []);
+  // Any visit to another route (e.g. sign-in) means the app was already launched.
+  useEffect(() => {
+    if (location.pathname !== '/' && location.pathname !== '/splash') setSplashSeen(true);
+  }, [location.pathname]);
 
   return (
     <Routes>

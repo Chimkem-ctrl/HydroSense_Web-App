@@ -6,6 +6,7 @@ import { api } from '../app/api';
 import { useRole } from '../app/auth/RoleContext';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { PageHeading } from '../components/common/PageHeading';
+import { Select } from '../components/common/Select';
 import { ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 import { ThresholdsPanel } from './ThresholdsPage';
 
@@ -76,7 +77,7 @@ export default function CalibrationPage() {
   return (
     <div className={`dash-grid dash-calibration compact-page${isOperator ? ' dash-calibration-readonly' : ''}`}>
       <div className="dash-heading">
-        <PageHeading title="Calibration & maintenance" description="Log pH and dissolved-oxygen calibration results and due dates. Checklists are informational only." />
+        <PageHeading title="Calibration & Maintenance" description="Log pH and dissolved-oxygen calibration results and due dates. Checklists are informational only." />
       </div>
       {!isOperator && (
         <>
@@ -105,11 +106,11 @@ export default function CalibrationPage() {
               {error && <p className="state-error" role="alert">{error}</p>}
               {mutation.isError && <ErrorState error={mutation.error} />}
               <div className="form-grid dash-calibration-fields">
-                <label className="field dash-calibration-field-wide">Parameter<select value={parameter} onChange={(event) => {
+                <label className="field dash-calibration-field-wide">Parameter<Select value={parameter} onChange={(event) => {
                   const next = event.target.value as CalibrationLog['parameter'];
                   setParameter(next);
                   setStandard(next === 'ph' ? 'pH 7.00 buffer' : 'Air-saturated water');
-                }}><option value="ph">pH</option><option value="do">Dissolved oxygen</option></select></label>
+                }}><option value="ph">pH</option><option value="do">Dissolved oxygen</option></Select></label>
                 <label className="field dash-calibration-field-wide">Calibration standard<input value={standard} onChange={(event) => setStandard(event.target.value)} required /></label>
                 <label className="field">Before<input type="number" step="0.01" value={before} onChange={(event) => setBefore(event.target.value)} required /></label>
                 <label className="field">After<input type="number" step="0.01" value={after} onChange={(event) => setAfter(event.target.value)} required /></label>

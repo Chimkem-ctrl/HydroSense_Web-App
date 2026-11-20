@@ -14,6 +14,7 @@ import './styles/glass-shell.css';
 import './styles/glass-theme.css';
 import './styles/ui-fixes.css';
 import './styles/dash-layout.css';
+import './styles/ui-overhaul.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

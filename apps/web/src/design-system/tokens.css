@@ -137,7 +137,7 @@
     --row-hover: oklch(from var(--bg-base) .85 .05 h / .10);
     --overlay: oklch(from var(--bg-base) .08 c h / .78);
     --skeleton: oklch(from var(--bg-base) .85 .04 h / .22);
-    --button-gradient: linear-gradient(120deg, oklch(from var(--bg-base) .48 .19 h), oklch(from var(--bg-base) .40 .15 h));
+    --button-gradient: linear-gradient(120deg, var(--bg-gradient-from), var(--bg-gradient-to));
     --on-accent: #ffffff;
   }
 }

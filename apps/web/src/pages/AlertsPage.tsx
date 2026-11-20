@@ -8,6 +8,7 @@ import { useRole } from '../app/auth/RoleContext';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { usePendingRequests, useTanks } from '../app/data/hooks';
 import { PageHeading } from '../components/common/PageHeading';
+import { Select } from '../components/common/Select';
 import { StatusBadge } from '../components/readings/StatusBadge';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 
@@ -140,7 +141,7 @@ export default function AlertsPage() {
 
   return (
     <div className="stack alerts-screen">
-      <PageHeading title="Alerts center" description={`Review alerts, record notes, and check response history for ${tankNames.get(tankId) ?? 'the selected tank'}.`} />
+      <PageHeading title="Alerts Center" description={`Review alerts, record notes, and check response history for ${tankNames.get(tankId) ?? 'the selected tank'}.`} />
       {activityError && <p className="state-error" role="alert">The alert was resolved, but its activity log could not be saved: {activityError}</p>}
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
       {role === 'admin' && tab === 'open' && (pendingRequests.isLoading || pendingRequests.isError || Boolean(pendingRequests.data?.length)) && (
@@ -181,18 +182,18 @@ export default function AlertsPage() {
           </div>
           <div className="alerts-filter-row">
             <label className="field alerts-severity-filter"><span className="sr-only">Severity</span>
-              <select className="select-control" value={severity} onChange={(event) => { setSeverity(event.target.value as typeof severity); setSelected(null); }}>
-                <option value="all">All severities</option>
+              <Select value={severity === 'all' ? '' : severity} clearable placeholder="Severity" onChange={(event) => { setSeverity((event.target.value || 'all') as typeof severity); setSelected(null); }}>
+
                 <option value="critical">Critical</option>
                 <option value="warning">Warning</option>
-              </select>
+              </Select>
             </label>
             <label className="field alerts-period-filter"><span className="sr-only">Date range</span>
-              <select className="select-control" value={period} onChange={(event) => { setPeriod(event.target.value as AlertPeriod); setSelected(null); }}>
+              <Select value={period === 'all' ? '' : period} clearable placeholder="Date range" onChange={(event) => { setPeriod((event.target.value || 'all') as AlertPeriod); setSelected(null); }}>
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>
-                <option value="all">All dates</option>
-              </select>
+
+              </Select>
             </label>
           </div>
         </div>
@@ -224,12 +225,12 @@ export default function AlertsPage() {
               <div className="trends-alert-pagination-info">
                 <span>Page {currentAlertsPage + 1} of {alertsPageCount} · {items.length} alerts</span>
                 <label htmlFor="alerts-page-size">Rows per page</label>
-                <select id="alerts-page-size" className="select-control" value={alertsPageSize} onChange={(event) => { setAlertsPageSize(Number(event.target.value)); setAlertsPage(0); }}>
+                <Select id="alerts-page-size" value={alertsPageSize} onChange={(event) => { setAlertsPageSize(Number(event.target.value)); setAlertsPage(0); }}>
                   <option value={10}>10</option>
                   <option value={25}>25</option>
                   <option value={50}>50</option>
                   <option value={100}>100</option>
-                </select>
+                </Select>
               </div>
               <nav className="trends-alert-page-buttons" aria-label="Alert history pages">
                 <button className="button" type="button" disabled={currentAlertsPage === 0} onClick={() => setAlertsPage((page) => Math.max(0, page - 1))}>‹ Previous</button>

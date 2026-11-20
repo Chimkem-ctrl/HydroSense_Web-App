@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { ASSETS } from '../../config/assets';
 import {
@@ -17,6 +17,8 @@ import {
   Settings,
   Users,
   Waves,
+  Wifi,
+  WifiOff,
   UserRound,
   X,
 } from 'lucide-react';
@@ -28,6 +30,7 @@ import { useRole } from '../../app/auth/RoleContext';
 import { signOut } from '../../services/authService';
 import { useSelectedTank } from '../../app/tank/TankContext';
 import { useLatestReading, useOpenAlerts, usePendingRequests } from '../../app/data/hooks';
+import { formatManilaDateTime } from '@hydrosense/shared';
 import { CriticalAlertModal } from './CriticalAlertModal';
 
 const icons: Record<string, LucideIcon> = {
@@ -47,6 +50,20 @@ const icons: Record<string, LucideIcon> = {
   '/profile': UserRound,
 };
 
+const SIDEBAR_KEY = 'hydrosense.sidebarWidth';
+const SIDEBAR_MIN = 220;
+const SIDEBAR_MAX = 380;
+const clampSidebar = (value: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(value)));
+
+function readSidebarWidth() {
+  try {
+    const stored = Number(window.localStorage.getItem(SIDEBAR_KEY));
+    return Number.isFinite(stored) && stored > 0 ? clampSidebar(stored) : SIDEBAR_MIN;
+  } catch {
+    return SIDEBAR_MIN;
+  }
+}
+
 export function AppShell() {
   const { role, userName } = useRole();
   const { tankId } = useSelectedTank();
@@ -56,6 +73,10 @@ export function AppShell() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const accountRef = useRef<HTMLDivElement>(null);
   const [connection, setConnection] = useState(liveClient.getConnectionState());
   const latestReadingIsRecent = Boolean(
     latestReading.data &&
@@ -75,7 +96,55 @@ export function AppShell() {
   useEffect(() => {
     setMenuOpen(false);
     setAccountMenuOpen(false);
+    setNotificationsOpen(false);
   }, [location.pathname, location.hash]);
+
+  useEffect(() => {
+    if (!accountMenuOpen && !notificationsOpen) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (accountMenuOpen && !accountRef.current?.contains(target)) setAccountMenuOpen(false);
+      if (notificationsOpen && !notificationsRef.current?.contains(target)) setNotificationsOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setAccountMenuOpen(false);
+        setNotificationsOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [accountMenuOpen, notificationsOpen]);
+
+  function startResize(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    let latest = startWidth;
+    const onMove = (move: PointerEvent) => {
+      latest = clampSidebar(startWidth + move.clientX - startX);
+      setSidebarWidth(latest);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      try { window.localStorage.setItem(SIDEBAR_KEY, String(latest)); } catch { /* storage unavailable */ }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  function resizeByKey(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const next = clampSidebar(sidebarWidth + (event.key === 'ArrowRight' ? 16 : -16));
+    setSidebarWidth(next);
+    try { window.localStorage.setItem(SIDEBAR_KEY, String(next)); } catch { /* storage unavailable */ }
+  }
 
   useEffect(() => {
     if (!accountMenuOpen) return undefined;
@@ -97,12 +166,12 @@ export function AppShell() {
       ? ', loading account requests'
       : pendingCount ? `, including ${pendingCount} pending account ${pendingCount === 1 ? 'request' : 'requests'}` : ''}`;
   return (
-    <div className="app-shell glass-shell" data-role={role}>
+    <div className="app-shell glass-shell" data-role={role} style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}>
       {menuOpen && <button className="drawer-backdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
       <aside className={`sidebar${menuOpen ? ' is-open' : ''}`} aria-label="Main navigation">
         <Link to="/" className="brand" aria-label="HydroSense home">
           <img src={ASSETS.logo} alt="" className="brand-logo" />
-          <span>HydroSense<small> WATER QUALITY MONITORING</small></span>
+          <span>HydroSense<small>WATER QUALITY MONITORING</small></span>
         </Link>
         <button type="button" className="icon-button sidebar-close mobile-menu" aria-label="Close menu" onClick={() => setMenuOpen(false)}><X size={18} /></button>
         <nav className="side-nav">
@@ -123,7 +192,9 @@ export function AppShell() {
         <div className="sidebar-footer">
           <span className="small muted sidebar-role">Pilot workspace · {role.toUpperCase()}</span>
           <span className="small muted">Days 0–21 · 3-hour sampling</span>
+          <span className="small muted sidebar-copyright">© 2026 HydroSense</span>
         </div>
+        <div className="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuemin={SIDEBAR_MIN} aria-valuemax={SIDEBAR_MAX} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={startResize} onKeyDown={resizeByKey} />
       </aside>
 
       <div className="main-area">
@@ -132,15 +203,31 @@ export function AppShell() {
           <div className="page-controls" aria-label="Dashboard controls">
             <button type="button" className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMenuOpen(true)}><Menu size={19} /></button>
             <span className={`connection-pill ${displayConnection === 'connected' ? 'connection-online' : 'connection-offline'}`} aria-label={`Connection ${displayConnection}`}>
-              <span aria-hidden="true">●</span><span>{displayConnection === 'connected' ? 'Live' : displayConnection === 'connecting' ? 'Connecting' : 'Offline'}</span>
+              {displayConnection === 'connected' ? <Wifi size={16} aria-hidden="true" /> : <WifiOff size={16} aria-hidden="true" />}<span>{displayConnection === 'connected' ? 'Live' : displayConnection === 'connecting' ? 'Connecting' : 'Offline'}</span>
             </span>
-            <Link to="/alerts" className="icon-button header-alert-link" aria-label={alertLabel} title={alertLabel}>
-              <Bell size={18} /><span className="header-alert-count">{alertCount}</span>
-              {role === 'admin' && pendingRequests.isError && <span aria-hidden="true">!</span>}
-              {role === 'admin' && pendingRequests.isLoading && <span aria-hidden="true">…</span>}
-            </Link>
-            <div className="account-menu">
-              <button type="button" className="icon-button" aria-haspopup="menu" aria-expanded={accountMenuOpen} aria-label={`Account menu for ${userName}`} title={userName} onClick={() => setAccountMenuOpen((open) => !open)}>
+            <div className="notification-menu" ref={notificationsRef}>
+              <button type="button" className="icon-button header-alert-link" aria-haspopup="dialog" aria-expanded={notificationsOpen} aria-label={alertLabel} title={alertLabel} onClick={() => { setAccountMenuOpen(false); setNotificationsOpen((open) => !open); }}>
+                <Bell size={18} /><span className="header-alert-count">{alertCount}</span>
+                {role === 'admin' && pendingRequests.isError && <span aria-hidden="true">!</span>}
+                {role === 'admin' && pendingRequests.isLoading && <span aria-hidden="true">…</span>}
+              </button>
+              {notificationsOpen && <div className="notification-popover" role="dialog" aria-label="Current notifications">
+                <div className="notification-popover-head"><strong>Notifications</strong><span>{alertCount} current</span></div>
+                <ul className="notification-list">
+                  {pendingCount > 0 && <li><Link to="/admin/users" className="notification-item"><span className="notification-dot notification-dot-info" aria-hidden="true" /><span><strong>{pendingCount} pending account {pendingCount === 1 ? 'request' : 'requests'}</strong><small>Review in Users &amp; Roles</small></span></Link></li>}
+                  {openAlerts.map((alert) => (
+                    <li key={alert.id}><Link to="/alerts" className="notification-item">
+                      <span className={`notification-dot notification-dot-${alert.severity}`} aria-hidden="true" />
+                      <span><strong>{alert.parameter} {alert.severity}</strong><small>{alert.value} · {alert.threshold} · {formatManilaDateTime(alert.createdAt)}</small></span>
+                    </Link></li>
+                  ))}
+                  {alertCount === 0 && <li className="notification-empty">No current notifications.</li>}
+                </ul>
+                <Link to="/alerts" className="notification-view-all">View all</Link>
+              </div>}
+            </div>
+            <div className="account-menu" ref={accountRef}>
+              <button type="button" className="icon-button" aria-haspopup="menu" aria-expanded={accountMenuOpen} aria-label={`Account menu for ${userName}`} title={userName} onClick={() => { setNotificationsOpen(false); setAccountMenuOpen((open) => !open); }}>
                 <UserRound size={19} aria-hidden="true" />
               </button>
               {accountMenuOpen && <div className="account-menu-popover" role="menu" aria-label="Account options">
@@ -148,7 +235,7 @@ export function AppShell() {
                   <strong>{userName.trim() || 'User'}</strong>
                   <span>{ROLE_LABELS[role]}</span>
                 </div>
-                <Link to="/profile" role="menuitem"><UserRound size={15} />My profile</Link>
+                <Link to="/profile" role="menuitem"><UserRound size={15} />My Profile</Link>
                 <Link to="/signin" role="menuitem" onClick={signOut}><LogOut size={15} />Sign out</Link>
               </div>}
             </div>

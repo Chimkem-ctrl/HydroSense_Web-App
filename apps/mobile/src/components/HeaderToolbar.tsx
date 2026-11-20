@@ -14,11 +14,11 @@ import { Brand } from './ui';
 import { uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
 
-type Panel = 'navigation' | 'account' | null;
+type Panel = 'navigation' | 'account' | 'notifications' | null;
 type Destination = { name: keyof MainTabParamList; label: string; icon: typeof Menu; group: 'Monitor' | 'Records' | 'Manage' };
 
 export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
-  const { colors, reduceMotion } = useTheme();
+  const { colors, mode, reduceMotion } = useTheme();
   const styles = createStyles(colors);
   const { user, signOut } = useSession();
   const { tankId } = useTankSelection();
@@ -29,7 +29,8 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const pending = useQuery({ queryKey: ['pending-accounts', user?.id], queryFn: listPendingAccounts, enabled: user?.role === 'admin' && DATA_MODE === 'api', refetchInterval: 5000 });
   const latestReading = useQuery({ queryKey: ['latest-reading', tankId], queryFn: () => api.getLatestReading(tankId), enabled: Boolean(user && tankId) });
   const [, updateClock] = useState(0);
-  const openAlerts = alerts.data?.filter((item) => item.status === 'open').length;
+  const openAlertItems = alerts.data?.filter((item) => item.status === 'open') ?? [];
+  const openAlerts = alerts.data ? openAlertItems.length : undefined;
   const alertCount = openAlerts === undefined ? undefined : openAlerts + (pending.data?.length ?? 0);
 
   useEffect(() => NetInfo.addEventListener((state) => setOnline(state.isConnected)), []);
@@ -77,7 +78,7 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
       <View style={styles.brandRow}>
         <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" accessibilityState={{ expanded: panel === 'navigation' }} onPress={() => setPanel('navigation')} style={styles.iconButton}><Menu size={21} color={colors.ink} /></Pressable>
         <View style={styles.brandSlot}><Brand compact /></View>
-        <Pressable accessibilityRole="button" accessibilityLabel={alerts.isError ? 'Alerts unavailable; open alerts' : alertCount === undefined ? 'Loading alerts; open alerts' : `${alertCount} open alerts and pending requests${pending.isError ? ', account requests unavailable' : ''}`} onPress={() => goTo('Alerts')} style={styles.iconButton}>
+        <Pressable accessibilityRole="button" accessibilityLabel={alerts.isError ? 'Alerts unavailable; open alerts' : alertCount === undefined ? 'Loading alerts; open alerts' : `${alertCount} open alerts and pending requests${pending.isError ? ', account requests unavailable' : ''}`} accessibilityState={{ expanded: panel === 'notifications' }} onPress={() => setPanel('notifications')} style={styles.iconButton}>
           <Bell size={20} color={colors.ink} />
           {alertCount !== undefined && alertCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{alertCount > 99 ? '99+' : alertCount}</Text></View>}
         </Pressable>
@@ -89,9 +90,9 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
     <Modal visible={panel !== null} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setPanel(null)}>
       <View style={styles.overlay}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={StyleSheet.absoluteFill} />
-        <SafeAreaView edges={['top', 'bottom']} style={[styles.panel, panel !== 'navigation' && styles.sheet]}>
-          <View style={styles.panelHeader}><Text style={styles.panelTitle}>{panel === 'navigation' ? 'Navigation' : 'Account'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={styles.close}><X size={20} color={colors.ink} /></Pressable></View>
-          <ScrollView contentContainerStyle={styles.panelContent}>
+        <SafeAreaView edges={['top', 'bottom']} style={[styles.panel, { backgroundColor: mode === 'dark' ? '#181818' : colors.surface }, panel !== 'navigation' && styles.sheet]}>
+          <View style={styles.panelHeader}><Text style={styles.panelTitle}>{panel === 'navigation' ? 'Navigation' : panel === 'notifications' ? 'Notifications' : 'Account'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={styles.close}><X size={20} color={colors.ink} /></Pressable></View>
+          <ScrollView contentContainerStyle={styles.panelContent} indicatorStyle={mode === 'dark' ? 'white' : 'black'}>
             {panel === 'navigation' && <>
               <Brand compact />
               {(['Monitor', 'Records', 'Manage'] as const).map((group) => {
@@ -103,6 +104,13 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
                   </Pressable>)}
                 </View> : null;
               })}
+              <Text style={styles.copyright}>© 2026 HydroSense</Text>
+            </>}
+            {panel === 'notifications' && <>
+              {pending.data && pending.data.length > 0 && <Pressable accessibilityRole="button" onPress={() => goTo('Users')} style={styles.notification}><View style={[styles.dot, { backgroundColor: colors.teal }]} /><View style={{ flex: 1 }}><Text style={styles.itemText}>{pending.data.length} pending account {pending.data.length === 1 ? 'request' : 'requests'}</Text><Text style={styles.description}>Review in Users & roles</Text></View></Pressable>}
+              {openAlertItems.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => goTo('Alerts')} style={styles.notification}><View style={[styles.dot, { backgroundColor: item.severity === 'critical' ? colors.critical : colors.warning }]} /><View style={{ flex: 1 }}><Text style={styles.itemText}>{item.parameter} {item.severity}</Text><Text style={styles.description}>{item.value} · {item.threshold}</Text></View></Pressable>)}
+              {!alertCount && <Text style={styles.description}>No current notifications.</Text>}
+              <Pressable accessibilityRole="button" onPress={() => goTo('Alerts')} style={styles.viewAll}><Text style={styles.viewAllText}>View all</Text></Pressable>
             </>}
             {panel === 'account' && <>
               <Text style={styles.panelTitle}>{user?.name}</Text><Text style={styles.description}>{user?.role}</Text>
@@ -146,4 +154,9 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   itemText: { color: colors.ink, fontSize: 14, fontWeight: '600' },
   selectedText: { color: colors.teal, fontWeight: '700', fontSize: 14 },
   description: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+  copyright: { color: colors.muted, fontSize: 12, textAlign: 'center', marginTop: 24 },
+  notification: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
+  dot: { width: 10, height: 10, borderRadius: 5, marginTop: 6 },
+  viewAll: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: colors.teal },
+  viewAllText: { color: colors.teal, fontWeight: '700', fontSize: 14 },
 });

@@ -9,6 +9,7 @@ import { api } from '../app/api';
 import { useRole } from '../app/auth/RoleContext';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { PageHeading } from '../components/common/PageHeading';
+import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 
 type ExportType = 'readings' | 'alerts' | 'activity' | 'calibration' | 'validation';
@@ -203,7 +204,7 @@ export default function ReportsPage() {
             <StaleQueryState updatedAt={dataQuery.dataUpdatedAt} />
           </header>
           <div className="dash-report-controls">
-            {canExport && <label className="field">CSV dataset<select value={type} onChange={(event) => setType(event.target.value as ExportType)}><option value="readings">Raw readings</option><option value="alerts">Alerts</option><option value="activity">Activity logs</option>{canViewCalibration && <option value="calibration">Calibration log</option>}{canViewValidation && <option value="validation">Validation</option>}</select></label>}
+            {canExport && <label className="field">CSV dataset<Select value={type} onChange={(event) => setType(event.target.value as ExportType)}><option value="readings">Raw readings</option><option value="alerts">Alerts</option><option value="activity">Activity logs</option>{canViewCalibration && <option value="calibration">Calibration log</option>}{canViewValidation && <option value="validation">Validation</option>}</Select></label>}
             <label className="field">From<input type="date" value={from} min={minimumDate} max={to} onChange={(event) => setFrom(event.target.value)} /></label>
             <label className="field">To<input type="date" value={to} min={from} max={maximumDate} onChange={(event) => setTo(event.target.value)} /></label>
           </div>

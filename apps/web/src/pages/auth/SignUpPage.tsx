@@ -224,7 +224,7 @@ export default function SignUpPage() {
               />
             </div>
             <div className="signup-temporary-fields">
-              <p className="signup-temporary-field-note">To be removed</p>
+              <p className="signup-temporary-field-note">To be remove</p>
               <FormInput
                 label="Employee / staff ID"
                 name="employeeId"

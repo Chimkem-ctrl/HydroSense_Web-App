@@ -1,4 +1,4 @@
-import { Radio, Signal } from 'lucide-react';
+import { Signal, Wifi, WifiOff } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
@@ -11,6 +11,7 @@ import { DATA_MODE, tierConfig } from '../app/config';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { useDeviceStatuses } from '../app/data/hooks';
 import { PageHeading } from '../components/common/PageHeading';
+import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 import { calculateTrendStatistics, countMissingSamples, prepareTrendRows, threeHourTicks } from './trendData';
 import type { TrendParameter } from './trendData';
@@ -174,7 +175,7 @@ export default function TankOverviewPage() {
   return (
     <div className="stack">
       <PageHeading
-        title="Tank overview & system health"
+        title="Tank Overview & System Health"
         description={`${query.data?.length ?? 0} / ${tierConfig.nodeLimit} tanks registered`}
         actions={<div className="tank-overview-heading-actions">
           {!devices.isLoading && !devices.isError && <span className="health-summary">{onlineCount} online · {offlineCount} offline</span>}
@@ -209,7 +210,7 @@ export default function TankOverviewPage() {
         <>
           <div className="tank-overview-tools">
             <label className="field"><span className="sr-only">Search tanks</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search tank or hardware ID" /></label>
-            <label className="field"><span className="sr-only">Filter by connection status</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}><option value="all">All statuses</option><option value="online">Online</option><option value="offline">Offline</option></select></label>
+            <label className="field"><span className="sr-only">Filter by connection status</span><Select value={statusFilter === 'all' ? '' : statusFilter} clearable placeholder="Status" onChange={(event) => setStatusFilter((event.target.value || 'all') as typeof statusFilter)}><option value="online">Online</option><option value="offline">Offline</option></Select></label>
           </div>
           <section className="card tank-overview-table-card" aria-label="Tank overview table">
             <div className="table-wrap">
@@ -221,15 +222,17 @@ export default function TankOverviewPage() {
                     const hasRecentReading = Boolean(reading && Date.now() - new Date(reading.timestamp).getTime() <= 15 * 60 * 1000);
                     const online = Boolean(device?.online || hasRecentReading);
                     const deviceStatus = online ? 'Online' : device ? 'Offline' : 'Status unavailable';
+                    const validStartDate = /^\d{4}-\d{2}-\d{2}$/.test(tank.rearingStartDate) && !Number.isNaN(Date.parse(`${tank.rearingStartDate}T00:00:00+08:00`));
+                    const raisingDay = validStartDate ? getRaisingDay(tank.rearingStartDate) : null;
                     return <tr key={tank.id}>
                       <td><strong>{tank.name}</strong><span className="tank-overview-subtext">{tank.deviceId}</span></td>
-                      <td><span className="tank-day-progress"><i aria-hidden="true"><b style={{ width: `${Math.min(100, Math.max(0, getRaisingDay(tank.rearingStartDate) / 21 * 100))}%` }} /></i>{getRaisingDay(tank.rearingStartDate)} / 21</span></td>
+                      <td>{raisingDay === null ? <span>Invalid rearing start date</span> : <span className="tank-day-progress"><i aria-hidden="true"><b style={{ width: `${raisingDay / 21 * 100}%` }} /></i>{raisingDay} / 21</span>}</td>
                       <td className="table-numeric">{reading ? isValidMeasurement('temperature', reading.temperature) ? reading.temperature.toFixed(1) : 'Check probe' : '—'}</td>
                       <td className="table-numeric">{reading ? isValidMeasurement('do', reading.doMgL) ? reading.doMgL.toFixed(1) : 'Check probe' : '—'}</td>
                       <td className="table-numeric">{reading ? isValidMeasurement('ph', reading.ph) ? reading.ph.toFixed(2) : 'Check probe' : '—'}</td>
                       <td className="table-numeric">{alerts.length}</td>
                       <td>{reading ? <><time dateTime={reading.timestamp}>{formatManilaDateTime(reading.timestamp)} PHT</time></> : '—'}</td>
-                      <td><span className={`connection-pill ${online ? 'connection-online' : 'connection-offline'}`}><Radio size={15} aria-hidden="true" />{deviceStatus}</span></td>
+                      <td><span className={`connection-pill ${online ? 'connection-online' : 'connection-offline'}`}>{online ? <Wifi size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}{deviceStatus}</span></td>
                       <td>{device ? <time dateTime={device.lastSeen}>{formatManilaDateTime(device.lastSeen)} PHT</time> : '—'}</td>
                       <td>{device ? <span className="health-signal"><Signal size={16} aria-hidden="true" />{wifiLabel(device.wifiRssi)}, {device.wifiRssi} dBm</span> : '—'}</td>
                       <td className="table-numeric">{device?.pendingSyncCount ?? '—'}</td>

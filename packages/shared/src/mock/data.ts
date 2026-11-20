@@ -14,10 +14,11 @@ import type {
 } from '../types';
 import { DEFAULT_THRESHOLDS } from '../rules/status';
 import { getAmmoniaAdvisory, getSalinityAdvisory } from '../rules/advisory';
+import { getManilaDateString } from '../format';
 
 const now = Date.now();
 const iso = (hoursAgo: number) => new Date(now - hoursAgo * 3_600_000).toISOString();
-const dateOnly = (daysAgo: number) => new Date(now - daysAgo * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+const dateOnly = (daysAgo: number) => getManilaDateString(new Date(now - daysAgo * 86_400_000));
 
 export const mockTanks: Tank[] = [
   { id: 'tank-a', name: 'Larval Tank A', site: 'Sagay Hatchery, Camiguin', rearingStartDate: dateOnly(11), deviceId: 'HS-MF-001' },
@@ -53,6 +54,8 @@ export const mockDevices: DeviceStatus[] = [
 
 export const mockAlerts: AlertItem[] = [
   { id: 'alert-do-001', tankId: 'tank-a', parameter: 'Dissolved oxygen', value: 3.8, threshold: 'Minimum 4.0 mg/L', severity: 'warning', status: 'open', createdAt: iso(2) },
+  { id: 'alert-temp-004', tankId: 'tank-a', parameter: 'Temperature', value: 31.5, threshold: 'Maximum 30.0°C', severity: 'warning', status: 'open', createdAt: iso(4) },
+  { id: 'alert-ph-005', tankId: 'tank-a', parameter: 'pH', value: 8.2, threshold: 'Maximum 8.0 pH', severity: 'warning', status: 'open', createdAt: iso(6) },
   { id: 'alert-temp-002', tankId: 'tank-b', parameter: 'Temperature', value: 32.4, threshold: 'Maximum 32.0°C', severity: 'critical', status: 'acknowledged', createdAt: iso(30), acknowledgedBy: 'Juan Dela Cruz', acknowledgedAt: iso(28), note: 'Verified against a handheld thermometer; checked again next sample.' },
   { id: 'alert-ph-003', tankId: 'tank-a', parameter: 'pH', value: 5.9, threshold: 'Minimum 6.0 pH', severity: 'warning', status: 'resolved', createdAt: iso(100), acknowledgedBy: 'Maria Santos', acknowledgedAt: iso(99), note: 'pH returned to range on verification reading.' },
 ];

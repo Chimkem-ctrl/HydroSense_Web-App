@@ -1,13 +1,12 @@
-import { AlertTriangle, CheckCircle2, Clock3, Radio } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, Wifi, WifiOff } from 'lucide-react';
 import { formatManilaDateTime, getRaisingDay, getReadingStatuses, isValidMeasurement, readingAge, readingFreshness } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../app/api';
 import { useRole } from '../app/auth/RoleContext';
-import { useAdvisories, useDeviceStatuses, useLatestReading, useTanks } from '../app/data/hooks';
+import { useDeviceStatuses, useLatestReading, useTanks } from '../app/data/hooks';
 import { useSelectedTank } from '../app/tank/TankContext';
-import { AdvisoryChip } from '../components/readings/AdvisoryChip';
 import { ReadingCard } from '../components/readings/ReadingCard';
 import { StatusBadge } from '../components/readings/StatusBadge';
 import { PageHeading } from '../components/common/PageHeading';
@@ -24,7 +23,6 @@ export default function LiveMonitorPage() {
   const tanks = useTanks();
   const tank = tanks.data?.find((item) => item.id === tankId);
   const reading = useLatestReading(tankId);
-  const advisories = useAdvisories(tankId);
   const alerts = useQuery({ queryKey: ['alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
   const devices = useDeviceStatuses();
   const thresholds = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
@@ -43,7 +41,7 @@ export default function LiveMonitorPage() {
     <div className="stack live-screen">
       <p className="live-greeting">Welcome, {userName}</p>
       <PageHeading
-        title="Live monitor"
+        title="Live Monitor"
         description={tank ? `${tank.site} · Rearing day ${rearingDay} of 21` : 'Current water quality and device status'}
         actions={reading.data ? <span className="live-update"><Clock3 size={15} aria-hidden="true" /> Last reading {formatManilaDateTime(reading.data.timestamp)} PHT</span> : undefined}
       />
@@ -63,7 +61,7 @@ export default function LiveMonitorPage() {
       <section className={`card live-status-banner live-status-${freshness?.stale ? 'offline' : invalidReading ? 'warning' : overallLevel}`} aria-label="Current reading status">
         {!freshness?.stale && !invalidReading && overallLevel === 'normal' ? <CheckCircle2 size={24} aria-hidden="true" /> : <AlertTriangle size={24} aria-hidden="true" />}
         <div><h2>{freshness?.stale ? 'Reading status unavailable while offline' : invalidReading ? 'Check probe: invalid sensor reading' : `${tank.name} ${overallLevel === 'normal' ? 'readings are within the configured ranges' : 'has readings that need attention'}`}</h2><p>{freshness?.stale ? `Last reading ${readingAge(freshness.ageMs)}.` : invalidReading ? 'Invalid readings are excluded from analysis.' : overallLevel === 'normal' ? 'Temperature, dissolved oxygen and pH are normal.' : 'Review the measured readings and their status below.'}</p></div>
-        <div className="live-status-actions"><Link className="button button-primary" to="/entries">Activity logs</Link><Link className="button" to="/trends">View trends</Link></div>
+        <div className="live-status-actions"><Link className="button button-primary" to="/entries">Activity Logs</Link><Link className="button" to="/trends">View trends</Link></div>
       </section>
       <section className="live-section" aria-labelledby="live-readings-title">
         <div className="live-section-heading">
@@ -76,34 +74,17 @@ export default function LiveMonitorPage() {
         </div>
       </section>
       <div className="live-overview-grid">
-      <section className="card live-panel" aria-label="Water-quality advisories">
-        <div className="live-section-heading">
-          <div><h2 id="live-advisories-title">Water-quality advisories</h2><p>Rule-based estimates, not sensor readings.</p></div>
-        </div>
-        {advisories.isLoading ? <LoadingState label="Loading advisories" /> : advisories.isError ? <ErrorState error={advisories.error} onRetry={() => void advisories.refetch()} /> : (
-          advisories.data?.length ? <div className="glass-advisories">{advisories.data.map((item) => (
-            <article className="live-advisory-tile" key={item.kind}>
-              <div className="live-advisory-copy">
-                <h3>{item.kind === 'salinity' ? 'Salinity' : 'Ammonia'} risk</h3>
-                <p>{item.firedRule}</p>
-              </div>
-              <AdvisoryChip advisory={item} tankId={tankId} statusOnly />
-            </article>
-          ))}</div> : <EmptyState>No advisories are available for this tank.</EmptyState>
-        )}
-      </section>
       <section className="card live-panel" aria-labelledby="live-device-title">
         <div className="live-section-heading"><div><h2 id="live-device-title">Device connection</h2><p>{tank.deviceId} · sampled every 3 hours</p></div></div>
         {devices.isLoading ? <LoadingState label="Loading device status" /> : devices.isError ? <ErrorState error={devices.error} onRetry={() => void devices.refetch()} /> : device ? (
           <div className="live-device-metrics">
-            <div><span>Connection</span><strong><Radio size={15} aria-hidden="true" />{deviceOnline ? 'Online' : 'Offline'}</strong></div>
+            <div><span>Connection</span><strong className={deviceOnline ? 'status-online' : 'status-offline'}>{deviceOnline ? <Wifi size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}{deviceOnline ? 'Online' : 'Offline'}</strong></div>
             <div><span>Wi-Fi</span><strong>{device.wifiRssi} dBm</strong></div>
             <div><span>Last report</span><strong className="live-device-time">{formatManilaDateTime(device.lastSeen)} PHT</strong></div>
             <div><span>Pending sync</span><strong>{device.pendingSyncCount}</strong></div>
           </div>
         ) : <EmptyState>No device is assigned to this tank.</EmptyState>}
       </section>
-      </div>
       <section className="card live-panel" aria-labelledby="live-alerts-title">
         <div className="live-section-heading">
           <div><h2 id="live-alerts-title">Recent alerts</h2><p>Latest events for the selected tank</p></div>
@@ -119,6 +100,7 @@ export default function LiveMonitorPage() {
           ))}</div>
         ) : <EmptyState>No alerts are recorded for this tank.</EmptyState>}
       </section>
+      </div>
       </>}
     </div>
   );

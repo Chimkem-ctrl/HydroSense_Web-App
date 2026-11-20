@@ -57,8 +57,8 @@ describe('users and roles', () => {
     mockAccounts();
     window.history.replaceState({}, '', '/admin/users');
     render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Users & roles', level: 1 })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Users & roles' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Users & Roles', level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Users & Roles' })).toBeInTheDocument();
     expect(await screen.findAllByRole('heading', { name: hatchery.name })).not.toHaveLength(0);
     expect(screen.getByText('Review operator accounts for your hatchery.')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Pending requests' })).not.toBeInTheDocument();
@@ -93,7 +93,9 @@ describe('users and roles', () => {
     expect(within(requests).getByRole('region', { name: 'other pending requests' })).toBeInTheDocument();
     expect(within(requests).getByText('Other Applicant')).toBeInTheDocument();
     const approvalRole = within(requests).getByRole('combobox', { name: 'Review role for Local Applicant' });
-    expect(within(approvalRole).getByRole('option', { name: 'Admin' })).toBeInTheDocument();
+    fireEvent.click(approvalRole);
+    expect(screen.getByRole('option', { name: 'Admin' })).toBeInTheDocument();
+    fireEvent.click(approvalRole);
     expect(within(requests).getAllByText('Pending')).toHaveLength(2);
     expect(within(requests).getByRole('button', { name: 'Approve Local Applicant' })).toBeInTheDocument();
     expect(within(requests).getByRole('button', { name: 'Reject Local Applicant' })).toBeInTheDocument();
@@ -160,9 +162,9 @@ describe('users and roles', () => {
     signIn(role, hatchery.id);
     window.history.replaceState({}, '', path);
     render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Live monitor', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Live Monitor', level: 1 })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
-    expect(screen.queryByRole('link', { name: 'Audit & system logs' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Audit & System Logs' })).not.toBeInTheDocument();
   });
 
   it('surfaces manager account authorization failures', async () => {

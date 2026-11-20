@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { formatManilaDateTime } from '@hydrosense/shared';
@@ -13,6 +13,7 @@ export function CriticalAlertModal({ alert, remaining }: { alert: AlertItem; rem
   const { userName } = useRole();
   const queryClient = useQueryClient();
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const [dismissedId, setDismissedId] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: () => api.acknowledgeAlert(alert.id, { note: CRITICAL_ACK_NOTE, user: userName }),
     onSuccess: async () => {
@@ -26,8 +27,10 @@ export function CriticalAlertModal({ alert, remaining }: { alert: AlertItem; rem
     buttonRef.current?.focus();
   }, [alert.id]);
 
+  if (dismissedId === alert.id) return null;
+
   return (
-    <div className="critical-modal-backdrop" role="presentation">
+    <div className="critical-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDismissedId(alert.id); }}>
       <section className="critical-modal" role="alertdialog" aria-modal="true" aria-labelledby="critical-alert-title" aria-describedby="critical-alert-desc">
         <span className="critical-modal-icon"><AlertTriangle size={24} aria-hidden="true" /></span>
         <h2 id="critical-alert-title">Critical alert</h2>

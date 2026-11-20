@@ -13,6 +13,7 @@ import { useRole } from '../app/auth/RoleContext';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { useTanks } from '../app/data/hooks';
 import { PageHeading } from '../components/common/PageHeading';
+import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 import { activityLogCsv, manilaDate } from './activityLogs';
 import { downloadCsv } from '../services/downloadCsv';
@@ -166,7 +167,7 @@ export default function ActivityLogsPage() {
   return (
     <div className="stack activity-logs-page">
       <PageHeading
-        title="Activity logs"
+        title="Activity Logs"
         description="Log operations, water-quality checks, and environmental events for shift handover."
       />
       <div className="inline activity-log-actions">
@@ -180,12 +181,11 @@ export default function ActivityLogsPage() {
         <h2 className="card-title">Activity records</h2>
         <div className="form-grid filter-row activity-log-filters">
           <label className="field">Kind
-            <select value={kindFilter} onChange={(event) => setKindFilter(event.target.value as ActivityLogKind | 'all')}>
-              <option value="all">All kinds</option>
+            <Select value={kindFilter === 'all' ? '' : kindFilter} clearable placeholder="Kind" onChange={(event) => setKindFilter((event.target.value || 'all') as ActivityLogKind | 'all')}>
               <option value="OPERATION">Operation</option>
               <option value="ENVIRONMENT">Environment</option>
               <option value="ALERT RESOLUTION">Alert resolution</option>
-            </select>
+            </Select>
           </label>
           <label className="field">From date (PHT)<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
           <label className="field">To date (PHT)<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
@@ -215,15 +215,15 @@ export default function ActivityLogsPage() {
             </header>
             <form className="stack activity-log-form" onSubmit={submitLog}>
               <label className="field">{modalKind === 'OPERATION' ? 'Tank or scope' : 'Event scope'}
-                <select value={scope} onChange={(event) => setScope(event.target.value)}>
+                <Select value={scope} onChange={(event) => setScope(event.target.value)}>
                   <option value="hatchery">Entire hatchery</option>
                   {(tanks.data ?? []).map((tank) => <option value={tank.id} key={tank.id}>{tank.name}</option>)}
-                </select>
+                </Select>
               </label>
               <label className="field">{modalKind === 'OPERATION' ? 'Operation type' : 'Event type'}
-                <select value={activityType} onChange={(event) => setActivityType(event.target.value)}>
+                <Select value={activityType} onChange={(event) => setActivityType(event.target.value)}>
                   {(modalKind === 'OPERATION' ? ACTIVITY_OPERATION_TYPES : ACTIVITY_EVENT_TYPES).map((type) => <option key={type}>{type}</option>)}
-                </select>
+                </Select>
               </label>
               {modalKind === 'OPERATION' && activityType === 'Water change / exchange' && (
                 <div className="form-grid">
@@ -244,7 +244,7 @@ export default function ActivityLogsPage() {
                   <p className="small muted">Enter readings actually measured. Manual values are logged separately from sensor readings.</p>
                 </>
               )}
-              {modalKind === 'ENVIRONMENT' && <label className="field">Observed impact<select value={impact} onChange={(event) => setImpact(event.target.value)}><option>Low</option><option>Moderate</option><option>High</option><option>Unknown</option></select></label>}
+              {modalKind === 'ENVIRONMENT' && <label className="field">Observed impact<Select value={impact} onChange={(event) => setImpact(event.target.value)}><option>Low</option><option>Moderate</option><option>High</option><option>Unknown</option></Select></label>}
               <label className="field">Notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={modalKind === 'OPERATION' ? 'What was done? Include observations or follow-up needed.' : 'When did it occur? What changed around the tank?'} rows={4} required /></label>
               {formError && <p className="state-error" role="alert">{formError}</p>}
               {createLog.isError && <ErrorState error={createLog.error} />}
