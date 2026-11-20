@@ -29,6 +29,7 @@ import {
   resolveAlertWithActivityLog,
   safeRangeGauge,
   DEFAULT_THRESHOLDS,
+  toCsv,
   validateAcknowledgeNote,
   validateActivityLog,
 } from '@hydrosense/shared';
@@ -742,7 +743,7 @@ export function HistoryScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const layout = createLogScreenStyles(colors);
   const record = createRecordStyles(colors);
-  const { tanks, tankId } = useTankSelection();
+  const { tankId } = useTankSelection();
   const [parameter, setParameter] = useState<'all' | 'temperature' | 'do' | 'ph'>('all');
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - 7 * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
@@ -805,12 +806,15 @@ export function ReportsScreen() {
   const [format, setFormat] = useState<'pdf' | 'csv' | 'xlsx'>('pdf');
   const [sections, setSections] = useState<ReportSection[]>(['summary', 'statistics', 'alerts', 'raw-readings']);
   const [sharing, setSharing] = useState(false);
+  const selectedIds = selectedTanks ?? (tankId ? [tankId] : []);
+  const readings = useQuery({ queryKey: ['mobile-export-readings', tankId], queryFn: () => api.listReadings({ tankId }), enabled: Boolean(tankId) });
+  const alerts = useQuery({ queryKey: ['mobile-export-alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
   const csv = useMemo(() => {
     const header = ['Timestamp (ISO)', 'Tank', 'Temperature °C', 'DO mg/L', 'pH'];
     const rows = (readings.data ?? []).map((row) => [row.timestamp, tankName, row.temperature, row.doMgL, row.ph]);
     return toCsv([header, ...rows]);
   }, [readings.data, tankName]);
-  async function shareCsv() {
+  async function shareReport() {
     setSharing(true);
     try {
       if (!user || !can(user.role, 'exportReports')) throw new Error('You do not have permission to export reports.');
@@ -841,6 +845,22 @@ export function ReportsScreen() {
       setSharing(false);
     }
   }
+  async function shareCsv() {
+    setSharing(true);
+    try {
+      if (!user || !can(user.role, 'exportReports')) throw new Error('You do not have permission to export reports.');
+      if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
+      if (!readings.data?.length) throw new Error('No readings are available to export.');
+      if (readings.data.length >= 500) throw new Error('The reading limit was reached. Use the report builder to select a shorter date range.');
+      const fileUri = `${FileSystem.documentDirectory}hydrosense-readings-${Date.now()}.csv`;
+      await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+      await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Share HydroSense readings CSV' });
+    } catch (error) {
+      Alert.alert('Export failed', error instanceof Error ? error.message : 'Could not share file.');
+    } finally {
+      setSharing(false);
+    }
+  }
   return <Page>
     <Title detail="Select tanks, dates, sections and format">Report builder</Title>
     <Card title="Tanks">
@@ -860,10 +880,11 @@ export function ReportsScreen() {
     <Card title="Format">
       {(['pdf', 'csv', 'xlsx'] as const).map((value) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: format === value }} onPress={() => setFormat(value)} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{format === value ? '●' : '○'} {value.toUpperCase()}</Text></Pressable>)}
       <Button label={sharing ? 'Preparing report…' : 'Share report'} disabled={sharing} onPress={() => void shareReport()} />
+    </Card>
     <Title detail="Share sensor readings for hatchery records">Export</Title>
     <TankPicker />
     <Card title="CSV export">
-      {readings.isLoading || alerts.isLoading ? <StateMessage message="Preparing export…" loading /> : readings.isError ? <StateMessage message="Could not load readings." /> : <>
+      {!tankId ? <StateMessage message="Select a tank to prepare an export." /> : readings.isLoading || alerts.isLoading ? <StateMessage message="Preparing export…" loading /> : readings.isError || alerts.isError ? <><StateMessage message="Could not load export data." /><Button label="Retry" secondary onPress={() => { void readings.refetch(); void alerts.refetch(); }} /></> : <>
         <DataRow label="Tank" value={tankName} />
         <DataRow label="Readings" value={`${readings.data?.length ?? 0}`} />
         <DataRow label="Alerts" value={`${alerts.data?.length ?? 0}`} />
