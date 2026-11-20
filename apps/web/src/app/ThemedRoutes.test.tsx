@@ -98,7 +98,10 @@ describe('themed dashboard routes', () => {
     const { container } = render(<App />);
     await screen.findByRole('heading', { name: 'Tank Overview & System Health', level: 1 });
     expect(container.querySelector('.app-shell')?.getAttribute('data-role')).toBe(role);
-    expect(screen.getByText(`Pilot workspace · ${role.toUpperCase()}`)).not.toBeNull();
+    expect(screen.queryByText('WATER QUALITY MONITORING')).not.toBeInTheDocument();
+    expect(screen.getByText(`${role.toUpperCase()} Workspace`)).toBeInTheDocument();
+    expect(screen.queryByText('Days 0–21 · 3-hour sampling')).not.toBeInTheDocument();
+    expect(screen.getByText('© 2026 HydroSense')).toBeInTheDocument();
   });
 
   it.each(routes.flatMap(([path, title]) => (['light', 'dark'] as const).map((theme) => [path, title, theme] as const)))('renders %s in the shared shell (%s, %s)', async (path, title, theme) => {

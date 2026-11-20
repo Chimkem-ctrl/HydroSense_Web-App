@@ -84,8 +84,8 @@
 .glass-shell .brand > span { min-width: max-content; }
 .glass-shell .brand small { display: block; color: #fff; }
 [data-theme='light'] .glass-shell .brand, [data-theme='light'] .glass-shell .brand small { color: #fff; }
-.glass-shell .sidebar-footer { display: grid; margin-top: 12px; white-space: normal; overflow-wrap: anywhere; }
-.glass-shell .sidebar-copyright { margin-top: 4px; text-align: left; }
+.glass-shell .sidebar-footer { display: grid; margin-top: 12px; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+.glass-shell .sidebar-copyright { margin-top: 4px; text-align: center; }
 .glass-shell .sidebar-resizer {
   position: absolute; top: 0; right: -4px; bottom: 0; width: 8px; cursor: col-resize; z-index: 25; touch-action: none;
 }
