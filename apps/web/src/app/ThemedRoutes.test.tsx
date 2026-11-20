@@ -711,6 +711,12 @@ describe('themed dashboard routes', () => {
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Calibration & Maintenance', level: 1 })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Calibration' })).toBeInTheDocument();
+    const form = screen.getByRole('heading', { name: 'Log calibration' }).closest('form');
+    const dueDates = screen.getByRole('heading', { name: 'Calibration due dates' }).closest('section');
+    const status = screen.getByRole('heading', { name: 'Calibration status' }).closest('section');
+    expect(form?.parentElement).toBe(dueDates?.parentElement);
+    expect(status).toHaveClass('dash-calibration-summary');
+    expect(status?.parentElement).not.toBe(form?.parentElement);
   });
 
   it('guards the legacy thresholds route from operators', async () => {

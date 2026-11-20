@@ -7,11 +7,13 @@ vi.mock('react', async (importOriginal) => ({
   ...await importOriginal<typeof import('react')>(),
   useContext: vi.fn(),
   useRef: () => ({ current: null }),
+  useState: (initial: unknown) => [typeof initial === 'function' ? (initial as () => unknown)() : initial, vi.fn()],
 }));
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Image: 'Image',
   KeyboardAvoidingView: 'KeyboardAvoidingView',
+  Modal: 'Modal',
   Platform: { get OS() { return themeState.platform; } },
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
@@ -25,12 +27,13 @@ vi.mock('expo-linear-gradient', () => ({ LinearGradient: 'LinearGradient' }));
 vi.mock('expo-blur', () => ({ BlurTargetView: 'blur-target', BlurView: 'blur-view' }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }));
 vi.mock('react-native-paper', () => ({ Dialog: 'dialog', Portal: 'portal' }));
+vi.mock('lucide-react-native', () => ({ CalendarDays: 'CalendarDays', ChevronLeft: 'ChevronLeft', ChevronRight: 'ChevronRight' }));
 vi.mock('../theme', () => ({
   uiScale: { spacing: { 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32 }, type: {}, radius: { card: 20 } },
   useTheme: () => ({ colors: { canvas: '#eaf3ff', surface: '#ffffff', backgroundVia: '#dfeafe', backgroundTo: '#f3eefe' }, reduceTransparency: themeState.reduceTransparency }),
 }));
 
-import { BlurTargetContext, Card, Chip, FilterField, GlassDialog, Page } from './ui';
+import { BlurTargetContext, CalendarFilterField, Card, Chip, FilterField, GlassDialog, Page } from './ui';
 
 type ElementProps = { children?: ReactNode; style?: unknown; contentContainerStyle?: unknown; intensity?: number; blurReductionFactor?: number; tint?: string; ref?: unknown; accessibilityLabel?: string; accessibilityState?: unknown; onChangeText?: (value: string) => void; onPress?: () => void; edges?: string[] };
 
@@ -56,6 +59,13 @@ describe('log filter controls', () => {
     expect(input?.props.accessibilityLabel).toBe('From date (PHT)');
     input?.props.onChangeText?.('2026-01-01');
     expect(onChangeText).toHaveBeenCalledWith('2026-01-01');
+  });
+
+  it('shows a calendar control alongside date inputs', () => {
+    const field = CalendarFilterField({ label: 'From date (PHT)', value: '', onChangeText: vi.fn() });
+    expect(findElement(field, 'TextInput')?.props.accessibilityLabel).toBe('From date (PHT)');
+    expect(findElement(field, 'CalendarDays')).toBeDefined();
+    expect(findElement(field, 'Pressable')?.props.accessibilityLabel).toBe('Choose from date (pht)');
   });
 
   it('exposes chip selection and forwards presses', () => {

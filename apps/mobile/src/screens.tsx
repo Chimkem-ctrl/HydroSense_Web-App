@@ -42,7 +42,7 @@ import type { MainTabParamList, RootStackParamList } from './navigation';
 import { api, getConfiguredThreshold, listConfiguredThresholds, listPendingAccounts } from './services/client';
 import { canAccess } from './access';
 import { useSession, useTankSelection } from './state';
-import { Button, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, Page, StateMessage, Title } from './components/ui';
+import { Button, CalendarFilterField, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, Page, StateMessage, Title } from './components/ui';
 import { AlertFilters } from './components/AlertFilters';
 import { RangeBar } from './components/RangeBar';
 import { uiScale, useTheme } from './theme';
@@ -494,7 +494,7 @@ export function ManagerReviewScreen() {
   const tolerances = useQuery({ queryKey: ['validation-tolerances'], queryFn: () => api.getValidationTolerances(), enabled: allowed });
   if (!allowed) return <Page><StateMessage message="You do not have access to validation." /></Page>;
   return <Page>
-    <Title icon={<ClipboardList size={23} color={colors.teal} />} detail="Compare sensor averages with reference readings">Manager review</Title>
+    <Title icon={<ClipboardList size={23} color={colors.teal} />} detail="Compare sensor averages with reference readings">Validation</Title>
     {rows.isLoading || tolerances.isLoading ? <StateMessage message="Loading validation…" loading /> :
       rows.isError || tolerances.isError ? <Card><StateMessage message={`Could not load validation: ${(rows.error ?? tolerances.error)?.message ?? 'Unknown error'}`} /><Button label="Retry" secondary onPress={() => { void rows.refetch(); void tolerances.refetch(); }} /></Card> :
       !rows.data?.length || !tolerances.data ? <StateMessage message="No validation comparisons are available." /> :
@@ -533,6 +533,7 @@ export function ActivityLogsScreen() {
   const [waterSource, setWaterSource] = useState('');
   const [impact, setImpact] = useState('Moderate');
   const [kindFilter, setKindFilter] = useState<ActivityLogKind | 'all'>('all');
+  const [expandedFilter, setExpandedFilter] = useState<'kind' | 'dates' | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [formError, setFormError] = useState('');
@@ -626,17 +627,14 @@ export function ActivityLogsScreen() {
     <ActivityLogActions role={user?.role ?? null} width={width} onOpen={openLog} />
     <View style={layout.cards}>
       <Card title="Filters">
-        <View style={layout.filters}>
-          <View style={layout.filters}>
-            <Text style={layout.label}>Kind</Text>
-            <View accessibilityRole="radiogroup" style={layout.options}>
-              {([{ value: 'all', label: 'All kinds' }, { value: 'OPERATION', label: 'Operation' }, { value: 'ENVIRONMENT', label: 'Environment' }, { value: 'ALERT RESOLUTION', label: 'Alert resolution' }] as const).map((option) => <Chip key={option.value} label={option.label} selected={kindFilter === option.value} onPress={() => setKindFilter(option.value)} />)}
+        <View style={{ flexDirection: 'row', gap: uiScale.spacing[3] }}>
+          <FilterDropdown label="Kind" summary={kindFilter === 'all' ? 'All kinds' : kindFilter === 'OPERATION' ? 'Operation' : kindFilter === 'ENVIRONMENT' ? 'Environment' : 'Alert resolution'} icon={<ListFilter size={16} color={colors.teal} />} options={[{ value: 'all', label: 'All kinds' }, { value: 'OPERATION', label: 'Operation' }, { value: 'ENVIRONMENT', label: 'Environment' }, { value: 'ALERT RESOLUTION', label: 'Alert resolution' }]} value={kindFilter} expanded={expandedFilter === 'kind'} onToggle={() => setExpandedFilter((current) => current === 'kind' ? null : 'kind')} onChange={(value) => { setKindFilter(value as ActivityLogKind | 'all'); setExpandedFilter(null); }} />
+          <FilterDropdown label="Date range" summary={dateFrom || dateTo ? `${dateFrom || 'Any'} to ${dateTo || 'Any'}` : 'Any date'} icon={<CalendarDays size={16} color={colors.teal} />} expanded={expandedFilter === 'dates'} onToggle={() => setExpandedFilter((current) => current === 'dates' ? null : 'dates')}>
+            <View style={layout.dates}>
+              <CalendarFilterField label="From date (PHT)" value={dateFrom} onChangeText={setDateFrom} />
+              <CalendarFilterField label="To date (PHT)" value={dateTo} onChangeText={setDateTo} />
             </View>
-          </View>
-          <View style={layout.dates}>
-            <FilterField label="From date (PHT)" value={dateFrom} onChangeText={setDateFrom} placeholder="YYYY-MM-DD" />
-            <FilterField label="To date (PHT)" value={dateTo} onChangeText={setDateTo} placeholder="YYYY-MM-DD" />
-          </View>
+          </FilterDropdown>
         </View>
       </Card>
       <Card title="Activity records" action={user?.role === 'admin' ? <Pressable accessibilityRole="button" accessibilityLabel={exportingLogs ? 'Preparing CSV' : 'Share CSV'} accessibilityState={{ disabled: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 }} disabled={exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0} onPress={() => void shareLogs()} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface, opacity: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 ? 0.5 : 1 }}><FileDown size={18} color={colors.teal} /></Pressable> : undefined}>
@@ -709,7 +707,7 @@ export function HistoryScreen() {
     setPage((current) => Math.min(current, pageCount));
   }, [pageCount]);
   return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
-    <Title icon={<Database size={23} color={colors.teal} />} detail="Scheduled readings every 3 hours · extra threshold readings included">History</Title>
+    <Title icon={<Database size={23} color={colors.teal} />} detail="Review sensor readings by tank, parameter, and date range">History</Title>
     <View style={layout.cards}>
       <View style={{ gap: uiScale.spacing[3] }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: uiScale.spacing[3] }}>
@@ -718,8 +716,8 @@ export function HistoryScreen() {
         </View>
           <FilterDropdown label="Date range" summary={`${from} to ${to}`} icon={<CalendarDays size={16} color={colors.teal} />} expanded={expandedFilter === 'dates'} onToggle={() => setExpandedFilter((current) => current === 'dates' ? null : 'dates')}>
             <View style={layout.dates}>
-              <FilterField label="From date (PHT)" value={from} onChangeText={(value) => { setFrom(value); setPage(1); }} placeholder={from} />
-              <FilterField label="To date (PHT)" value={to} onChangeText={(value) => { setTo(value); setPage(1); }} placeholder={to} />
+              <CalendarFilterField label="From date (PHT)" value={from} onChangeText={(value) => { setFrom(value); setPage(1); }} />
+              <CalendarFilterField label="To date (PHT)" value={to} onChangeText={(value) => { setTo(value); setPage(1); }} />
             </View>
           </FilterDropdown>
       </View>
@@ -811,7 +809,7 @@ export function ReportsScreen() {
     }
   }
   return <Page>
-    <Title icon={<FileText size={23} color={colors.teal} />} detail="Select tanks, dates, sections and format">Report builder</Title>
+    <Title icon={<FileText size={23} color={colors.teal} />} detail="Select tanks, dates, sections and format">Reports</Title>
     <Card title="Tanks">
       {tanksLoading ? <StateMessage message="Loading tanks…" loading /> : tanksError ? <><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry tank list" secondary onPress={refetchTanks} /></> : tanks.length === 0 ? <StateMessage message="No tanks are available for this account." /> : null}
       {tanks.map((tank) => <ReportChoice key={tank.id} kind="checkbox" label={tank.name} selected={selectedIds.includes(tank.id)} onPress={() => setSelectedTanks((current) => {
@@ -821,8 +819,8 @@ export function ReportsScreen() {
     </Card>
     <Card title="Date range">
       <View style={{ flexDirection: 'row', gap: uiScale.spacing[3] }}>
-        <FilterField label="From (YYYY-MM-DD)" value={from} onChangeText={setFrom} />
-        <FilterField label="To (YYYY-MM-DD)" value={to} onChangeText={setTo} />
+        <CalendarFilterField label="From (YYYY-MM-DD)" value={from} onChangeText={setFrom} />
+        <CalendarFilterField label="To (YYYY-MM-DD)" value={to} onChangeText={setTo} />
       </View>
     </Card>
     <Card title="Sections">

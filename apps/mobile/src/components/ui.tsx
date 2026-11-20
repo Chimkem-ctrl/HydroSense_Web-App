@@ -1,11 +1,12 @@
-import { createContext, useContext, useRef } from 'react';
+import { createContext, useContext, useRef, useState } from 'react';
 import type { ComponentProps, ComponentRef, PropsWithChildren, ReactNode, RefObject } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Dialog, Portal } from 'react-native-paper';
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
 
@@ -120,6 +121,78 @@ export function FilterField({ label, value, onChangeText, placeholder }: { label
   return <View style={styles.filterField}>
     <Text style={styles.filterLabel}>{label}</Text>
     <TextInput accessibilityLabel={label} style={styles.filterInput} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} autoCapitalize="none" />
+  </View>;
+}
+
+function parseCalendarDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+}
+
+function calendarDateKey(year: number, month: number, day: number) {
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+export function CalendarFilterField({ label, value, onChangeText, placeholder }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+  const [visible, setVisible] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const selectedDate = parseCalendarDate(value);
+  const year = visibleMonth.getFullYear();
+  const month = visibleMonth.getMonth();
+  const days = new Date(year, month + 1, 0).getDate();
+  const leadingDays = new Date(year, month, 1).getDay();
+  const monthLabel = visibleMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+  function openCalendar() {
+    const current = selectedDate ?? new Date();
+    setVisibleMonth(new Date(current.getFullYear(), current.getMonth(), 1));
+    setVisible(true);
+  }
+
+  function moveMonth(offset: number) {
+    setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  }
+
+  return <View style={styles.filterField}>
+    <Text style={styles.filterLabel}>{label}</Text>
+    <View style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface }}>
+      <TextInput accessibilityLabel={label} style={[styles.filterInput, { flex: 1, borderWidth: 0, backgroundColor: 'transparent' }]} value={value} onChangeText={onChangeText} placeholder={placeholder ?? 'YYYY-MM-DD'} placeholderTextColor={colors.muted} autoCapitalize="none" />
+      <Pressable accessibilityRole="button" accessibilityLabel={`Choose ${label.toLowerCase()}`} onPress={openCalendar} style={{ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+        <CalendarDays size={18} color={colors.teal} />
+      </Pressable>
+    </View>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
+      <View style={{ flex: 1, justifyContent: 'center', padding: uiScale.spacing[4], backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close calendar" onPress={() => setVisible(false)} style={StyleSheet.absoluteFill} />
+        <View style={{ gap: uiScale.spacing[3], borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.card, padding: uiScale.spacing[4], backgroundColor: colors.surface }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => moveMonth(-1)} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={20} color={colors.ink} /></Pressable>
+            <Text accessibilityRole="header" style={{ color: colors.ink, fontWeight: '700' }}>{monthLabel}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => moveMonth(1)} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={20} color={colors.ink} /></Pressable>
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((weekday) => <Text key={weekday} accessibilityLabel={weekday} style={{ width: '14.28%', paddingVertical: 8, color: colors.muted, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{weekday.slice(0, 1)}</Text>)}
+            {Array.from({ length: leadingDays }, (_, index) => <View key={`empty-${index}`} style={{ width: '14.28%', height: 40 }} />)}
+            {Array.from({ length: days }, (_, index) => {
+              const day = index + 1;
+              const dateKey = calendarDateKey(year, month, day);
+              const selected = dateKey === value;
+              const dateLabel = new Date(year, month, day).toLocaleDateString();
+              return <Pressable key={dateKey} accessibilityRole="button" accessibilityLabel={dateLabel} accessibilityState={{ selected }} onPress={() => { onChangeText(dateKey); setVisible(false); }} style={{ width: '14.28%', height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.pill, backgroundColor: selected ? colors.selected : 'transparent' }}>
+                <Text style={{ color: selected ? colors.teal : colors.ink, fontWeight: selected ? '700' : '400' }}>{day}</Text>
+              </Pressable>;
+            })}
+          </View>
+        </View>
+      </View>
+    </Modal>
   </View>;
 }
 

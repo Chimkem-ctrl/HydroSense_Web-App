@@ -1,5 +1,6 @@
 import { Switch, Text, View } from 'react-native';
 import type { Role } from '@hydrosense/shared';
+import { RotateCcw } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { Button } from './ui';
 
@@ -33,7 +34,7 @@ export function DeviceMaintenanceControls({ role }: { role: Role }) {
   return <>
     {role === 'operator' ? <>
       <Button label="Request calibration" secondary disabled onPress={() => {}} />
-      <Button label="Request reboot" secondary disabled onPress={() => {}} />
-    </> : <Button label="Reboot device" secondary disabled onPress={() => {}} />}
+      <Button label="Request reboot" secondary disabled icon={<RotateCcw size={18} color={colors.ink} />} onPress={() => {}} />
+    </> : <Button label="Reboot device" secondary disabled icon={<RotateCcw size={18} color={colors.ink} />} onPress={() => {}} />}
   </>;
 }

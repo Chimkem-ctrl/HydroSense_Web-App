@@ -4,7 +4,7 @@ import { Dialog } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatManilaDateTime } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
-import { Check, ClipboardList, LockKeyhole, Search, UserRound, Users, X } from 'lucide-react-native';
+import { Check, ClipboardList, LockKeyhole, MapPin, Search, UserRound, Users, X } from 'lucide-react-native';
 import { canAccess } from './access';
 import { Button, Card, GlassDialog, Page, StateMessage, Title } from './components/ui';
 import { AlertPreferenceControls, DeviceMaintenanceControls } from './components/ProfileControls';
@@ -46,7 +46,6 @@ function ChangePasswordRow() {
     <Pressable accessibilityRole="button" accessibilityLabel="Change password, unavailable" accessibilityState={{ disabled: true }} disabled style={{ minHeight: 48, alignSelf: 'stretch', flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: colors.critical, backgroundColor: `${colors.critical}12` }}>
       <LockKeyhole size={18} color={colors.critical} /><Text style={{ color: colors.critical, fontSize: 14, fontWeight: '700' }}>Change password</Text>
     </Pressable>
-    <Text style={{ color: colors.muted, fontSize: 12 }}>Password changes are currently unavailable.</Text>
   </View>;
 }
 
@@ -108,7 +107,7 @@ export function ProfileScreen() {
     <Card title="Device maintenance">
       {isLoading ? <StateMessage message="Loading selected tank..." loading /> : error ? <><StateMessage message={`Could not load tank: ${error.message}`} /><Button label="Retry" secondary onPress={refetch} /></> : <>
         {user?.role === 'admin' && <View style={{ gap: 8 }}>
-          <Text style={{ color: colors.ink, fontSize: 14, fontWeight: '700' }}>Hatchery</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><MapPin size={16} color={colors.teal} /><Text style={{ color: colors.ink, fontSize: 14, fontWeight: '700' }}>Hatchery</Text></View>
           {hatcheries.length ? hatcheries.map((site) => <Pressable key={site} accessibilityRole="radio" accessibilityState={{ checked: maintenanceHatchery === site }} onPress={() => {
             setMaintenanceHatchery(site);
             setMaintenanceTankId('');

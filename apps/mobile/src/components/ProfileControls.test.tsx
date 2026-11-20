@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-native', () => ({ Switch: 'Switch', Text: 'Text', View: 'View' }));
+vi.mock('lucide-react-native', () => ({ RotateCcw: 'RotateCcw' }));
 vi.mock('../theme', () => ({ useTheme: () => ({ colors: { ink: '#000', muted: '#777', border: '#c4d2e8' } }) }));
 vi.mock('./ui', () => ({ Button: 'Button' }));
 
@@ -45,5 +46,6 @@ describe('profile placeholder controls', () => {
     const buttons = elements(DeviceMaintenanceControls({ role }), 'Button');
     expect(buttons.map((item) => item.props.label)).toEqual(labels);
     expect(buttons.every((item) => item.props.disabled === true)).toBe(true);
+    expect(buttons.filter((item) => typeof item.props.label === 'string' && item.props.label.toLowerCase().includes('reboot')).every((item) => isValidElement(item.props.icon) && item.props.icon.type === 'RotateCcw')).toBe(true);
   });
 });
