@@ -799,7 +799,7 @@ export function HistoryScreen() {
     setPage((current) => Math.min(current, pageCount));
   }, [pageCount]);
   return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
-    <Title detail="View readings in date range">History</Title>
+    <Title detail="Scheduled readings every 3 hours · extra threshold readings included">History</Title>
     <View style={layout.cards}>
       <View style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3] }}>
         <Pressable accessibilityRole="button" accessibilityLabel={`Filter by: ${tankLabel} · ${from} to ${to} · ${parameterLabel}`} accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen((open) => !open)} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] }}>
