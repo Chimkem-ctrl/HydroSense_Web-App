@@ -5,10 +5,7 @@ import App from '../App';
 import { queryClient } from './query';
 import { api } from './api';
 import { authService } from '../services/authService';
-<<<<<<< HEAD
-=======
 import * as activityDownload from '../services/downloadCsv';
->>>>>>> 692a36d (Update HydroSense UI, hatchery filters, and reports)
 
 function render(ui: ReactElement) {
   const result = renderBase(ui);
@@ -427,11 +424,7 @@ describe('themed dashboard routes', () => {
     expect(printButton.className).toBe(downloadButton.className);
     const statistics = screen.getByRole('region', { name: 'Report statistics' });
     expect(within(statistics).getByRole('columnheader', { name: 'Std dev' })).toBeInTheDocument();
-<<<<<<< HEAD
-    expect(within(statistics).getByText('Temperature')).toBeInTheDocument();
-=======
     expect(within(statistics).getByRole('cell', { name: 'Temperature' })).toBeInTheDocument();
->>>>>>> 692a36d (Update HydroSense UI, hatchery filters, and reports)
     expect(screen.getByText('Temperature ≤ 32')).toBeInTheDocument();
     expect(screen.getByText('DO ≥ 5')).toBeInTheDocument();
     expect(screen.getByText('pH 7.2–8.5')).toBeInTheDocument();

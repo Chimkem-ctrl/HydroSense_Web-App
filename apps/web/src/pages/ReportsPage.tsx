@@ -38,8 +38,6 @@ function manilaEnd(date: string) {
   return new Date(`${date}T23:59:59.999+08:00`).toISOString();
 }
 
-<<<<<<< HEAD
-=======
 async function loadReportReadings(tankId: string, from: number, to: number): Promise<Reading[]> {
   const readings = await api.listReadings({
     tankId,
@@ -58,7 +56,6 @@ async function loadReportReadings(tankId: string, from: number, to: number): Pro
   return [...new Map([...earlier, ...later].map((reading) => [reading.id, reading])).values()];
 }
 
->>>>>>> 692a36d (Update HydroSense UI, hatchery filters, and reports)
 const reportRangeDateFormatter = new Intl.DateTimeFormat('en-PH', {
   timeZone: 'Asia/Manila',
   month: 'short',
@@ -301,11 +298,7 @@ export default function ReportsPage() {
             <span className="dash-report-result-label">RECORDS MATCHED</span>
             <div className="dash-report-count">
               <strong>{rows.length}</strong>
-<<<<<<< HEAD
-              <span>readings</span>
-=======
               <span>records</span>
->>>>>>> 692a36d (Update HydroSense UI, hatchery filters, and reports)
             </div>
             <span className="dash-report-date-range">{formatReportRangeDate(from)} → {formatReportRangeDate(to)}</span>
           </div>
@@ -315,11 +308,7 @@ export default function ReportsPage() {
               {notice && <p role="status">{notice}</p>}
             </div>
             <div className={`dash-report-action-buttons${canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError ? ' has-csv' : ''}`}>
-<<<<<<< HEAD
-              {canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError && <button className="button button-primary" type="button" onClick={downloadCsv}>Download CSV</button>}
-=======
               {canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError && <button className="button button-primary" type="button" onClick={downloadCsv}><FileDown size={18} aria-hidden="true" />Download CSV</button>}
->>>>>>> 692a36d (Update HydroSense UI, hatchery filters, and reports)
               <button
                 ref={filterButtonRef}
                 className="button dash-report-filter-button"
@@ -350,19 +339,11 @@ export default function ReportsPage() {
               </header>
               <dl className="dash-report-meta">
                 <div><dt>Report ID</dt><dd className="dash-report-id" title={model.id}>{model.id}</dd></div>
-<<<<<<< HEAD
-=======
                 <div><dt>Hatchery</dt><dd>{[...new Set(model.tanks.map((tank) => tank.site))].join(', ')}</dd></div>
->>>>>>> 692a36d (Update HydroSense UI, hatchery filters, and reports)
                 <div><dt>Tanks / period</dt><dd>{model.tanks.map((tank) => tank.name).join(', ')} · {from} to {to} PHT</dd></div>
                 <div><dt>Prepared by</dt><dd>{model.generatedBy.name} ({model.generatedBy.role})</dd></div>
                 <div><dt>Generated</dt><dd>{formatManilaDateTime(model.generatedAt)} PHT</dd></div>
               </dl>
-<<<<<<< HEAD
-              {sections.includes('summary') && <section className="dash-report-section"><p className="dash-report-summary">{model.summary}</p></section>}
-              {sections.includes('statistics') && (
-                <section className="dash-report-section" aria-label="Report statistics">
-=======
               {sections.includes('summary') && <section className="dash-report-section"><h2 className="report-print-only report-print-section-title">Executive Summary</h2><p className="dash-report-summary">{model.summary}</p></section>}
               {sections.includes('statistics') && (
                 <section className="dash-report-section" aria-label="Report statistics">
@@ -384,7 +365,6 @@ export default function ReportsPage() {
                       <strong>{row.percentInRange === null ? 'No data' : `${row.percentInRange.toFixed(1)}%`}</strong>
                     </div>)}
                   </div>
->>>>>>> 692a36d (Update HydroSense UI, hatchery filters, and reports)
                   <div className="table-wrap dash-report-table-frame">
                     <table className="dash-report-stats-table">
                       <thead><tr><th scope="col">Parameter</th><th className="table-numeric" scope="col">Min</th><th className="table-numeric" scope="col">Max</th><th className="table-numeric" scope="col">Mean</th><th className="table-numeric" scope="col">Std dev</th><th className="table-numeric" scope="col">In range</th><th className="table-numeric" scope="col">Excursions</th><th className="table-numeric" scope="col">Longest (h)</th></tr></thead>
@@ -396,12 +376,8 @@ export default function ReportsPage() {
                 </section>
               )}
               {(sections.includes('alerts') || sections.includes('data-quality') || sections.includes('thresholds') || sections.includes('activity') || sections.includes('calibration') || sections.includes('validation')) && (
-<<<<<<< HEAD
-                <section className="dash-report-section" aria-label="Report facts">
-=======
                 <section className="dash-report-section dash-report-facts-section" aria-label="Report facts">
                   <h2 className="report-print-only report-print-section-title">Operations And Data Quality</h2>
->>>>>>> 692a36d (Update HydroSense UI, hatchery filters, and reports)
                   <div className="dash-report-facts">
                     {sections.includes('alerts') && <div className="dash-report-fact"><span className="dash-report-fact-label">Alerts</span><p className="dash-report-fact-value">{model.alertCounts.critical} critical · {model.alertCounts.warning} warning · {model.alertCounts.open} open · {model.alertCounts.acknowledged} acknowledged · {model.alertCounts.resolved} resolved</p></div>}
                     {sections.includes('data-quality') && <div className="dash-report-fact"><span className="dash-report-fact-label">Expected readings</span><p className="dash-report-fact-value">Expected {model.dataQuality.expectedReadings} · Received {model.dataQuality.receivedReadings} ({model.dataQuality.receivedPercent.toFixed(1)}%)</p></div>}
@@ -414,10 +390,7 @@ export default function ReportsPage() {
               )}
               {sections.includes('raw-readings') && (
                 <section className="dash-report-section">
-<<<<<<< HEAD
-=======
                   <h2 className="report-print-only report-print-section-title">Reading Sample</h2>
->>>>>>> 692a36d (Update HydroSense UI, hatchery filters, and reports)
                   <p className="dash-report-raw-caption">Showing first {rawReadingsPreview.length} of {model.rawReadings.length} readings</p>
                   <div className="table-wrap dash-report-table-frame dash-report-raw-readings">
                     <table className="dash-report-raw-table">

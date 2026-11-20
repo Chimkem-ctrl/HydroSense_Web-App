@@ -304,8 +304,6 @@
 .glass-screen .dash-report-meta dd { min-width: 0; margin: 0; color: var(--text-primary); font-size: var(--font-body); font-weight: 400; overflow-wrap: anywhere; }
 .glass-screen .dash-report-meta .dash-report-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .glass-screen .dash-report-section { min-width: 0; }
-<<<<<<< HEAD
-=======
 .report-print-only { display: none; }
 .report-bar-chart {
   --report-chart-accent: 107, 157, 255;
@@ -363,7 +361,6 @@
 @media screen and (max-width: 400px) {
   .report-bar-axis span:nth-child(even) { visibility: hidden; }
 }
->>>>>>> 692a36d (Update HydroSense UI, hatchery filters, and reports)
 .glass-screen .dash-report-section + .dash-report-section,
 .glass-screen .dash-report-section + p { margin-top: var(--space-5); }
 .glass-screen .dash-report-body .dash-report-summary { max-width: none; border: 1px solid var(--glass-border); border-left: 3px solid var(--accent); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); font-size: var(--font-body); font-weight: 500; line-height: 1.5; }
@@ -457,10 +454,7 @@
 .glass-screen .history-sort-button svg { flex: 0 0 auto; color: var(--text-secondary); }
 .glass-screen .activity-log-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); align-items: stretch; gap: var(--space-3); }
 .glass-screen .activity-log-actions .button { width: 100%; min-height: 44px; justify-content: center; padding: 0 14px; font-size: inherit; }
-<<<<<<< HEAD
-=======
 .activity-log-records-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
->>>>>>> 692a36d (Update HydroSense UI, hatchery filters, and reports)
 .glass-screen .history-records,
 .glass-screen .activity-log-records { min-width: 0; }
 .glass-screen .history-table-wrap,
