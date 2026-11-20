@@ -13,6 +13,26 @@ afterEach(() => {
 });
 
 describe('API account review', () => {
+  it('loads and saves the signed-in user profile picture', async () => {
+    window.localStorage.setItem('hydrosense.auth.user', JSON.stringify({
+      id: '1', firstName: 'Jane', lastName: 'Smith', email: 'jane@example.test',
+      role: 'operator', requestedRole: null, status: 'approved', createdAt: '2026-01-01',
+    }));
+    window.localStorage.setItem('hydrosense.auth.access-token', 'token');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ avatarUrl: 'https://storage.example/old-avatar' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ avatarUrl: 'https://storage.example/new-avatar' }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { authService, getCurrentUser } = await import('./authService');
+    expect(await authService.getProfileAvatarUrl()).toBe('https://storage.example/old-avatar');
+    const file = new File([new Uint8Array([1, 2, 3])], 'profile.png', { type: 'image/png' });
+    expect(await authService.saveProfileAvatar(file)).toBe('https://storage.example/new-avatar');
+    expect(fetchMock.mock.calls[1][0]).toContain('/v1/profile/avatar');
+    expect(fetchMock.mock.calls[1][1].method).toBe('PUT');
+    expect(fetchMock.mock.calls[1][1].headers['Content-Type']).toBe('image/png');
+    expect(getCurrentUser()?.avatarUrl).toBe('https://storage.example/new-avatar');
+  });
+
   it('maps pending and approved profile sites from the API', async () => {
     window.localStorage.setItem('hydrosense.auth.user', JSON.stringify({ id: 'admin', role: 'admin' }));
     window.localStorage.setItem('hydrosense.auth.access-token', 'token');

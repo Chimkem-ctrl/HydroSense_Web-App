@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
+import { Camera, LoaderCircle } from 'lucide-react';
 import { formatManilaDateTime } from '@hydrosense/shared';
 import { useAuth, useRole } from '../app/auth/RoleContext';
 import { ROLE_LABELS } from '../app/config';
 import { useProfileSite, useTanks } from '../app/data/hooks';
 import { useSelectedTank } from '../app/tank/TankContext';
-import { hatcheryLabel } from '../services/authService';
+import { authService, hatcheryLabel } from '../services/authService';
 import { PageHeading } from '../components/common/PageHeading';
 import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState } from '../components/common/States';
@@ -25,11 +27,39 @@ export default function ProfilePage() {
   const site = useProfileSite();
   const { hatchery, tanks: scopedTanks } = useSelectedTank();
   const [maintenanceTankId, setMaintenanceTankId] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string>();
+  const [avatarLoadError, setAvatarLoadError] = useState<Error | null>(null);
+  const avatarInput = useRef<HTMLInputElement>(null);
   const maintenanceTanks = scopedTanks.filter((item) => isTankOne(item.name));
+  const saveAvatar = useMutation({
+    mutationFn: (file: File) => authService.saveProfileAvatar(file),
+    onSuccess: (url) => {
+      setAvatarUrl(url);
+      setAvatarLoadError(null);
+    },
+  });
 
   useEffect(() => {
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView?.();
   }, [hash]);
+
+  useEffect(() => {
+    let active = true;
+    setAvatarUrl(user?.avatarUrl);
+    setAvatarLoadError(null);
+    if (user) {
+      void authService.getProfileAvatarUrl().then((url) => {
+        if (active) setAvatarUrl(url);
+      }).catch((error: unknown) => {
+        if (active) setAvatarLoadError(error instanceof Error ? error : new Error(String(error)));
+      });
+    }
+    return () => { active = false; };
+  }, [user?.id, user?.avatarUrl]);
+
+  function selectAvatar(file?: File) {
+    if (file) saveAvatar.mutate(file);
+  }
 
   return (
     <div className="stack profile-page">
@@ -38,9 +68,33 @@ export default function ProfilePage() {
         <section id="profile" className="card profile-card" aria-label="Profile">
           {!user ? <EmptyState>Profile details are not available for this account.</EmptyState> : <>
             <div className="profile-summary">
-              <span className="avatar profile-avatar" aria-hidden="true">{userName.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>
-              <h2>{userName.trim() || 'N/A'}</h2>
-              <p>{ROLE_LABELS[role]}</p>
+              <div className="profile-avatar-wrap">
+                {avatarUrl
+                  ? <img className="avatar profile-avatar" src={avatarUrl} alt={`${userName.trim() || 'User'} profile picture`} />
+                  : <span className="avatar profile-avatar" aria-hidden="true">{userName.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>}
+                <button className="profile-avatar-upload" type="button" aria-label="Upload profile picture" title="Upload profile picture" disabled={saveAvatar.isPending} onClick={() => avatarInput.current?.click()}>
+                  {saveAvatar.isPending ? <LoaderCircle className="profile-avatar-upload-spinner" size={16} aria-hidden="true" /> : <Camera size={16} aria-hidden="true" />}
+                </button>
+              </div>
+              <div className="profile-summary-details">
+                <h2>{userName.trim() || 'N/A'}</h2>
+                <p>{ROLE_LABELS[role]}</p>
+                <input
+                  ref={avatarInput}
+                  className="sr-only"
+                  type="file"
+                  aria-label="Choose profile picture"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(event) => {
+                    selectAvatar(event.currentTarget.files?.[0]);
+                    event.currentTarget.value = '';
+                  }}
+                />
+                {saveAvatar.isPending && <p className="small muted" role="status">Preparing and uploading… JPG, PNG, or WebP; up to 10 MB.</p>}
+                {saveAvatar.isError && <ErrorState error={saveAvatar.error} />}
+                {avatarLoadError && <ErrorState error={avatarLoadError} />}
+                {saveAvatar.isSuccess && <p className="small" role="status">Profile picture updated.</p>}
+              </div>
             </div>
             <div className="profile-groups">
               <section className="profile-group profile-group-main" aria-labelledby="profile-details-title">

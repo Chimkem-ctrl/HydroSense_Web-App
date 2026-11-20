@@ -107,6 +107,10 @@ approved admins while preserving a user's access to their own profile. Profile
 changes must go through the API, which applies account-management checks. Apply
 the migration and deploy the updated Edge Function for existing installations;
 source changes alone do not change a deployed database or API.
+Profile pictures are stored in the private `profile-avatars` bucket. Apply the
+profile avatar migration and deploy the updated Edge Function; only the signed-in
+user can upload their own picture, and approved user lists return expiring signed
+image URLs to authorized admins and managers.
 The operational-table protection migration disables direct client access to
 settings, records, validation and audit tables; the API remains responsible
 for role checks. Any external integration using those tables directly must

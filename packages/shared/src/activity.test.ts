@@ -26,10 +26,9 @@ describe('activity log validation', () => {
     expect(validateActivityLog(validEntry)).toHaveLength(0);
   });
 
-  it('requires an in-range manual reading for manual water quality checks', () => {
+  it('allows note-only manual water quality checks and validates supplied readings', () => {
     const base = { ...validEntry, type: 'Manual water quality check', waterChangePercent: undefined };
-    expect(validateActivityLog(base)[0].message)
-      .toBe('Enter at least one water-quality measurement from a manual instrument.');
+    expect(validateActivityLog(base)).toHaveLength(0);
     expect(validateActivityLog({
       ...base,
       manualReadings: { ammonia: 101 },

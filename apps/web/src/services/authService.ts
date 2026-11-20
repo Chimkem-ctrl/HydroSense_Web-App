@@ -49,11 +49,15 @@ const API_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
 const ACCOUNTS_KEY = 'hydrosense.auth.accounts.v2';
 const SESSION_KEY = 'hydrosense.auth.session.v2';
+const ADMIN_AVATAR_KEY = 'hydrosense.auth.admin-avatar.v1';
 const DEMO_ROLES_SEEDED_KEY = 'hydrosense.auth.demo-roles-seeded.v1';
 const ADMIN_ID = 'demo-admin';
 const ADMIN_SALT = 'hydrosense-demo-admin-v2';
 const DUMMY_SALT = 'hydrosense-auth-invalid-account-v2';
 const AUTH_CHANGE_EVENT = 'hydrosense:auth-change';
+const PROFILE_AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+const PROFILE_AVATAR_INPUT_MAX_BYTES = 10 * 1024 * 1024;
+const PROFILE_AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 type ReviewRole = Exclude<Role, 'admin'>;
 
@@ -94,8 +98,57 @@ async function listApiAdminProfiles(status: 'pending' | 'approved'): Promise<Aut
     emergencyContactName: profile.emergencyContactName as string | undefined,
     emergencyContactPhone: profile.emergencyContactPhone as string | undefined,
     hatcheryId: profile.site as string | undefined,
+    avatarUrl: typeof profile.avatarUrl === 'string' ? profile.avatarUrl : undefined,
     createdAt: String(profile.createdAt ?? ''),
   }));
+}
+
+async function prepareProfileAvatar(file: File): Promise<Blob> {
+  if (file.size <= 300 * 1024) return file;
+  if (typeof createImageBitmap !== 'function') {
+    if (file.size <= PROFILE_AVATAR_MAX_BYTES) return file;
+    throw new Error('This browser cannot resize the selected image. Choose an image no larger than 2 MB.');
+  }
+
+  const image = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, 512 / Math.max(image.width, image.height));
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Your browser could not prepare the profile picture.');
+    context.drawImage(image, 0, 0, width, height);
+    const optimized = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Your browser could not prepare the profile picture.'));
+      }, 'image/webp', 0.8);
+    });
+    if (!PROFILE_AVATAR_TYPES.has(optimized.type) || optimized.size === 0 || optimized.size > PROFILE_AVATAR_MAX_BYTES) {
+      throw new Error('The optimized profile picture is not valid or is still too large.');
+    }
+    return optimized;
+  } finally {
+    image.close();
+  }
+}
+
+function readFileAsDataUrl(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('The selected profile picture could not be read.'));
+        return;
+      }
+      resolve(reader.result);
+    }, { once: true });
+    reader.addEventListener('error', () => reject(new Error('The selected profile picture could not be read.')), { once: true });
+    reader.readAsDataURL(file);
+  });
 }
 
 async function updateApiProfile(userId: string, status: AccountStatus, role: Role | null): Promise<AuthUser> {
@@ -314,7 +367,9 @@ export function getCurrentUser(): AuthUser | null {
   }
   const userId = readSessionUserId();
   if (!userId) return null;
-  if (userId === ADMIN_ID) return { ...adminUser };
+  if (userId === ADMIN_ID) {
+    return { ...adminUser, avatarUrl: window.localStorage.getItem(ADMIN_AVATAR_KEY) ?? undefined };
+  }
   const account = readAccounts().find((item) => item.user.id === userId);
   if (!account || account.user.status !== 'approved' || account.user.role === null) return null;
   return { ...account.user };
@@ -332,6 +387,71 @@ export function signOut() {
 }
 
 export const authService = {
+  async getProfileAvatarUrl(): Promise<string | undefined> {
+    const user = getCurrentUser();
+    if (!user) throw new Error('Sign in to view your profile picture.');
+    if (DATA_MODE !== 'api') return user.avatarUrl;
+
+    const token = window.localStorage.getItem('hydrosense.auth.access-token');
+    if (!token) throw new Error('Your session has expired. Sign in again.');
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/api/v1/profile`, {
+      headers: { apikey: API_KEY, Authorization: `Bearer ${token}` },
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error ?? result.message ?? 'Unable to load your profile picture.');
+    if (result.avatarUrl !== null && result.avatarUrl !== undefined && typeof result.avatarUrl !== 'string') {
+      throw new Error('Your profile picture URL is invalid.');
+    }
+    return result.avatarUrl ?? undefined;
+  },
+
+  async saveProfileAvatar(file: File): Promise<string> {
+    const user = getCurrentUser();
+    if (!user) throw new Error('Sign in to update your profile picture.');
+    if (!PROFILE_AVATAR_TYPES.has(file.type)) throw new Error('Choose a JPG, PNG, or WebP image.');
+    if (file.size === 0 || file.size > PROFILE_AVATAR_INPUT_MAX_BYTES) {
+      throw new Error('Choose an image no larger than 10 MB.');
+    }
+    const image = await prepareProfileAvatar(file);
+
+    if (DATA_MODE === 'api') {
+      const token = window.localStorage.getItem('hydrosense.auth.access-token');
+      if (!token) throw new Error('Your session has expired. Sign in again.');
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/api/v1/profile/avatar`, {
+        method: 'PUT',
+        headers: {
+          apikey: API_KEY,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': image.type || file.type,
+        },
+        body: image,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? result.message ?? 'Unable to save your profile picture.');
+      if (typeof result.avatarUrl !== 'string') throw new Error('The saved profile picture URL is invalid.');
+      window.localStorage.setItem('hydrosense.auth.user', JSON.stringify({ ...user, avatarUrl: result.avatarUrl }));
+      notifyAuthChanged();
+      return result.avatarUrl;
+    }
+
+    const avatarUrl = await readFileAsDataUrl(image);
+    if (user.id === ADMIN_ID) {
+      try {
+        window.localStorage.setItem(ADMIN_AVATAR_KEY, avatarUrl);
+      } catch (error) {
+        throw new Error(`Could not save your profile picture in the browser: ${String(error)}`);
+      }
+    } else {
+      const accounts = readAccounts();
+      const index = accounts.findIndex((account) => account.user.id === user.id);
+      if (index < 0) throw new Error('Your account could not be found.');
+      accounts[index] = { ...accounts[index], user: { ...accounts[index].user, avatarUrl } };
+      writeAccounts(accounts);
+    }
+    notifyAuthChanged();
+    return avatarUrl;
+  },
+
   async getProfileSite(user: AuthUser): Promise<string | undefined> {
     if (DATA_MODE !== 'api') return user.hatcheryId;
     const token = window.localStorage.getItem('hydrosense.auth.access-token');

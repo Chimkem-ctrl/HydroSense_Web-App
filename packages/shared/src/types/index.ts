@@ -151,6 +151,7 @@ export interface DashboardUser {
   employeeId?: string;
   phone?: string;
   position?: string;
+  avatarUrl?: string;
   address?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;

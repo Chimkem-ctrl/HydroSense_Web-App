@@ -20,6 +20,18 @@ function PhoneCell({ phone }: { phone?: string }) {
   return phone?.trim() || '—';
 }
 
+function UserIdentity({ user }: { user: Pick<DashboardUser, 'name' | 'avatarUrl'> }) {
+  const initials = user.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase();
+  return (
+    <span className="admin-user-identity">
+      {user.avatarUrl
+        ? <img className="admin-user-avatar" src={user.avatarUrl} alt="" />
+        : <span className="admin-user-avatar" aria-hidden="true">{initials}</span>}
+      <span>{user.name}</span>
+    </span>
+  );
+}
+
 type UserConfirmation =
   | { action: 'approve'; userId: string; name: string; role: Role }
   | { action: 'reject' | 'remove'; userId: string; name: string };
@@ -48,6 +60,7 @@ export function AdminUsersPage() {
         employeeId: user.employeeId,
         phone: user.phone,
         position: user.position,
+        avatarUrl: user.avatarUrl,
         address: user.address,
         emergencyContactName: user.emergencyContactName,
         emergencyContactPhone: user.emergencyContactPhone,
@@ -184,7 +197,7 @@ export function AdminUsersPage() {
         </div>
         {!tierConfig.teamAccounts ? null : users.isLoading ? <LoadingState /> : users.isError ? <ErrorState error={users.error} onRetry={() => void users.refetch()} /> : !visibleAdminUsers.length ? <EmptyState>No administrator accounts are registered.</EmptyState> :
           <div className="table-wrap" role="region" aria-label="Admin accounts table"><table className="admin-users-table"><thead><tr><th scope="col">Name</th><th scope="col">ID</th><th scope="col">Email</th><th scope="col">Phone number</th><th scope="col">Role</th><th scope="col">Hatchery / site</th><th scope="col">Last active</th></tr></thead><tbody>
-            {visibleAdminUsers.map((user) => <tr key={user.id}><td>{user.name}</td><td>{user.employeeId || '—'}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{ROLE_LABELS[user.role]}</td><td>{hatcheryLabel(user.site)}</td><td>{formatManilaDateTime(user.lastActive)} PHT</td></tr>)}
+            {visibleAdminUsers.map((user) => <tr key={user.id}><td><UserIdentity user={user} /></td><td>{user.employeeId || '—'}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{ROLE_LABELS[user.role]}</td><td>{hatcheryLabel(user.site)}</td><td>{formatManilaDateTime(user.lastActive)} PHT</td></tr>)}
           </tbody></table></div>}
       </section>}
       <section className="card admin-users-panel" aria-labelledby="team-accounts-title">
@@ -202,7 +215,7 @@ export function AdminUsersPage() {
           {selectedHatchery === 'all' && <h3>{name}</h3>}
           <div className="table-wrap" tabIndex={0} role="region" aria-label={`${name} accounts`}><table className="admin-users-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Employee ID</th><th scope="col">Role</th><th scope="col">Last active</th>{!isManager && <th scope="col">Actions</th>}</tr></thead><tbody>
             {!members.length && <tr><td className="admin-users-search-empty" colSpan={isManager ? 6 : 7} role="status">No accounts match your search.</td></tr>}
-            {members.map((user) => <tr key={user.id}><td>{user.name}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{user.employeeId || '—'}</td><td><span>{ROLE_LABELS[user.role]}</span></td><td>{formatManilaDateTime(user.lastActive)} PHT</td>{!isManager && <td><button type="button" className="button button-danger" disabled={removeAccount.isPending} onClick={() => setConfirmation({ action: 'remove', userId: user.id, name: user.name })}>Remove account</button></td>}</tr>)}
+            {members.map((user) => <tr key={user.id}><td><UserIdentity user={user} /></td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{user.employeeId || '—'}</td><td><span>{ROLE_LABELS[user.role]}</span></td><td>{formatManilaDateTime(user.lastActive)} PHT</td>{!isManager && <td><button type="button" className="button button-danger" disabled={removeAccount.isPending} onClick={() => setConfirmation({ action: 'remove', userId: user.id, name: user.name })}>Remove account</button></td>}</tr>)}
           </tbody></table></div></section>; })}</div></>
         )}
           {removeAccount.isError && <ErrorState error={removeAccount.error} />}

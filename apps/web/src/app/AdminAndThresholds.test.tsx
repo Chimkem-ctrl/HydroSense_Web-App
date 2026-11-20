@@ -15,7 +15,7 @@ const pending = [
   { id: 'p2', firstName: 'Other', lastName: 'Applicant', email: 'other@example.com', role: null, requestedRole: 'operator', status: 'pending', hatcheryId: 'other', createdAt: '2026-01-01T00:00:00Z' },
 ] as const;
 const team: DashboardUser[] = [
-  { id: 'u1', name: 'Local Operator', email: 'local-op@example.com', role: 'operator', site: hatchery.name, phone: 'bad', active: true, lastActive: '2026-01-01T00:00:00Z' },
+  { id: 'u1', name: 'Local Operator', email: 'local-op@example.com', role: 'operator', site: hatchery.name, phone: 'bad', active: true, lastActive: '2026-01-01T00:00:00Z', avatarUrl: 'https://storage.example/operator-avatar' },
   { id: 'u2', name: 'Local Manager', email: 'local-manager@example.com', role: 'manager', site: hatchery.name, active: true, lastActive: '2026-01-01T00:00:00Z' },
   { id: 'u3', name: 'Local Admin', email: 'local-admin@example.com', role: 'admin', site: hatchery.name, active: true, lastActive: '2026-01-01T00:00:00Z', employeeId: 'ADM-001', phone: '+639175550999' },
   { id: 'u4', name: 'Other Operator', email: 'other-op@example.com', role: 'operator', site: 'Other hatchery', active: true, lastActive: '2026-01-01T00:00:00Z' },
@@ -106,6 +106,7 @@ describe('users and roles', () => {
     const localSite = within(accounts).getByRole('region', { name: `${hatchery.name} accounts` });
     const otherSite = within(accounts).getByRole('region', { name: 'Other hatchery accounts' });
     expect(within(localSite).getByText('Local Operator')).toBeInTheDocument();
+    expect(localSite.querySelector('img.admin-user-avatar')).toHaveAttribute('src', 'https://storage.example/operator-avatar');
     expect(within(otherSite).getByText('Other Operator')).toBeInTheDocument();
     expect(within(localSite).queryByRole('columnheader', { name: 'Site' })).not.toBeInTheDocument();
     expect(within(accounts).getByText('Other Operator')).toBeInTheDocument();
