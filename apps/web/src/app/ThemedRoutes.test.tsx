@@ -203,10 +203,32 @@ describe('themed dashboard routes', () => {
     window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
     const validation = vi.spyOn(api, 'listValidationRows');
     const calibration = vi.spyOn(api, 'listCalibrationLogs');
+    vi.spyOn(api, 'listThresholds').mockResolvedValue([
+      { parameter: 'temperature', max: 32 },
+      { parameter: 'do', min: 5 },
+      { parameter: 'ph', min: 7.2, max: 8.5 },
+    ]);
     window.history.replaceState({}, '', '/reports');
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Reports' })).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Download CSV' })).toBeInTheDocument();
+    const downloadButton = await screen.findByRole('button', { name: 'Download CSV' });
+    const printButton = await screen.findByRole('button', { name: 'Print / Save PDF' });
+    expect(downloadButton.className).toBe('button button-primary');
+    expect(printButton.className).toBe(downloadButton.className);
+    const statistics = screen.getByRole('region', { name: 'Report statistics' });
+    expect(within(statistics).getByRole('columnheader', { name: 'Std dev' })).toBeInTheDocument();
+    expect(within(statistics).getByText('Temperature')).toBeInTheDocument();
+    expect(screen.getByText('Temperature ≤ 32')).toBeInTheDocument();
+    expect(screen.getByText('DO ≥ 5')).toBeInTheDocument();
+    expect(screen.getByText('pH 7.2–8.5')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Temp (°C)' })).toBeInTheDocument();
+    expect(screen.getByText(/^Showing first \d+ of \d+ readings$/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    const filterDialog = await screen.findByRole('dialog', { name: 'Report filters' });
+    expect(filterDialog.closest('.glass-shell')).not.toBeNull();
+    fireEvent.click(screen.getByRole('combobox', { name: 'CSV dataset' }));
+    const datasetMenu = await screen.findByRole('listbox', { name: 'CSV dataset' });
+    expect(datasetMenu.closest('.glass-shell')).not.toBeNull();
     expect(screen.queryByRole('option', { name: 'Validation' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Calibration log' })).not.toBeInTheDocument();
     expect(validation).not.toHaveBeenCalled();

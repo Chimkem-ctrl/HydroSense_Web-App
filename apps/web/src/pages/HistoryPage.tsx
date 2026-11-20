@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import type { MeasuredParameter, Reading } from '@hydrosense/shared';
 import { formatManilaDateTime, getManilaDateString } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
@@ -50,19 +50,27 @@ export default function HistoryPage() {
   }
 
   function sortButton(label: string, key: SortKey) {
-    const Icon = sortKey === key ? ascending ? ChevronUp : ChevronDown : ChevronDown;
-    return <button type="button" className="icon-button" aria-label={`Sort by ${label}`} onClick={() => changeSort(key)}>{label}<Icon size={14} /></button>;
+    const Icon = sortKey === key ? ascending ? ArrowUp : ArrowDown : null;
+    return <button type="button" className="history-sort-button" aria-label={`Sort by ${label}`} onClick={() => changeSort(key)}>{label}{Icon && <Icon size={12} aria-hidden="true" />}</button>;
   }
 
   return (
-    <div className="stack">
-      <PageHeading title="Historical logs" description="Filter and sort the measured water-quality readings." />
-      <section className="card inline" aria-label="History filters">
-        <label className="field">From<input type="date" value={from} min={minimumDate} max={to} onChange={(event) => { setFrom(event.target.value); setPage(0); }} /></label>
-        <label className="field">To<input type="date" value={to} min={from} max={maximumDate} onChange={(event) => { setTo(event.target.value); setPage(0); }} /></label>
-        <label className="field">Parameter<select value={parameter} onChange={(event) => { setParameter(event.target.value as MeasuredParameter | 'all'); setPage(0); }}><option value="all">All measured</option><option value="temperature">Temperature</option><option value="do">Dissolved oxygen</option><option value="ph">pH</option></select></label>
-        <span className="small muted">{rows.length} readings</span>
-      </section>
+    <div className="stack history-page">
+      <PageHeading title="Historical Logs" description="Filter and sort the measured water-quality readings." />
+      <div className="history-top-grid">
+        <section className="card history-filter-card" aria-label="History filters">
+          <div className="history-filter-controls">
+            <label className="field">From<input type="date" value={from} min={minimumDate} max={to} onChange={(event) => { setFrom(event.target.value); setPage(0); }} /></label>
+            <label className="field">To<input type="date" value={to} min={from} max={maximumDate} onChange={(event) => { setTo(event.target.value); setPage(0); }} /></label>
+            <label className="field">Parameter<select value={parameter} onChange={(event) => { setParameter(event.target.value as MeasuredParameter | 'all'); setPage(0); }}><option value="all">All measured</option><option value="temperature">Temperature</option><option value="do">Dissolved oxygen</option><option value="ph">pH</option></select></label>
+          </div>
+        </section>
+        <section className="card history-stat-card" aria-label="Readings summary">
+          <span className="small muted">Readings</span>
+          <strong>{rows.length}</strong>
+          <span className="small muted">{from} – {to}</span>
+        </section>
+      </div>
       {query.dataUpdatedAt && Date.now() - query.dataUpdatedAt > 3 * 3_600_000 && <StaleState updatedAt={query.dataUpdatedAt} />}
       {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : rows.length === 0 ? <EmptyState>No readings match the selected date range and parameter.</EmptyState> : (
         <section className="card">
