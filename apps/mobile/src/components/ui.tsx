@@ -85,11 +85,11 @@ export function Card({ children, title, action, toneColor }: { children: ReactNo
   </CardContext.Provider>;
 }
 
-export function GlassDialog({ children, visible, onDismiss }: { children: ComponentProps<typeof Dialog>['children']; visible: boolean; onDismiss: () => void }) {
+export function GlassDialog({ children, visible, onDismiss, solid = false }: { children: ComponentProps<typeof Dialog>['children']; visible: boolean; onDismiss: () => void; solid?: boolean }) {
   const { colors, reduceTransparency } = useTheme();
   const blurTarget = useContext(BlurTargetContext);
   const styles = createStyles(colors);
-  const solidFallback = needsSolidFallback(reduceTransparency);
+  const solidFallback = solid || needsSolidFallback(reduceTransparency);
   if (Platform.OS === 'android' && !blurTarget && !solidFallback) throw new Error('GlassDialog requires a blur target.');
   return <Portal>
     <Dialog visible={visible} onDismiss={onDismiss} style={[styles.dialog, solidFallback && { backgroundColor: colors.surface }]}>

@@ -247,7 +247,7 @@ export function UsersScreen() {
         {remove.isError && <StateMessage message={`Could not remove account: ${remove.error.message}`} />}
       </Card>
     </>}
-    <GlassDialog visible={Boolean(confirmation)} onDismiss={() => { if (!confirmationBusy) setConfirmation(null); }}>
+    <GlassDialog solid visible={Boolean(confirmation)} onDismiss={() => { if (!confirmationBusy) setConfirmation(null); }}>
       <Dialog.Title style={{ marginTop: 24 }}>{confirmationDetails?.title}</Dialog.Title>
       <Dialog.Content><Text style={{ color: colors.ink, fontSize: 15, lineHeight: 22 }}>{confirmationDetails?.message}</Text></Dialog.Content>
       <Dialog.Actions style={{ justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingBottom: 16 }}>

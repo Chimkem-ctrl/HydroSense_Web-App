@@ -199,4 +199,12 @@ describe('page background layers', () => {
       themeState.reduceTransparency = false;
     }
   });
+
+  it('renders solid dialogs without a translucent blur layer', () => {
+    const target = { current: null };
+    vi.mocked(useContext).mockReturnValueOnce(target);
+    const dialog = findElement(GlassDialog({ visible: true, onDismiss: () => {}, solid: true, children: 'Content' }), 'dialog');
+    expect(flattenStyle(dialog?.props.style).backgroundColor).toBe('#ffffff');
+    expect(Children.toArray(dialog?.props.children)).toEqual(['Content']);
+  });
 });
