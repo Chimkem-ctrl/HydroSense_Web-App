@@ -1,4 +1,4 @@
-import { Signal, Wifi, WifiOff } from 'lucide-react';
+import { Plus, Signal, Wifi, WifiOff, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
@@ -89,7 +89,7 @@ function TankDataQuality({ tankId, tankName }: { tankId: string; tankName: strin
 
 export default function TankOverviewPage() {
   const { role, userName } = useRole();
-  const { tankId, setTankId } = useSelectedTank();
+  const { tankId, setTankId, tanks: visibleTanks } = useSelectedTank();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const devices = useDeviceStatuses();
@@ -138,15 +138,16 @@ export default function TankOverviewPage() {
     },
   });
   const canManageTanks = can(role, 'registerTank');
-  const onlineCount = devices.data?.filter((device) => device.online).length ?? 0;
-  const offlineCount = devices.data ? devices.data.length - onlineCount : 0;
+  const visibleDevices = (devices.data ?? []).filter((device) => visibleTanks.some((tank) => tank.deviceId === device.deviceId));
+  const onlineCount = visibleDevices.filter((device) => device.online).length;
+  const offlineCount = visibleDevices.length - onlineCount;
   const selectedTank = query.data?.find(({ tank }) => tank.id === tankId)?.tank;
   const filteredRows = (query.data ?? []).filter(({ tank, reading }) => {
     const searchText = `${tank.name} ${tank.deviceId} ${tank.site}`.toLocaleLowerCase();
     const device = devices.data?.find((item) => item.deviceId === tank.deviceId);
     const hasRecentReading = Boolean(reading && Date.now() - new Date(reading.timestamp).getTime() <= 15 * 60 * 1000);
     const online = Boolean(device?.online || hasRecentReading);
-    return searchText.includes(search.trim().toLocaleLowerCase()) &&
+    return visibleTanks.some((item) => item.id === tank.id) && searchText.includes(search.trim().toLocaleLowerCase()) &&
       (statusFilter === 'all' || (statusFilter === 'online' ? online : Boolean(device && !device.online && !hasRecentReading)));
   });
   const submitTank = (event: FormEvent<HTMLFormElement>) => {
@@ -176,10 +177,10 @@ export default function TankOverviewPage() {
     <div className="stack">
       <PageHeading
         title="Tank Overview & System Health"
-        description={`${query.data?.length ?? 0} / ${tierConfig.nodeLimit} tanks registered`}
+        description={`${visibleTanks.length} tanks in the selected hatchery · ${query.data?.length ?? 0} / ${tierConfig.nodeLimit} registered`}
         actions={<div className="tank-overview-heading-actions">
           {!devices.isLoading && !devices.isError && <span className="health-summary">{onlineCount} online · {offlineCount} offline</span>}
-          {canManageTanks && <button type="button" className="button button-primary" aria-expanded={showRegisterForm} onClick={() => setShowRegisterForm((open) => !open)}>{showRegisterForm ? 'Cancel' : 'Register tank'}</button>}
+          {canManageTanks && <button type="button" className="button button-primary" aria-expanded={showRegisterForm} onClick={() => setShowRegisterForm((open) => !open)}>{showRegisterForm ? <X size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}{showRegisterForm ? 'Cancel' : 'Register tank'}</button>}
         </div>}
       />
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
@@ -192,7 +193,7 @@ export default function TankOverviewPage() {
                 <h2 className="card-title">Tank and hardware management</h2>
                 <span className="small muted">{query.data?.length ?? 0} / {tierConfig.nodeLimit} tanks</span>
               </div>
-              <button type="submit" className="button button-primary tank-submit" disabled={createTank.isPending || (query.data?.length ?? 0) >= tierConfig.nodeLimit}>Register tank and link hardware</button>
+              <button type="submit" className="button button-primary tank-submit" disabled={createTank.isPending || (query.data?.length ?? 0) >= tierConfig.nodeLimit}><Plus size={18} aria-hidden="true" />Register tank and link hardware</button>
             </div>
             <div className="grid tank-management-fields">
               <label className="field">Tank name<input name="name" required maxLength={80} placeholder="Larval Tank C" /></label>

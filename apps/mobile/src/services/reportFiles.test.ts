@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Workbook } from 'exceljs';
-import { PDFDocument } from 'pdf-lib';
+import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream } from 'pdf-lib';
 import { buildReport } from '@hydrosense/shared';
 import type { ReportData, ReportSpec } from '@hydrosense/shared';
 import { createReportFile, reportRows } from './reportFiles';
@@ -16,6 +16,13 @@ const spec: ReportSpec = {
   sections: ['summary', 'statistics', 'alerts', 'raw-readings'], format: 'pdf',
   generatedBy: { name: 'Test', role: 'operator' },
 };
+
+function pdfContent(pdf: PDFDocument, pageIndex: number) {
+  const contents = pdf.getPages()[pageIndex].node.Contents();
+  const streams = contents instanceof PDFArray ? contents.asArray().map((ref) => pdf.context.lookup(ref)) : [contents];
+  return streams.filter((stream): stream is PDFRawStream => stream instanceof PDFRawStream)
+    .map((stream) => new TextDecoder().decode(decodePDFRawStream(stream).decode())).join('\n');
+}
 
 describe('mobile report files', () => {
   it('only includes selected sections and their actual data', () => {
@@ -42,6 +49,24 @@ describe('mobile report files', () => {
     expect(file.mimeType).toBe('application/pdf');
     expect(pdf.getPageCount()).toBeGreaterThan(0);
     expect(new TextDecoder().decode(file.bytes.slice(0, 5))).toBe('%PDF-');
+    const content = pdf.getPages().map((_, index) => pdfContent(pdf, index)).join('\n');
+    expect(content).toContain('52656164696E677320696E2072616E6765202825206F662076616C69642072656164696E677329');
+    expect(pdf.getPages()[0].getWidth()).toBeCloseTo(595.28);
+  });
+
+  it('wraps long unbroken text and paginates without losing the analysis chart', async () => {
+    const report = buildReport(spec, { ...data, tanks: [{ ...data.tanks[0], name: 'A'.repeat(5000) }] });
+    const file = await createReportFile(report);
+    const pdf = await PDFDocument.load(file.bytes);
+    expect(pdf.getPageCount()).toBeGreaterThan(1);
+    const content = pdfContent(pdf, pdf.getPageCount() - 1);
+    expect(content).toContain('52656164696E677320696E2072616E6765');
+  });
+
+  it('omits the chart when statistics are not selected', async () => {
+    const file = await createReportFile(buildReport({ ...spec, sections: ['summary'] }, data));
+    const pdf = await PDFDocument.load(file.bytes);
+    expect(pdfContent(pdf, 0)).not.toContain('52656164696E677320696E2072616E6765');
   });
 
   it('creates a readable XLSX with actual values as text, not formulas', async () => {

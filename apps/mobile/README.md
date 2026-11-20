@@ -36,6 +36,9 @@ current color scheme. The preference remains after signing out.
 The dashboard header offers role-filtered navigation and alert access. Tank
 selection and connection status are in the account menu. The indicator reports a live connection
 or a recent reading; a recent reading alone does not imply a WebSocket stream.
+The hatchery selector combines locations reported by the tank API with Sagay
+and Benoni. Empty locations show no data; administrators can share filtered
+activity records as CSV.
 
 The default is API mode, using the deployed Supabase API and publishable key
 also configured in the web app. Mobile sign-in and account requests use the
@@ -97,6 +100,8 @@ Some web features, including audit-log filtering and export, tolerance editing,
 and full reporting, remain on the web. The mobile report builder exports PDF,
 CSV or XLSX with tank, date and section selections. It stops rather than
 producing incomplete reports when the API reading or alert limit is reached.
+The statistics section includes a chart of valid readings within thresholds in
+the mobile preview and PDF. Missing measurements are shown as no data.
 UI route restrictions are not a security boundary; the backend must
 independently enforce every required permission.
 

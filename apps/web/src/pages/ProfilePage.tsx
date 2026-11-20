@@ -4,6 +4,7 @@ import { formatManilaDateTime } from '@hydrosense/shared';
 import { useAuth, useRole } from '../app/auth/RoleContext';
 import { ROLE_LABELS } from '../app/config';
 import { useProfileSite, useTanks } from '../app/data/hooks';
+import { useSelectedTank } from '../app/tank/TankContext';
 import { hatcheryLabel } from '../services/authService';
 import { PageHeading } from '../components/common/PageHeading';
 import { Select } from '../components/common/Select';
@@ -22,15 +23,9 @@ export default function ProfilePage() {
   const user = useAuth();
   const tanks = useTanks();
   const site = useProfileSite();
-  const [maintenanceHatchery, setMaintenanceHatchery] = useState('');
+  const { hatchery, tanks: scopedTanks } = useSelectedTank();
   const [maintenanceTankId, setMaintenanceTankId] = useState('');
-  const allTanks = tanks.data ?? [];
-  const hatcheries = Array.from(new Set(allTanks.map((item) => item.site.trim()).filter(Boolean)));
-  const selectedHatchery = role === 'admin' ? maintenanceHatchery : site.data ?? '';
-  const maintenanceTanks = selectedHatchery.trim()
-    ? allTanks.filter((item) => isTankOne(item.name) &&
-      hatcheryLabel(item.site).toLowerCase() === hatcheryLabel(selectedHatchery).toLowerCase())
-    : [];
+  const maintenanceTanks = scopedTanks.filter((item) => isTankOne(item.name));
 
   useEffect(() => {
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView?.();
@@ -96,22 +91,13 @@ export default function ProfilePage() {
           <div className="profile-panel-heading"><h2 id="device-maintenance-title">Device maintenance</h2></div>
           <div className="profile-maintenance-fields">
           {tanks.isLoading ? <LoadingState label="Loading available tanks" /> : tanks.isError ? <ErrorState error={tanks.error} onRetry={() => void tanks.refetch()} /> : <>
-            {role === 'admin' && <label className="field">Hatchery
-              <Select value={maintenanceHatchery} onChange={(event) => {
-                setMaintenanceHatchery(event.target.value);
-                setMaintenanceTankId('');
-              }}>
-                <option value="">Select a hatchery</option>
-                {hatcheries.map((name) => <option key={name} value={name}>{hatcheryLabel(name)}</option>)}
-              </Select>
-            </label>}
             <label className="field">Tank
-              <Select value={maintenanceTankId} disabled={!selectedHatchery || maintenanceTanks.length === 0} onChange={(event) => setMaintenanceTankId(event.target.value)}>
+              <Select value={maintenanceTanks.some((item) => item.id === maintenanceTankId) ? maintenanceTankId : ''} disabled={maintenanceTanks.length === 0} onChange={(event) => setMaintenanceTankId(event.target.value)}>
                 <option value="">Select Tank 01</option>
                 {maintenanceTanks.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </Select>
             </label>
-            {selectedHatchery && maintenanceTanks.length === 0 && <p className="small muted">Tank 01 is not available for this hatchery.</p>}
+            {hatchery && maintenanceTanks.length === 0 && <p className="small muted">Tank 01 is not available for this hatchery.</p>}
           </>}
           <div className="profile-actions">
             {role === 'operator' ? <>

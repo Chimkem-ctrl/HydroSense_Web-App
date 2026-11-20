@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { FileDown, FileImage, FileSpreadsheet } from 'lucide-react';
 import { Brush, CartesianGrid, Line, LineChart, ReferenceArea, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { can, DEFAULT_THRESHOLDS, formatManilaDateTime, getManilaDateString, getRaisingDay, isValidMeasurement, toCsv } from '@hydrosense/shared';
 import type { AlertItem, MeasuredParameter, Reading, Tank } from '@hydrosense/shared';
@@ -203,13 +204,13 @@ export default function TrendsPage() {
       const config = parameters.find((item) => item.key === parameter);
       if (!config) throw new Error(`Unknown chart parameter: ${parameter}`);
       const csvRows = [
-        ['Timestamp (PHT)', 'Tank', `${config.title} (${config.unit})`, 'Quality note'],
+        ['Hatchery', 'Timestamp (PHT)', 'Tank', `${config.title} (${config.unit})`, 'Quality note'],
         ...rows.map((row) => {
           const value = metricValue(row, parameter);
           const invalid = parameter === 'ph' && (!Number.isFinite(value) || value < 0 || value > 14);
           const gap = parameter === 'do' && value === 0;
           const quality = gap ? 'Sensor/offline gap; excluded from statistics and chart line' : invalid ? 'Invalid pH; excluded from statistics and chart line' : !Number.isFinite(value) ? 'Invalid sensor value; excluded from statistics and chart line' : '';
-          return [formatManilaDateTime(new Date(row.timestamp)), selectedTank?.name ?? tankId ?? '', value, quality];
+          return [selectedTank?.site ?? '', formatManilaDateTime(new Date(row.timestamp)), selectedTank?.name ?? tankId ?? '', value, quality];
         }),
       ];
       downloadBlob(`hydrosense-${parameter}-trends-${range}.csv`, new Blob([toCsv(csvRows)], { type: 'text/csv;charset=utf-8' }));
@@ -222,8 +223,8 @@ export default function TrendsPage() {
   function exportAlertCsv() {
     try {
       const csvRows = [
-        ['Date (PHT)', 'Warnings', 'Critical'],
-        ...Object.entries(alertCounts).sort(([left], [right]) => left.localeCompare(right)).map(([day, counts]) => [day, counts.warning, counts.critical]),
+        ['Hatchery', 'Tank', 'Date (PHT)', 'Warnings', 'Critical'],
+        ...Object.entries(alertCounts).sort(([left], [right]) => left.localeCompare(right)).map(([day, counts]) => [selectedTank?.site ?? '', selectedTank?.name ?? tankId ?? '', day, counts.warning, counts.critical]),
       ];
       downloadBlob(`hydrosense-alert-frequency-${range}.csv`, new Blob([toCsv(csvRows)], { type: 'text/csv;charset=utf-8' }));
       setExportMessage('Alert frequency CSV downloaded.');
@@ -237,7 +238,7 @@ export default function TrendsPage() {
     <div className="stack trends-screen">
       <PageHeading
         title="Trends"
-        description={`${selectedTank?.name ?? 'Selected tank'} · ${selectedTank ? `Rearing day ${getRaisingDay(selectedTank.rearingStartDate)} of 21` : 'Rearing day —'} · Sampled every 3 hours${latestReading ? ` · Last reading ${formatManilaDateTime(new Date(latestReading.timestamp))} PHT` : ''}`}
+        description={`${selectedTank?.site ?? 'Selected hatchery'} · ${selectedTank?.name ?? 'Selected tank'} · Sampled every 3 hours${latestReading ? ` · Last reading ${formatManilaDateTime(new Date(latestReading.timestamp))} PHT` : ''}`}
       />
       <div className="trends-toolbar">
         <div className="tabs" role="group" aria-label="Trend range">
@@ -245,7 +246,7 @@ export default function TrendsPage() {
             <button type="button" className="tab" aria-pressed={range === value} disabled={days > tierConfig.retentionDays} key={value} onClick={() => setRange(value)}>{label}</button>
           ))}
         </div>
-        {canExport && <button className="button button-primary trends-export-button" type="button" onClick={() => window.print()}>Export report</button>}
+        {canExport && <button className="button button-primary trends-export-button" type="button" onClick={() => window.print()}><FileDown size={18} aria-hidden="true" />Export report</button>}
       </div>
       {range === 'custom' && <div className="trends-custom-range">
         <label className="field">From<input type="date" value={customFrom} min={getManilaDateString(new Date(Date.now() - Math.max(0, tierConfig.retentionDays - 1) * 86_400_000))} max={customTo} onChange={(event) => { if (event.target.value) setCustomFrom(event.target.value); }} /></label>
@@ -256,7 +257,7 @@ export default function TrendsPage() {
       {!tierConfig.analytics ? <section className="card glass"><h2 className="card-title">Analytics requires an upgrade</h2><p className="muted">Trend charts are available on premium and enterprise tiers.</p></section> :
         loading ? <LoadingState /> : errorQuery ? <ErrorState error={errorQuery.error} onRetry={() => {
           void Promise.all([readingsQuery.refetch(), alertsQuery.refetch(), tanksQuery.refetch(), manualEntriesQuery.refetch(), thresholdsQuery.refetch()]);
-        }} /> : (
+        }} /> : !tankId ? <EmptyState>No tanks are available for the selected hatchery.</EmptyState> : (
           <>
             <section className="trends-kpis" aria-label="Latest sensor readings and advisory status">
               {parameters.map((parameter, index) => {
@@ -348,7 +349,6 @@ export default function TrendsPage() {
                           ? Object.fromEntries(Object.entries(current.ranges).filter(([key]) => key !== parameter.key))
                           : {},
                       }))}>Reset zoom</button>
-                      {canExport && <button type="button" className="button trends-chart-export" disabled={!rows.length} onClick={() => void exportChart(parameter.key)}>PNG</button>}
                     </div>
                   </header>
                   <div className="trend-chart-frame" id={`trend-chart-${parameter.key}`} role="img" aria-label={`${parameter.title} trend chart. Configured safe range ${parameter.safeMin}${parameter.safeMax === undefined ? ' and above' : ` to ${parameter.safeMax}`} ${parameter.unit}; overnight windows and sensor gaps highlighted.`}>
@@ -410,7 +410,10 @@ export default function TrendsPage() {
                   </div>
                   <div className="trend-card-legend"><span><i className="trend-line-key" style={{ background: parameter.color }} />{selectedTank?.name ?? 'Reading'}</span><span><i className="trend-safe-key" />Safe range</span><span><i className="trend-night-key" />Overnight</span><span><i className="trend-gap-key" />Offline gap</span><span><i className="trend-excursion-key" />Out of range</span></div>
                   <p className="trend-chart-caption">Use Zoom in/out for quick adjustments or drag the handles below for a specific time range. Safe bands use configured thresholds; missing readings are shown as gaps.</p>
-                  {canExport && <button type="button" className="button trends-csv-button" disabled={!rows.length} onClick={() => exportCsv(parameter.key)}>CSV</button>}
+                  {canExport && <div className="trends-inline-actions trends-download-actions">
+                    <button type="button" className="icon-button trends-chart-export" aria-label={`Download ${parameter.title} PNG`} title={`Download ${parameter.title} PNG`} disabled={!rows.length} onClick={() => void exportChart(parameter.key)}><FileImage size={18} aria-hidden="true" /></button>
+                    <button type="button" className="icon-button trends-csv-button" aria-label={`Download ${parameter.title} CSV`} title={`Download ${parameter.title} CSV`} disabled={!rows.length} onClick={() => exportCsv(parameter.key)}><FileSpreadsheet size={18} aria-hidden="true" /></button>
+                  </div>}
                 </article>;
               })}
               <article className="card glass trends-overnight-panel">
@@ -446,7 +449,7 @@ export default function TrendsPage() {
               <article className="card glass trends-alert-frequency-card">
                 <header className="trends-section-heading">
                   <div><h2 className="card-title">Alert frequency</h2><p>Alerts per day · selected range</p></div>
-                  {canExport && <div className="trends-inline-actions"><button type="button" className="button trends-chart-export" disabled={!alertFrequency.length} onClick={() => void exportChart('alert-frequency')}>PNG</button><button type="button" className="button trends-chart-export" disabled={!alertFrequency.length} onClick={exportAlertCsv}>CSV</button></div>}
+                  {canExport && <div className="trends-inline-actions"><button type="button" className="icon-button trends-chart-export" aria-label="Download alert frequency PNG" title="Download alert frequency PNG" disabled={!alertFrequency.length} onClick={() => void exportChart('alert-frequency')}><FileImage size={18} aria-hidden="true" /></button><button type="button" className="icon-button trends-chart-export" aria-label="Download alert frequency CSV" title="Download alert frequency CSV" disabled={!alertFrequency.length} onClick={exportAlertCsv}><FileSpreadsheet size={18} aria-hidden="true" /></button></div>}
                 </header>
                 {!alertFrequency.length ? <EmptyState>No alerts occurred in this range.</EmptyState> :
                   <><div className="trend-chart-frame trends-alert-frequency-chart" id="trend-chart-alert-frequency" role="img" aria-label="Daily warning and critical alert frequency chart">

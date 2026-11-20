@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Check, Search, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, FileDown, Search, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatManilaDateTime, getManilaDateString, toCsv } from '@hydrosense/shared';
+import { formatManilaDateTime, getManilaDateString, hatcheryId, toCsv } from '@hydrosense/shared';
 import type { DashboardUser, Role } from '@hydrosense/shared';
 import { api } from '../app/api';
 import { DATA_MODE, ROLE_LABELS, tierConfig } from '../app/config';
 import { useAuth, useRole } from '../app/auth/RoleContext';
 import { usePendingRequests, useProfileSite } from '../app/data/hooks';
+import { useSelectedTank } from '../app/tank/TankContext';
 import { authService, hatcheryLabel } from '../services/authService';
 import { downloadCsv } from '../services/downloadCsv';
 import type { AuditLog } from '@hydrosense/shared';
@@ -27,6 +28,7 @@ export function AdminUsersPage() {
   const { role } = useRole();
   const currentUser = useAuth();
   const isManager = role === 'manager';
+  const { hatchery: selectedHatchery } = useSelectedTank();
   const site = useProfileSite();
   const hatchery = site.data?.trim() ? hatcheryLabel(site.data) : undefined;
   const queryClient = useQueryClient();
@@ -57,7 +59,7 @@ export function AdminUsersPage() {
   });
   const pendingRequests = usePendingRequests();
   const [requestSearch, setRequestSearch] = useState('');
-  const [teamSearch, setTeamSearch] = useState<Record<string, string>>({});
+  const [teamSearch, setTeamSearch] = useState('');
   const [selectedRoles, setSelectedRoles] = useState<Record<string, Role | undefined>>({});
   const [confirmation, setConfirmation] = useState<UserConfirmation | null>(null);
   const approveRequest = useMutation({
@@ -89,9 +91,10 @@ export function AdminUsersPage() {
     else removeAccount.mutate(current.userId);
   }
   // The backend must enforce hatchery scope; these filters only limit the display.
-  const visibleRequests = (pendingRequests.data ?? []).filter((request) => !isManager || Boolean(hatchery && hatcheryLabel(request.hatcheryId) === hatchery));
-  const visibleUsers = (users.data ?? []).filter((user) => user.role !== 'admin' && (!isManager || Boolean(hatchery && hatcheryLabel(user.site) === hatchery)));
-  const visibleAdminUsers = (users.data ?? []).filter((user) => !isManager && user.role === 'admin');
+  const inSelectedHatchery = (value?: string | null) => selectedHatchery === 'all' || Boolean(value && selectedHatchery && hatcheryId(value) === selectedHatchery);
+  const visibleRequests = (pendingRequests.data ?? []).filter((request) => inSelectedHatchery(request.hatcheryId));
+  const visibleUsers = (users.data ?? []).filter((user) => user.role !== 'admin' && inSelectedHatchery(user.site));
+  const visibleAdminUsers = (users.data ?? []).filter((user) => !isManager && user.role === 'admin' && inSelectedHatchery(user.site));
   const matchesSearch = (query: string, values: Array<string | undefined>) => {
     const needle = query.trim().toLowerCase();
     return !needle || values.some((value) => value?.toLowerCase().includes(needle));
@@ -136,7 +139,7 @@ export function AdminUsersPage() {
           <>
           <div role="region" aria-label="Pending requests table">
           {[...groupedRequests].map(([name, allRequests]) => { const requests = allRequests.filter((request) => filteredRequests.includes(request)); return <section className="admin-users-site" key={name}>
-          <h3>{name}</h3>
+          {selectedHatchery === 'all' && <h3>{name}</h3>}
           <div className="table-wrap" role="region" aria-label={`${name} pending requests`} tabIndex={0}><table className="admin-users-table admin-requests-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Requested role</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Review Role</th><th scope="col">Action</th></tr></thead><tbody>
             {!requests.length && <tr><td className="admin-users-search-empty" colSpan={8} role="status">No pending requests match your search.</td></tr>}
             {requests.map((request) => (
@@ -186,15 +189,17 @@ export function AdminUsersPage() {
       </section>}
       <section className="card admin-users-panel" aria-labelledby="team-accounts-title">
         <div className="admin-users-heading">
-          <div><h2 id="team-accounts-title">Team accounts</h2><p>View team members grouped by hatchery.</p></div>
-          {tierConfig.teamAccounts && !users.isLoading && !users.isError && users.data && <span className="admin-users-count admin-users-count--accounts">{visibleUsers.length} {visibleUsers.length === 1 ? 'account' : 'accounts'}</span>}
+          <div><h2 id="team-accounts-title">Team accounts</h2><p>{selectedHatchery === 'all' ? 'View team members grouped by hatchery.' : 'View team members for the selected hatchery.'}</p></div>
+          <div className="admin-users-heading-tools">
+            {visibleUsers.length > 0 && <label className="admin-users-search"><Search size={16} aria-hidden="true" /><input type="search" aria-label="Search team accounts" placeholder="Search name, ID, email, role or date" value={teamSearch} onChange={(event) => setTeamSearch(event.target.value)} /></label>}
+            {tierConfig.teamAccounts && !users.isLoading && !users.isError && users.data && <span className="admin-users-count admin-users-count--accounts">{visibleUsers.length} {visibleUsers.length === 1 ? 'account' : 'accounts'}</span>}
+          </div>
         </div>
         {!tierConfig.teamAccounts ? <p className="muted">Team account management is available on premium and enterprise tiers.</p> : users.isLoading ? <LoadingState /> : users.isError ? <ErrorState error={users.error} onRetry={() => void users.refetch()} /> : !visibleUsers.length ? <EmptyState>No team users are registered.</EmptyState> : (
           <>
           <div role="region" aria-label="Team accounts table">
-          {[...groupedUsers].map(([name, allMembers]) => { const query = teamSearch[name] ?? ''; const members = allMembers.filter((user) => matchesSearch(query, [user.name, user.email, user.phone, user.employeeId, ROLE_LABELS[user.role], formatManilaDateTime(user.lastActive)])); return <section className="admin-users-site" key={name}>
-          <div className="admin-users-site-heading"><h3>{name}</h3>          <div className="admin-users-heading-tools">
-                    <label className="admin-users-search"><Search size={16} aria-hidden="true" /><input type="search" aria-label={`Search accounts in ${name}`} placeholder="Search name, ID, email, role or date" value={query} onChange={(event) => setTeamSearch((current) => ({ ...current, [name]: event.target.value }))} /></label><span className="admin-users-count admin-users-count--accounts">{members.length} {members.length === 1 ? 'account' : 'accounts'}</span></div></div>
+          {[...groupedUsers].map(([name, allMembers]) => { const members = allMembers.filter((user) => matchesSearch(teamSearch, [user.name, user.email, user.phone, user.employeeId, ROLE_LABELS[user.role], formatManilaDateTime(user.lastActive)])); return <section className="admin-users-site" key={name}>
+          {selectedHatchery === 'all' && <h3>{name}</h3>}
           <div className="table-wrap" tabIndex={0} role="region" aria-label={`${name} accounts`}><table className="admin-users-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Employee ID</th><th scope="col">Role</th><th scope="col">Last active</th>{!isManager && <th scope="col">Actions</th>}</tr></thead><tbody>
             {!members.length && <tr><td className="admin-users-search-empty" colSpan={isManager ? 6 : 7} role="status">No accounts match your search.</td></tr>}
             {members.map((user) => <tr key={user.id}><td>{user.name}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{user.employeeId || '—'}</td><td><span>{ROLE_LABELS[user.role]}</span></td><td>{formatManilaDateTime(user.lastActive)} PHT</td>{!isManager && <td><button type="button" className="button button-danger" disabled={removeAccount.isPending} onClick={() => setConfirmation({ action: 'remove', userId: user.id, name: user.name })}>Remove account</button></td>}</tr>)}
@@ -230,6 +235,7 @@ export function auditLogCsv(logs: AuditLog[]) {
 }
 
 export function AdminLogsPage() {
+  const { hatchery } = useSelectedTank();
   const query = useQuery({ queryKey: ['audit-logs'], queryFn: () => api.listAuditLogs() });
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -254,7 +260,7 @@ export function AdminLogsPage() {
     <div className="stack">
       <PageHeading title="Audit & System Logs" description="Review admin actions and operational events." />
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
-      {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data?.length ? <EmptyState>No audit or system logs are available.</EmptyState> : (
+      {hatchery !== 'all' ? <EmptyState>Audit and system logs cannot be filtered by hatchery because their records do not include a hatchery. Select All hatcheries to view them.</EmptyState> : query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data?.length ? <EmptyState>No audit or system logs are available.</EmptyState> : (
         <section className="card stack">
           <div className="form-grid">
             <label className="field">From date (Manila)<input type="date" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} /></label>
@@ -263,10 +269,10 @@ export function AdminLogsPage() {
             <label className="field">Action<Select value={action} clearable placeholder="Action" onChange={(event) => { setAction(event.target.value); setPage(1); }}>{actions.map((value) => <option key={value} value={value}>{value}</option>)}</Select></label>
             <label className="field">Search detail<input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></label>
           </div>
-          <div className="inline"><button className="button" type="button" onClick={clearFilters}>Clear filters</button><button className="button" type="button" disabled={!filtered.length} onClick={() => downloadCsv(auditLogCsv(filtered), 'hydrosense-audit-logs.csv')}>Export CSV</button></div>
+          <div className="inline"><button className="button" type="button" onClick={clearFilters}>Clear filters</button><button className="button" type="button" disabled={!filtered.length} onClick={() => downloadCsv(auditLogCsv(filtered), 'hydrosense-audit-logs.csv')}><FileDown size={18} aria-hidden="true" />Export CSV</button></div>
           <p className="small muted">{filtered.length} {filtered.length === 1 ? 'result' : 'results'}</p>
           {!filtered.length ? <EmptyState>No audit or system logs match the filters.</EmptyState> : <><div className="table-wrap"><table><thead><tr><th scope="col">Time (PHT)</th><th scope="col">User</th><th scope="col">Action</th><th scope="col">Detail</th></tr></thead><tbody>{filtered.slice((currentPage - 1) * 25, currentPage * 25).map((log) => <tr key={log.id}><td>{formatManilaDateTime(log.timestamp)}</td><td>{log.user}</td><td>{log.action}</td><td>{log.detail}</td></tr>)}</tbody></table></div>
-            <div className="inline"><button className="button" type="button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</button><span>Page {currentPage} of {totalPages}</span><button className="button" type="button" disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)}>Next</button></div></>}
+            <nav className="log-pagination" aria-label="Audit log pages"><button type="button" aria-label="Previous" title="Previous page" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={18} aria-hidden="true" /></button><span aria-current="page">Page {currentPage} of {totalPages}</span><button type="button" aria-label="Next" title="Next page" disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)}><ChevronRight size={18} aria-hidden="true" /></button></nav></>}
         </section>
       )}
     </div>

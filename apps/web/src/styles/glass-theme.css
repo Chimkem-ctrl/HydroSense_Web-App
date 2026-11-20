@@ -262,10 +262,11 @@
 .glass-shell .glass-greeting h2 { font-size: 18px; line-height: 1.2; }
 
 .glass-shell .live-screen { gap: var(--space-5); }
-.glass-shell .live-screen .live-greeting { margin: 0 0 calc(-1 * var(--space-4)); color: var(--text-secondary); font-size: var(--font-caption); }
+.glass-shell .live-screen .live-greeting { margin: 0 0 calc(-1 * var(--space-2)); color: var(--text-primary); font-size: clamp(32px, 3vw, 40px); font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
 .glass-shell .live-screen .live-tank-switcher { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .glass-shell .live-screen .live-tank-button { width: auto; min-height: 36px; padding: 0 var(--space-3); }
-.glass-shell .live-screen .live-tank-button[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); }
+.glass-shell .live-screen .live-tank-button[aria-pressed='false']:hover { border-color: var(--border); background: var(--surface); }
+.glass-shell .live-screen .live-tank-button[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
 .glass-shell .live-screen .live-status-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .glass-shell .live-screen .live-status-banner > svg { flex: 0 0 auto; color: var(--ok-text); }
 .glass-shell .live-screen .live-status-warning > svg { color: var(--warn-text); }

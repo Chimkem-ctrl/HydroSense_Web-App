@@ -145,6 +145,8 @@
 .trend-warning-key, .trend-critical-key { background: var(--warn-text); }
 .trend-critical-key { background: var(--critical-text); }
 .trends-csv-button { margin-top: var(--space-2); }
+.trends-download-actions { margin-top: var(--space-2); }
+.trends-download-actions .trends-csv-button { margin-top: 0; }
 .trends-statistics-table { min-width: 1120px; table-layout: fixed; }
 .trends-statistics-table th, .trends-statistics-table td { white-space: nowrap; vertical-align: middle; }
 .trends-statistics-table th:nth-child(1), .trends-statistics-table td:nth-child(1) { width: 15%; }
@@ -221,8 +223,9 @@
 .alerts-screen { gap: var(--space-4); }
 .account-requests-card { gap: var(--space-3); }
 .account-requests-card .card-title { margin: 0; }
-.account-requests-card > .button { justify-self: start; max-width: 100%; }
-.account-request-alert { display: flex; align-items: flex-start; gap: var(--space-2); }
+.account-requests-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.account-requests-header .button { width: auto; min-height: 40px; padding: 0 var(--space-3); text-decoration: none; }
+.account-request-alert { display: flex; align-items: flex-start; gap: var(--space-3); border: 1px solid var(--control-border); border-radius: var(--radius-md); background: color-mix(in srgb, var(--glass-bg-strong) 55%, transparent); padding: var(--space-3); }
 .account-request-alert > svg { flex: 0 0 auto; margin-top: 2px; }
 .account-request-alert p { margin: var(--space-1) 0 0; }
 .alerts-status-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border: 1px solid var(--control-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
@@ -404,10 +407,11 @@
 }
 @media print {
   .trends-heading-actions, .trends-chart-export, .trends-csv-button, .trends-export-message { display: none !important; }
-  .trends-screen, .trend-charts, .trends-secondary-grid { break-inside: avoid; }
+  .trends-screen, .trend-charts, .trends-secondary-grid { break-inside: auto; }
   .trends-screen { padding: 0; background: #fff; color: #111; }
   .trends-screen .card { box-shadow: none; break-inside: avoid; }
   .trends-screen .trend-chart-frame { height: 210px; }
+  .trends-screen .trends-rearing { display: none !important; }
 }
 @media (max-width: 900px) {
   .alerts-list { grid-template-columns: 1fr; }

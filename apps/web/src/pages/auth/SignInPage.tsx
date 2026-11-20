@@ -1,5 +1,5 @@
 import type { ChangeEvent } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import AuthFooter from '../../components/auth/AuthFooter';
 import AuthHeader from '../../components/auth/AuthHeader';
 import AuthLayout from '../../components/auth/AuthLayout';
@@ -10,7 +10,6 @@ import PrimaryButton from '../../components/common/PrimaryButton';
 import { useAuthForm } from '../../hooks/useAuthForm';
 import { authService } from '../../services/authService';
 import type { SignInValues } from '../../types/auth.types';
-import { getSafeInAppPath } from '../../app/auth/RouteGuards';
 
 const initialValues: SignInValues = { email: '', password: '' };
 
@@ -26,14 +25,12 @@ function validate(values: SignInValues) {
 
 export default function SignInPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const from = getSafeInAppPath(location.state?.from);
   const form = useAuthForm({
     initialValues,
     validate,
     onSubmit: async (values) => {
       const result = await authService.signIn(values.email, values.password);
-      navigate(result.status === 'approved' ? (from ?? result.redirectPath) : result.redirectPath, { replace: true });
+      navigate(result.redirectPath, { replace: true });
     },
   });
 
