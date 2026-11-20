@@ -10,7 +10,8 @@ To open the app in Expo Go on a physical device, connect the phone and computer
 to the same Wi-Fi network, run `npm run dev:mobile -- --go --lan --clear` and
 scan the QR code from that running Expo process. If Windows Firewall blocks the
 connection, allow Node.js on private networks. If the networks differ or LAN
-fails, use a tunnel: sign in once with `npx expo login`, then run
+fails, use a tunnel: from the repository root, sign in once with
+`node apps\mobile\scripts\expo.cjs login`, then run
 `npm run dev:mobile -- --go --tunnel`. Without logging in, use
 `-- --tunnel ngrok` instead. If port 8081 is already occupied, use the QR code
 printed by the current process rather than an older Expo session.
@@ -63,9 +64,8 @@ this setting must provide `GET /v1/profile`.
 For a local API use an address reachable from the device: `10.0.2.2` is the
 Android emulator host address; a physical device needs the computer's LAN
 address. Never put a service-role key or other secret in Expo public variables.
-Set `EXPO_PUBLIC_DATA_MODE=mock` to use sample monitoring data. Sign-in still
-uses the configured backend account and its assigned role; mock mode does not
-create backend accounts.
+Mobile uses the API only. Remove `EXPO_PUBLIC_DATA_MODE=mock` from existing
+configuration; sample monitoring mode is no longer supported.
 
 The web signup page currently contains demo-only terms, which do not describe
 backend sign-up. The mobile form shows those same terms with an explicit
@@ -92,10 +92,10 @@ only if a compatible live WebSocket service is available; the Supabase REST
 function does not itself provide that stream. Notification navigation is wired
 but push-token registration and delivery require backend integration.
 
-Operators can access historical logs; calibration and validation are available
-to managers and admins. Managers can view approved users in their assigned
+Operators can access historical logs; validation is available to managers and
+admins. Managers can view approved users in their assigned
 hatchery. Admins can review requests, change non-admin roles, remove accounts,
-and view audit logs. Account review is unavailable in mobile demo mode.
+and view audit logs.
 Some web features, including audit-log filtering and export, tolerance editing,
 and full reporting, remain on the web. The mobile report builder exports PDF,
 CSV or XLSX with tank, date and section selections. It stops rather than
@@ -109,5 +109,11 @@ Apply the profile manager-scope migration and deploy the updated Supabase API
 function to enforce manager hatchery isolation on both direct database and API
 access. The profile screen itself does not require the new API route when
 using Supabase REST.
+Apply the device reported-fields migration and deploy the updated API to show
+hardware-reported Wi-Fi and pending-record values. Power source is
+not shown because current firmware sends a fixed value rather than a measurement.
+Values from older status records remain unavailable until the device reports
+them again. Existing backend seed data must be reviewed separately; removing
+mobile sample mode does not delete database records.
 Addresses use the Philippine PSGC dataset, including region selections for
 independent areas, and are saved as a readable profile address.

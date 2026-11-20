@@ -1,6 +1,6 @@
 import type { Role } from '@hydrosense/shared';
 
-const access: Record<'history' | 'validation' | 'users' | 'admin' | 'canEditThresholds' | 'canExport' | 'canCalibrate', Role[]> = {
+const access: Record<'history' | 'validation' | 'users' | 'admin' | 'canEditThresholds' | 'canExport' | 'canCalibrate' | 'registerTank', Role[]> = {
   history: ['operator', 'manager', 'admin'],
   validation: ['manager', 'admin'],
   users: ['manager', 'admin'],
@@ -8,6 +8,7 @@ const access: Record<'history' | 'validation' | 'users' | 'admin' | 'canEditThre
   canEditThresholds: ['manager', 'admin'],
   canExport: ['manager', 'admin'],
   canCalibrate: ['manager', 'admin'],
+  registerTank: ['manager'],
 };
 
 export function canAccess(role: Role | null, feature: keyof typeof access): boolean {

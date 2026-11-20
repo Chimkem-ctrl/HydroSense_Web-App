@@ -1,13 +1,13 @@
 import {
   HttpApiClient,
-  MockApiClient,
-  MockLiveClient,
   WebSocketLiveClient,
 } from '@hydrosense/shared';
 import type { LiveClient } from '@hydrosense/shared';
-import type { Role } from '@hydrosense/shared';
+import type { MeasuredParameter, Role, Threshold } from '@hydrosense/shared';
 
-export const DATA_MODE: 'mock' | 'api' = process.env.EXPO_PUBLIC_DATA_MODE === 'mock' ? 'mock' : 'api';
+if (process.env.EXPO_PUBLIC_DATA_MODE && process.env.EXPO_PUBLIC_DATA_MODE !== 'api') {
+  throw new Error('Mobile sample data is no longer supported. Remove EXPO_PUBLIC_DATA_MODE or set it to api.');
+}
 const DEFAULT_API_URL = 'https://iafooterjwbihuzwakoc.supabase.co/functions/v1/api';
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim() || process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || DEFAULT_API_URL;
 export const API_KEY = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
@@ -51,7 +51,6 @@ export interface AccountProfile {
 }
 
 async function authenticatedRequest(path: string, init?: RequestInit): Promise<unknown> {
-  if (DATA_MODE !== 'api') throw new Error('This action is unavailable in mobile demo mode.');
   if (!accessToken) throw new Error('Your session has expired. Sign in again.');
   const response = await fetch(`${API_BASE_URL.replace(/\/$/, '')}${path}`, {
     ...init,
@@ -154,7 +153,24 @@ export async function removeAccount(id: string): Promise<void> {
   await authenticatedRequest(`/v1/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-export const api = DATA_MODE === 'api' ? new HttpApiClient(API_BASE_URL, () => accessToken, API_KEY) : new MockApiClient();
-export const liveClient: LiveClient | null = DATA_MODE === 'mock'
-  ? new MockLiveClient(10_000)
-  : wsUrl ? new WebSocketLiveClient(wsUrl) : null;
+export const api = new HttpApiClient(API_BASE_URL, () => accessToken, API_KEY);
+export const liveClient: LiveClient | null = wsUrl ? new WebSocketLiveClient(wsUrl) : null;
+
+export function getConfiguredThreshold(thresholds: Threshold[], parameter: MeasuredParameter): Threshold {
+  const matches = thresholds.filter((item) => item.parameter === parameter);
+  const threshold = matches[0];
+  if (matches.length !== 1 || !threshold ||
+      (threshold.min === undefined && threshold.max === undefined) ||
+      (threshold.min !== undefined && !Number.isFinite(threshold.min)) ||
+      (threshold.max !== undefined && !Number.isFinite(threshold.max)) ||
+      (threshold.min !== undefined && threshold.max !== undefined && threshold.min > threshold.max)) {
+    throw new Error(`Threshold configuration is missing or invalid for ${parameter}.`);
+  }
+  return threshold;
+}
+
+export async function listConfiguredThresholds(): Promise<Threshold[]> {
+  const thresholds = await api.listThresholds();
+  for (const parameter of ['temperature', 'do', 'ph'] as const) getConfiguredThreshold(thresholds, parameter);
+  return thresholds;
+}

@@ -28,7 +28,7 @@ export function useLatestReading(tankId: string) {
     queryKey: ['latest-reading', tankId],
     queryFn: () => api.getLatestReading(tankId),
     enabled: Boolean(tankId),
-    refetchInterval: DATA_MODE === 'api' ? false : tierConfig.refreshIntervalMs,
+    refetchInterval: DATA_MODE === 'api' ? 30_000 : tierConfig.refreshIntervalMs,
   });
   useEffect(() => {
     if (!tankId) return undefined;
@@ -44,7 +44,11 @@ export function useLatestReading(tankId: string) {
 export function useDeviceStatuses() {
   const queryClient = useQueryClient();
   const tanks = useTanks();
-  const query = useQuery({ queryKey: ['device-status'], queryFn: () => api.listDeviceStatuses() });
+  const query = useQuery({
+    queryKey: ['device-status'],
+    queryFn: () => api.listDeviceStatuses(),
+    refetchInterval: DATA_MODE === 'api' ? 30_000 : false,
+  });
   useEffect(() => {
     if (!tanks.data?.length) return undefined;
     const subscriptions = tanks.data.map((tank) => liveClient.subscribe(tank.id, (event) => {

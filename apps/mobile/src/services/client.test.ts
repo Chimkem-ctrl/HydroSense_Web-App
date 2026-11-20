@@ -79,13 +79,30 @@ describe('mobile pending account review', () => {
     await expect(reviewPendingAccount('1', null)).rejects.toThrow('Forbidden.');
   });
 
-  it('reports that review is unavailable in demo mode instead of pretending success', async () => {
+  it('rejects the obsolete demo configuration rather than displaying sample data', async () => {
     vi.stubEnv('EXPO_PUBLIC_DATA_MODE', 'mock');
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const { listPendingAccounts, reviewPendingAccount } = await import('./client');
-    await expect(listPendingAccounts()).rejects.toThrow('unavailable in mobile demo mode');
-    await expect(reviewPendingAccount('1', 'operator')).rejects.toThrow('unavailable in mobile demo mode');
-    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(import('./client')).rejects.toThrow('Mobile sample data is no longer supported');
+  });
+
+  it('rejects missing or invalid thresholds instead of substituting sample limits', async () => {
+    vi.stubEnv('EXPO_PUBLIC_DATA_MODE', 'api');
+    const { getConfiguredThreshold } = await import('./client');
+    expect(getConfiguredThreshold([{ parameter: 'do', min: 5 }], 'do')).toEqual({ parameter: 'do', min: 5 });
+    expect(() => getConfiguredThreshold([], 'do')).toThrow('Threshold configuration is missing or invalid');
+    expect(() => getConfiguredThreshold([{ parameter: 'do' }], 'do')).toThrow('Threshold configuration is missing or invalid');
+    expect(() => getConfiguredThreshold([{ parameter: 'do', min: 8, max: 5 }], 'do')).toThrow('Threshold configuration is missing or invalid');
+    expect(() => getConfiguredThreshold([{ parameter: 'do', min: 5 }, { parameter: 'do', min: 6 }], 'do')).toThrow('Threshold configuration is missing or invalid');
+  });
+
+  it('requires all configured thresholds when loading data for analysis', async () => {
+    vi.stubEnv('EXPO_PUBLIC_DATA_MODE', 'api');
+    const { api, listConfiguredThresholds } = await import('./client');
+    const list = vi.spyOn(api, 'listThresholds');
+    list.mockResolvedValueOnce([{ parameter: 'temperature', min: 28 }, { parameter: 'do', min: 5 }]);
+    await expect(listConfiguredThresholds()).rejects.toThrow('ph');
+    const configured = [{ parameter: 'temperature' as const, min: 28 }, { parameter: 'do' as const, min: 5 }, { parameter: 'ph' as const, min: 7, max: 8 }];
+    list.mockResolvedValueOnce(configured);
+    await expect(listConfiguredThresholds()).resolves.toEqual(configured);
+    list.mockRestore();
   });
 });

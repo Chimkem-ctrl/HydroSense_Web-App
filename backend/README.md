@@ -119,6 +119,11 @@ alert. No extra warning table or migration is required for it.
 Hardware ingestion accepts omitted battery readings after the optional-battery
 migration. If updating device status fails after a reading is stored, the API
 returns an error identifying the partial failure rather than reporting success.
+Apply the device reported-fields migration before deploying the updated API.
+It records which telemetry fields were actually supplied by a live device;
+older status records are unverified until the next live report. The API retains
+its existing status fields for compatibility and adds `reportedFields` for
+clients that must avoid displaying default values.
 
 Account approval flow:
 

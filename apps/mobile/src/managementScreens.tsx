@@ -10,7 +10,7 @@ import { Button, Card, GlassDialog, Page, StateMessage, Title } from './componen
 import { AlertPreferenceControls, DeviceMaintenanceControls, SecurityControls } from './components/ProfileControls';
 import { AppearanceOptions } from './components/AppearanceOptions';
 import { groupByHatchery, hatcheryLabel } from './management';
-import { api, DATA_MODE, getAccountProfile, listPendingAccounts, removeAccount, reviewPendingAccount } from './services/client';
+import { api, getAccountProfile, listPendingAccounts, removeAccount, reviewPendingAccount } from './services/client';
 import { useSession, useTankSelection } from './state';
 import { uiScale, useTheme } from './theme';
 import type { Palette } from './theme';
@@ -23,7 +23,7 @@ function useProfile() {
       if (!user) throw new Error('Sign in to load your profile.');
       return getAccountProfile(user.id);
     },
-    enabled: Boolean(user) && DATA_MODE === 'api',
+    enabled: Boolean(user),
   });
 }
 
@@ -75,16 +75,22 @@ export function ProfileScreen() {
     : [];
   return <Page maxWidth={680}>
     <Title detail="View your account, role, hatchery, and alert preferences.">My profile</Title>
-    {DATA_MODE === 'api' && profile.isLoading ? <Card><StateMessage message="Loading profile..." loading /></Card> :
-      DATA_MODE === 'api' && profile.isError ? <Card><StateMessage message={`Could not load profile: ${profile.error.message}`} /><Button label="Retry profile" secondary onPress={() => void profile.refetch()} /></Card> : <>
+    {profile.isLoading ? <Card><StateMessage message="Loading profile..." loading /></Card> :
+      profile.isError ? <Card><StateMessage message={`Could not load profile: ${profile.error.message}`} /><Button label="Retry profile" secondary onPress={() => void profile.refetch()} /></Card> : <>
         <Card title="Contact details & assignment">
-          <ProfileRow label="Name" text={value(profile.data?.name ?? user?.name)} />
-          <ProfileRow label="Role" text={value(profile.data?.role ?? user?.role)} />
-          <ProfileRow label="Employee ID" text={value(profile.data?.employeeId)} />
+          <View style={styles.profilePair}>
+            <View style={styles.profileColumn}><ProfileRow label="Name" text={value(profile.data?.name ?? user?.name)} /></View>
+            <View style={styles.profileColumn}><ProfileRow label="Role" text={value(profile.data?.role ?? user?.role)} /></View>
+          </View>
+          <View style={styles.profilePair}>
+            <View style={styles.profileColumn}><ProfileRow label="Employee ID" text={value(profile.data?.employeeId)} /></View>
+            <View style={styles.profileColumn}><ProfileRow label="Position" text={value(profile.data?.position)} /></View>
+          </View>
           {user?.role !== 'admin' && <ProfileRow label="Hatchery / site" text={profile.data?.site?.trim() ? hatcheryLabel(profile.data.site) : 'Not provided'} />}
-          <ProfileRow label="Position" text={value(profile.data?.position)} />
-          <ProfileRow label="Email" text={value(profile.data?.email)} />
-          <ProfileRow label="Phone" text={value(profile.data?.phone)} />
+          <View style={styles.profilePair}>
+            <View style={[styles.profileColumn, styles.profileEmail]}><ProfileRow label="Email" text={value(profile.data?.email)} /></View>
+            <View style={styles.profileColumn}><ProfileRow label="Phone" text={value(profile.data?.phone)} /></View>
+          </View>
           <ProfileRow label="Address" text={value(profile.data?.address)} />
           <ChangePasswordRow />
         </Card>
@@ -135,8 +141,8 @@ export function UsersScreen() {
   const [teamSearch, setTeamSearch] = useState<Record<string, string>>({});
   const [selectedRoles, setSelectedRoles] = useState<Record<string, Role | undefined>>({});
   const [confirmation, setConfirmation] = useState<UserConfirmation | null>(null);
-  const users = useQuery({ queryKey: ['admin-users', user?.id], queryFn: () => api.listUsers(), enabled: allowed && (admin || DATA_MODE === 'mock' || Boolean(profile.data?.site?.trim())) });
-  const pending = useQuery({ queryKey: ['pending-accounts', user?.id], queryFn: listPendingAccounts, enabled: admin && DATA_MODE === 'api', refetchInterval: 5000 });
+  const users = useQuery({ queryKey: ['admin-users', user?.id], queryFn: () => api.listUsers(), enabled: allowed && (admin || Boolean(profile.data?.site?.trim())) });
+  const pending = useQuery({ queryKey: ['pending-accounts', user?.id], queryFn: listPendingAccounts, enabled: admin, refetchInterval: 5000 });
   const invalidate = async () => {
     await Promise.all(['pending-accounts', 'admin-users', 'audit-logs'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
   };
@@ -171,15 +177,15 @@ export function UsersScreen() {
   const filteredPending = (pending.data ?? []).filter((account) => matches(requestSearch, [account.firstName, account.lastName, ` ${account.lastName}`, account.email, account.phone, account.requestedRole, account.site, account.createdAt ? formatManilaDateTime(account.createdAt) : '']));
   return <Page maxWidth={680}>
     <Title detail={admin ? 'Manage team accounts and review requests.' : 'Review accounts for your hatchery.'}>Users & roles</Title>
-    {!admin && DATA_MODE === 'api' && profile.isLoading ? <StateMessage message="Loading hatchery assignment..." loading /> :
-      !admin && DATA_MODE === 'api' && profile.isError ? <Card><StateMessage message={`Could not load hatchery: ${profile.error.message}`} /><Button label="Retry" secondary onPress={() => void profile.refetch()} /></Card> :
-      !admin && DATA_MODE === 'api' && !profile.data?.site?.trim() ? <StateMessage message="No hatchery is assigned to your account. Contact an administrator." /> : <>
+    {!admin && profile.isLoading ? <StateMessage message="Loading hatchery assignment..." loading /> :
+      !admin && profile.isError ? <Card><StateMessage message={`Could not load hatchery: ${profile.error.message}`} /><Button label="Retry" secondary onPress={() => void profile.refetch()} /></Card> :
+      !admin && !profile.data?.site?.trim() ? <StateMessage message="No hatchery is assigned to your account. Contact an administrator." /> : <>
       {admin && <Card title="Pending requests" action={pending.data && <View style={{ flex: 1, minWidth: 150, maxWidth: 260, gap: 6, alignItems: 'stretch' }}>
         {pending.data.length > 0 && <SearchBox label="Search pending requests" value={requestSearch} onChange={setRequestSearch} colors={colors} />}
         <Text style={styles.pendingCount}>{pending.data.length} pending</Text>
       </View>}>
         <Text style={styles.intro}>Review new account requests and assign a role.</Text>
-        {DATA_MODE === 'mock' ? <StateMessage message="Account review is unavailable in demo mode." /> : pending.isLoading ? <StateMessage message="Loading requests..." loading /> :
+        {pending.isLoading ? <StateMessage message="Loading requests..." loading /> :
           pending.isError ? <><StateMessage message={`Could not load requests: ${pending.error.message}`} /><Button label="Retry requests" secondary onPress={() => void pending.refetch()} /></> :
           !pending.data?.length ? <StateMessage message="No account requests are awaiting review." /> : [...groupByHatchery(pending.data, (item) => item.site)].map(([site, allRequests]) => { const accounts = allRequests.filter((account) => filteredPending.includes(account)); return <View key={site} style={styles.group}>
             <Text style={styles.site}>{site}</Text>
@@ -235,7 +241,7 @@ export function UsersScreen() {
               <Text style={styles.detail}>Phone: {value(account.phone)}</Text>
               <Text style={styles.detail}>Employee ID: {value(account.employeeId)}</Text>
               {account.lastActive && <Text style={styles.detail}>Last active: {formatManilaDateTime(account.lastActive)} PHT</Text>}
-              {admin && account.role !== 'admin' && DATA_MODE === 'api' && <Pressable accessibilityRole="button" disabled={remove.isPending} onPress={() => setConfirmation({ action: 'remove', id: account.id, name: account.name || account.email })} style={styles.removeButton}><Text style={styles.removeButtonText}>Remove account</Text></Pressable>}
+              {admin && account.role !== 'admin' && <Pressable accessibilityRole="button" disabled={remove.isPending} onPress={() => setConfirmation({ action: 'remove', id: account.id, name: account.name || account.email })} style={styles.removeButton}><Text style={styles.removeButtonText}>Remove account</Text></Pressable>}
             </View>)}
           </View>; })}
         {remove.isError && <StateMessage message={`Could not remove account: ${remove.error.message}`} />}
@@ -266,6 +272,9 @@ type UserConfirmation =
   | { action: 'reject' | 'remove'; id: string; name: string };
 
 const createManagementStyles = (colors: Palette) => StyleSheet.create({
+  profilePair: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  profileColumn: { flexGrow: 1, flexShrink: 1, flexBasis: 120, minWidth: 0 },
+  profileEmail: { flexBasis: 190 },
   intro: { color: colors.muted, fontSize: 14, lineHeight: 21 },
   group: { gap: 10, marginTop: 4 },
   site: { color: colors.teal, fontSize: 15, lineHeight: 21, fontWeight: '700' },

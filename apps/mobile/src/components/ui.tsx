@@ -51,7 +51,7 @@ export function Page({ children, auth = false, bottomPadding, maxWidth }: PropsW
     : <View style={styles.background}>{content}</View>;
 }
 
-export function Brand({ compact = false, onLogoPress, logoExpanded }: { compact?: boolean; onLogoPress?: () => void; logoExpanded?: boolean }) {
+export function Brand({ compact = false, showCaption = !compact, onLogoPress, logoExpanded }: { compact?: boolean; showCaption?: boolean; onLogoPress?: () => void; logoExpanded?: boolean }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
   const logo = <Image source={require('../../assets/hydrosense-logo.png')} resizeMode="contain" accessibilityLabel="HydroSense logo" style={compact ? styles.logoSmall : styles.logo} />;
@@ -59,7 +59,7 @@ export function Brand({ compact = false, onLogoPress, logoExpanded }: { compact?
     {onLogoPress ? <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" accessibilityState={{ expanded: logoExpanded }} onPress={onLogoPress} style={styles.logoButton}>{logo}</Pressable> : logo}
     <View style={compact ? styles.brandTextCompact : styles.brandText}>
       <Text numberOfLines={compact ? 1 : undefined} style={compact ? styles.brandNameSmall : styles.brandName}>HydroSense</Text>
-      {!compact && <Text style={styles.brandCaption}>WATER QUALITY MONITORING</Text>}
+      {showCaption && <Text style={[styles.brandCaption, compact && styles.brandCaptionCompact]}>WATER QUALITY MONITORING</Text>}
     </View>
   </View>;
 }
@@ -178,6 +178,7 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   brandName: { color: colors.ink, fontWeight: '800', fontSize: 24, letterSpacing: -0.5 },
   brandNameSmall: { color: colors.ink, fontWeight: '800', fontSize: 17 },
   brandCaption: { color: colors.muted, fontSize: uiScale.type.caption, letterSpacing: 0.9, fontWeight: '700' },
+  brandCaptionCompact: { fontSize: 10, letterSpacing: 0.2 },
   heading: { gap: uiScale.spacing[2], paddingVertical: uiScale.spacing[1] / 2 },
   centered: { alignItems: 'center' },
   centerText: { textAlign: 'center' },

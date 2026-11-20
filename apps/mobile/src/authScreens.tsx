@@ -10,7 +10,7 @@ import { Brand, Button, Card, createFormStyles, GlassDialog, Page, Title } from 
 import { PhoneField } from './components/PhoneField';
 import { uiScale, useTheme } from './theme';
 import { useSession } from './state';
-import { API_BASE_URL, API_KEY, DATA_MODE } from './services/client';
+import { API_BASE_URL, API_KEY } from './services/client';
 import { authenticate, HATCHERIES, requestAccount, requestPasswordReset, validateSignIn } from './services/auth';
 import type { SignUpValues } from './services/auth';
 
@@ -96,7 +96,6 @@ export function LoginScreen({ navigation }: Props<'Login'>) {
     <Brand />
     <Card>
       <Title centered detail="Sign in to your HydroSense account">Welcome Back</Title>
-      {DATA_MODE === 'mock' && <Text style={{ color: colors.muted }}>Sign in with your account. Monitoring data in this preview is sample data.</Text>}
         <AuthField label="Email" value={email} onChange={setEmail} keyboard="email-address" placeholder="Enter your email" />
         <AuthField label="Password" value={password} onChange={setPassword} secure placeholder="Enter your password" />
         <Pressable accessibilityRole="button" disabled={busy} onPress={() => navigation.navigate('ForgotPassword')} style={{ minHeight: 48, alignSelf: 'flex-end', justifyContent: 'center', paddingHorizontal: uiScale.spacing[2] }}><Text style={{ color: colors.teal, fontWeight: '700' }}>Forgot password?</Text></Pressable>

@@ -107,6 +107,7 @@ export default function TankOverviewPage() {
         return { tank, reading, alerts: alerts.filter((alert) => alert.status === 'open') };
       }));
     },
+    refetchInterval: DATA_MODE === 'api' ? 30_000 : false,
   });
   const createTank = useMutation({
     mutationFn: ({ tank, changedBy }: { tank: Omit<Tank, 'id'>; changedBy: string }) => api.createTank(tank, changedBy),

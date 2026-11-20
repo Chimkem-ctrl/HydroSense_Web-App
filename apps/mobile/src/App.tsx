@@ -23,9 +23,7 @@ import {
   ActivityLogsScreen,
   AlertDetailScreen,
   AlertsScreen,
-  CalibrationAndMaintenanceScreen,
   ConnectionNotice,
-  FieldEntryScreen,
   HistoryScreen,
   HomeScreen,
   TanksScreen,
@@ -103,8 +101,6 @@ function MainTabs() {
     <Tabs.Screen name="Trends" component={TrendsScreen} />
     <Tabs.Screen name="More" component={MoreScreen} />
     <Tabs.Screen name="Activity" component={ActivityLogsScreen} />
-    <Tabs.Screen name="FieldEntry" component={FieldEntryScreen} options={{ title: 'Field water-quality entry' }} />
-    {canAccess(user?.role ?? null, 'canCalibrate') && <Tabs.Screen name="Calibration" component={CalibrationAndMaintenanceScreen} />}
     <Tabs.Screen name="Reports" component={ReportsScreen} />
     <Tabs.Screen name="Status" component={StatusScreen} />
     {canAccess(user?.role ?? null, 'history') && <Tabs.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />}

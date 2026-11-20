@@ -2,7 +2,7 @@ import { Children, isValidElement } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ panel: null as string | null, setPanel: vi.fn(), setTankId: vi.fn() }));
+const state = vi.hoisted(() => ({ panel: null as string | null, role: 'operator' as 'operator' | 'admin', setPanel: vi.fn(), setTankId: vi.fn() }));
 vi.mock('react', async (importOriginal) => {
   const react = await importOriginal<typeof import('react')>();
   return {
@@ -14,6 +14,7 @@ vi.mock('react', async (importOriginal) => {
 vi.mock('react-native', () => ({
   Alert: { alert: vi.fn() }, Modal: 'Modal', Pressable: 'Pressable', ScrollView: 'ScrollView',
   StyleSheet: { create: (styles: object) => styles, absoluteFill: {} }, Text: 'Text', View: 'View',
+  useWindowDimensions: () => ({ width: 390, height: 844 }),
 }));
 vi.mock('@react-native-community/netinfo', () => ({ default: { addEventListener: vi.fn() } }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [], isError: false }) }));
@@ -21,10 +22,10 @@ vi.mock('lucide-react-native', () => Object.fromEntries([
   'Activity', 'AlertTriangle', 'Bell', 'ChevronDown', 'ClipboardList', 'Database', 'FileText',
   'LayoutDashboard', 'LogOut', 'Menu', 'Sliders', 'UserRound', 'Users', 'Waves', 'Wifi', 'WifiOff', 'X',
 ].map((name) => [name, name])));
-vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }));
-vi.mock('../services/client', () => ({ api: {}, DATA_MODE: 'mock', listPendingAccounts: vi.fn(), liveClient: null }));
+vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ top: 24, bottom: 34, left: 0, right: 0 }) }));
+vi.mock('../services/client', () => ({ api: {}, listPendingAccounts: vi.fn(), liveClient: null }));
 vi.mock('../state', () => ({
-  useSession: () => ({ user: { name: 'Test User', role: 'operator' }, signOut: vi.fn() }),
+  useSession: () => ({ user: { name: 'Test User', role: state.role }, signOut: vi.fn() }),
   useTankSelection: () => ({ tanks: [{ id: '1', name: 'Tank 01', site: 'Site' }], tankId: '1', setTankId: state.setTankId, isLoading: false, error: null, refetch: vi.fn() }),
 }));
 vi.mock('../theme', () => ({
@@ -48,11 +49,23 @@ const props = { navigation: { navigate: vi.fn() }, route: { key: 'home', name: '
 
 beforeEach(() => {
   state.panel = null;
+  state.role = 'operator';
   state.setPanel.mockClear();
   state.setTankId.mockClear();
 });
 
 describe('account profile controls', () => {
+  it('shows the brand and caption in the navigation header', () => {
+    state.panel = 'navigation';
+    const root = HeaderToolbar(props);
+    const brands = elements(root, 'Brand');
+    expect(brands).toHaveLength(2);
+    expect(brands.filter((brand) => brand.props.showCaption)).toHaveLength(1);
+    expect(elements(root, 'Text').some((item) => item.props.children === 'Navigation')).toBe(false);
+    expect(elements(root, 'Text').some((item) => Array.isArray(item.props.children) && item.props.children.join('') === 'OPERATOR Workspace')).toBe(true);
+    expect(elements(root, 'Text').some((item) => item.props.children === '© 2026 HydroSense')).toBe(true);
+  });
+
   it('opens navigation from the header logo without a separate menu icon', () => {
     const root = HeaderToolbar(props);
     const brand = elements(root, 'Brand').find((item) => typeof item.props.onLogoPress === 'function');
@@ -60,6 +73,14 @@ describe('account profile controls', () => {
     (brand?.props.onLogoPress as () => void)();
     expect(state.setPanel).toHaveBeenCalledWith('navigation');
     expect(elements(root, 'Menu')).toHaveLength(0);
+  });
+
+  it('does not offer calibration in administrator navigation', () => {
+    state.role = 'admin';
+    state.panel = 'navigation';
+    const root = HeaderToolbar(props);
+    expect(elements(root, 'Text').some((item) => item.props.children === 'Calibration')).toBe(false);
+    expect(elements(root, 'Text').some((item) => item.props.children === 'Activity logs')).toBe(true);
   });
 
   it('shows connection status without dashboard or tank selection controls', () => {
@@ -73,5 +94,17 @@ describe('account profile controls', () => {
     expect(elements(root, 'Text').some((item) => item.props.children === 'DASHBOARD')).toBe(false);
     expect(elements(root, 'View').some((item) => item.props.accessibilityLabel === 'Connection Offline')).toBe(true);
     expect(elements(root, 'WifiOff')[0].props.color).toBe('#c00');
+    const accountPanel = elements(root, 'SafeAreaView').find((item) => Array.isArray(item.props.edges) && item.props.edges.length === 0);
+    const panelStyles = (accountPanel?.props.style as unknown[]).flat(Infinity).filter(Boolean);
+    expect(Object.assign({}, ...panelStyles)).toMatchObject({ position: 'absolute', top: 98, right: 16, width: 340, maxHeight: 696 });
+  });
+
+  it('positions notifications beneath the bell within the viewport', () => {
+    state.panel = 'notifications';
+    const root = HeaderToolbar(props);
+    const notificationPanel = elements(root, 'SafeAreaView').find((item) => Array.isArray(item.props.edges) && item.props.edges.length === 0);
+    const panelStyles = (notificationPanel?.props.style as unknown[]).flat(Infinity).filter(Boolean);
+    expect(Object.assign({}, ...panelStyles)).toMatchObject({ position: 'absolute', top: 98, right: 74, width: 300, maxHeight: 696 });
+    expect(elements(root, 'Text').some((item) => item.props.children === 'View all')).toBe(true);
   });
 });

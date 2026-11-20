@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getAddressByBarangayCode } from "npm:@aivangogh/ph-address@2026.2.4";
+import { reportedDeviceFields } from "./reportedFields.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -290,14 +291,17 @@ Deno.serve(async (request) => {
 
     const wifiRssi = optionalNumber(reading.wifiRssi);
     const batteryPct = optionalNumber(reading.batteryPct);
+    const pendingSyncCount = optionalNumber(reading.pendingSyncCount);
+    const reportedFields = reportedDeviceFields(live, batteryPct, wifiRssi, pendingSyncCount);
     const { error: deviceError } = await admin.from("device_statuses").upsert({
       device_id: deviceId,
       online: true,
       last_seen: new Date().toISOString(),
       power_source: String(reading.powerSource ?? "grid"),
       wifi_rssi: wifiRssi ?? 0,
-      pending_sync_count: optionalNumber(reading.pendingSyncCount) ?? 0,
+      pending_sync_count: pendingSyncCount ?? 0,
       battery_pct: batteryPct ?? null,
+      reported_fields: reportedFields,
     }, { onConflict: "device_id" });
     if (deviceError) {
       console.error(`Reading ${data.id} was stored, but device status could not be updated:`, deviceError);
@@ -406,6 +410,7 @@ Deno.serve(async (request) => {
         powerSource: status?.power_source ?? "battery",
         wifiRssi: status?.wifi_rssi ?? 0,
         pendingSyncCount: status?.pending_sync_count ?? 0,
+        reportedFields: status?.reported_fields ?? [],
         ...(latestReading ? {
           invalidParameters: invalidProbeParameters(latestReading.temperature, latestReading.do_mg_l, latestReading.ph),
           probeCheckedAt: latestReading.timestamp,

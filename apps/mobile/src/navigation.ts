@@ -5,8 +5,6 @@ export type MainTabParamList = {
   Trends: undefined;
   More: undefined;
   Activity: undefined;
-  FieldEntry: undefined;
-  Calibration: undefined;
   Reports: undefined;
   Status: undefined;
   History: undefined;

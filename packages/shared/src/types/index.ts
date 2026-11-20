@@ -33,6 +33,7 @@ export interface DeviceStatus {
   powerSource: 'solar' | 'grid' | 'battery';
   wifiRssi: number;
   pendingSyncCount: number;
+  reportedFields?: Array<'batteryPct' | 'wifiRssi' | 'pendingSyncCount'>;
   invalidParameters?: MeasuredParameter[];
   probeCheckedAt?: string;
 }

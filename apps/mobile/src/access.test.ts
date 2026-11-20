@@ -9,4 +9,11 @@ describe('mobile role access', () => {
     expect(features.map((feature) => canAccess('admin', feature))).toEqual([true, true, true, true, true, true, true]);
     expect(canAccess(null, 'admin')).toBe(false);
   });
+
+  it('allows only managers to register tanks on mobile', () => {
+    expect(canAccess('manager', 'registerTank')).toBe(true);
+    expect(canAccess('admin', 'registerTank')).toBe(false);
+    expect(canAccess('operator', 'registerTank')).toBe(false);
+    expect(canAccess(null, 'registerTank')).toBe(false);
+  });
 });

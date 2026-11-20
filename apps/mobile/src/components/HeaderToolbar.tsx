@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { useQuery } from '@tanstack/react-query';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
-import { Activity, AlertTriangle, Bell, ClipboardList, Database, FileText, LayoutDashboard, LogOut, Sliders, UserRound, Users, Wifi, WifiOff, X } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Activity, AlertTriangle, Bell, ClipboardList, Database, FileText, LayoutDashboard, LogOut, UserRound, Users, Wifi, WifiOff, X } from 'lucide-react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MainTabParamList } from '../navigation';
 import { canAccess } from '../access';
-import { api, DATA_MODE, listPendingAccounts, liveClient } from '../services/client';
+import { api, listPendingAccounts, liveClient } from '../services/client';
 import { getConnectionLabel } from '../services/connectionStatus';
 import { useSession, useTankSelection } from '../state';
 import { Brand } from './ui';
@@ -16,9 +16,16 @@ import type { Palette } from '../theme';
 
 type Panel = 'navigation' | 'account' | 'notifications' | null;
 type Destination = { name: keyof MainTabParamList; label: string; icon: typeof Activity; group: 'Monitor' | 'Records' | 'Manage' };
+const headerHorizontalPadding = 16;
+const headerTopPadding = 8;
+const headerBottomPadding = 10;
+const headerButtonSize = 48;
+const headerButtonGap = 10;
 
 export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const { colors, mode, reduceMotion } = useTheme();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const styles = createStyles(colors);
   const { user, signOut } = useSession();
   const { tankId } = useTankSelection();
@@ -26,7 +33,7 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const [online, setOnline] = useState<boolean | null>(null);
   const [connection, setConnection] = useState(liveClient?.getConnectionState() ?? 'disconnected');
   const alerts = useQuery({ queryKey: ['alerts', 'all'], queryFn: () => api.listAlerts(), enabled: Boolean(user), refetchInterval: 5000 });
-  const pending = useQuery({ queryKey: ['pending-accounts', user?.id], queryFn: listPendingAccounts, enabled: user?.role === 'admin' && DATA_MODE === 'api', refetchInterval: 5000 });
+  const pending = useQuery({ queryKey: ['pending-accounts', user?.id], queryFn: listPendingAccounts, enabled: user?.role === 'admin', refetchInterval: 5000 });
   const latestReading = useQuery({ queryKey: ['latest-reading', tankId], queryFn: () => api.getLatestReading(tankId), enabled: Boolean(user && tankId) });
   const [, updateClock] = useState(0);
   const openAlertItems = alerts.data?.filter((item) => item.status === 'open') ?? [];
@@ -48,7 +55,6 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
     { name: 'Alerts', label: 'Alerts center', icon: AlertTriangle, group: 'Monitor' },
     ...(canAccess(user?.role ?? null, 'history') ? [{ name: 'History', label: 'Historical logs', icon: Database, group: 'Records' } satisfies Destination] : []),
     { name: 'Activity', label: 'Activity logs', icon: ClipboardList, group: 'Records' },
-    ...(canAccess(user?.role ?? null, 'canCalibrate') ? [{ name: 'Calibration', label: 'Calibration', icon: Sliders, group: 'Records' } satisfies Destination] : []),
     { name: 'Reports', label: 'Reports', icon: FileText, group: 'Records' },
     ...(canAccess(user?.role ?? null, 'validation') ? [{ name: 'Review', label: 'Validation', icon: ClipboardList, group: 'Records' } satisfies Destination] : []),
     ...(canAccess(user?.role ?? null, 'users') ? [{ name: 'Users', label: 'Users & roles', icon: Users, group: 'Manage' } satisfies Destination] : []),
@@ -57,6 +63,9 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   ];
   const connectionLabel = getConnectionLabel(online, connection, latestReading.data?.timestamp, Date.now());
   const connectionColor = connectionLabel === 'Live' ? colors.normal : colors.critical;
+  const popoverTop = insets.top + headerTopPadding + headerButtonSize + headerBottomPadding + 8;
+  const popoverRight = headerHorizontalPadding + (panel === 'notifications' ? headerButtonSize + headerButtonGap : 0);
+  const isPopover = panel === 'account' || panel === 'notifications';
   function goTo(name: keyof MainTabParamList) {
     setPanel(null);
     navigation.navigate(name);
@@ -89,11 +98,10 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
     <Modal visible={panel !== null} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setPanel(null)}>
       <View style={styles.overlay}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={StyleSheet.absoluteFill} />
-        <SafeAreaView edges={['top', 'bottom']} style={[styles.panel, { backgroundColor: mode === 'dark' ? '#181818' : colors.surface }, panel !== 'navigation' && styles.sheet]}>
-          <View style={styles.panelHeader}><Text style={styles.panelTitle}>{panel === 'navigation' ? 'Navigation' : panel === 'notifications' ? 'Notifications' : 'Account'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={styles.close}><X size={20} color={colors.ink} /></Pressable></View>
-          <ScrollView contentContainerStyle={styles.panelContent} indicatorStyle={mode === 'dark' ? 'white' : 'black'}>
+        <SafeAreaView edges={isPopover ? [] : ['top', 'bottom']} style={[styles.panel, { backgroundColor: mode === 'dark' ? '#181818' : colors.surface }, isPopover && [styles.popover, { top: popoverTop, right: popoverRight, width: Math.min(340, Math.max(0, width - popoverRight - headerHorizontalPadding)), maxHeight: Math.max(0, height - popoverTop - insets.bottom - 16) }]]}>
+          <View style={[styles.panelHeader, isPopover && styles.popoverHeader]}>{panel === 'navigation' ? <View style={styles.panelBrand}><Brand compact showCaption /></View> : <Text style={styles.panelTitle}>{panel === 'notifications' ? 'Notifications' : 'Account'}</Text>}<Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={styles.close}><X size={20} color={colors.ink} /></Pressable></View>
+          <ScrollView contentContainerStyle={[styles.panelContent, isPopover && styles.popoverContent]} indicatorStyle={mode === 'dark' ? 'white' : 'black'}>
             {panel === 'navigation' && <>
-              <Brand compact />
               {(['Monitor', 'Records', 'Manage'] as const).map((group) => {
                 const items = destinations.filter((item) => item.group === group);
                 return items.length ? <View key={group} style={styles.group}>
@@ -103,7 +111,10 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
                   </Pressable>)}
                 </View> : null;
               })}
-              <Text style={styles.copyright}>© 2026 HydroSense</Text>
+              <View style={styles.navigationFooter}>
+                {user?.role && <Text style={styles.copyright}>{user.role.toUpperCase()} Workspace</Text>}
+                <Text style={styles.copyright}>© 2026 HydroSense</Text>
+              </View>
             </>}
             {panel === 'notifications' && <>
               {pending.data && pending.data.length > 0 && <Pressable accessibilityRole="button" onPress={() => goTo('Users')} style={styles.notification}><View style={[styles.dot, { backgroundColor: colors.teal }]} /><View style={{ flex: 1 }}><Text style={styles.itemText}>{pending.data.length} pending account {pending.data.length === 1 ? 'request' : 'requests'}</Text><Text style={styles.description}>Review in Users & roles</Text></View></Pressable>}
@@ -112,13 +123,15 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
               <Pressable accessibilityRole="button" onPress={() => goTo('Alerts')} style={styles.viewAll}><Text style={styles.viewAllText}>View all</Text></Pressable>
             </>}
             {panel === 'account' && <>
-              <Text style={styles.panelTitle}>{user?.name}</Text><Text style={styles.description}>{user?.role}</Text>
+              <View style={styles.accountIdentity}><Text style={styles.panelTitle}>{user?.name}</Text><Text style={styles.description}>{user?.role}</Text></View>
               <View accessibilityLabel={`Connection ${connectionLabel}`} style={styles.connection}>
                 {connectionLabel === 'Live' ? <Wifi size={19} color={connectionColor} /> : <WifiOff size={19} color={connectionColor} />}
                 <Text style={styles.description}>Connection</Text><Text style={[styles.connectionText, { color: connectionColor }]}>{connectionLabel}</Text>
               </View>
-              <Pressable accessibilityRole="button" onPress={() => goTo('Profile')} style={styles.menuItem}><UserRound size={19} color={colors.muted} /><Text style={styles.itemText}>My profile</Text></Pressable>
-              <Pressable accessibilityRole="button" onPress={() => void handleSignOut()} style={styles.menuItem}><LogOut size={19} color={colors.critical} /><Text style={[styles.itemText, { color: colors.critical }]}>Sign out</Text></Pressable>
+              <View>
+                <Pressable accessibilityRole="button" onPress={() => goTo('Profile')} style={styles.menuItem}><UserRound size={19} color={colors.muted} /><Text style={styles.itemText}>My profile</Text></Pressable>
+                <Pressable accessibilityRole="button" onPress={() => void handleSignOut()} style={styles.menuItem}><LogOut size={19} color={colors.critical} /><Text style={[styles.itemText, { color: colors.critical }]}>Sign out</Text></Pressable>
+              </View>
             </>}
           </ScrollView>
         </SafeAreaView>
@@ -129,11 +142,11 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
 
 const createStyles = (colors: Palette) => StyleSheet.create({
   safe: { backgroundColor: 'transparent' },
-  header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  header: { paddingHorizontal: headerHorizontalPadding, paddingTop: headerTopPadding, paddingBottom: headerBottomPadding, gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: headerButtonGap },
   brandSlot: { flex: 1, minWidth: 0, overflow: 'hidden' },
-  iconButton: { width: 48, height: 48, flexShrink: 0, borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
-  avatar: { width: 48, height: 48, flexShrink: 0, borderRadius: uiScale.radius.pill, backgroundColor: colors.selected, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  iconButton: { width: headerButtonSize, height: headerButtonSize, flexShrink: 0, borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: headerButtonSize, height: headerButtonSize, flexShrink: 0, borderRadius: uiScale.radius.pill, backgroundColor: colors.selected, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   badge: { position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, paddingHorizontal: 3, borderRadius: 10, backgroundColor: '#b51c1c', alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: 'white', fontWeight: '700', fontSize: uiScale.type.caption },
   connection: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14 },
@@ -141,11 +154,15 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   error: { color: colors.critical, fontSize: 14, lineHeight: 20 },
   overlay: { flex: 1, backgroundColor: colors.overlay, flexDirection: 'row' },
   panel: { backgroundColor: colors.surface, width: '85%', maxWidth: 340 },
-  sheet: { alignSelf: 'flex-end', width: '100%', maxWidth: undefined, maxHeight: '80%', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  popover: { position: 'absolute', borderRadius: 16, overflow: 'hidden' },
   panelHeader: { paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border },
+  popoverHeader: { paddingHorizontal: 16, paddingVertical: 4 },
+  panelBrand: { flex: 1, minWidth: 0 },
   panelTitle: { color: colors.ink, fontSize: 19, fontWeight: '700' },
   close: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   panelContent: { padding: 20, gap: 12 },
+  popoverContent: { padding: 16, gap: 8 },
+  accountIdentity: { gap: 2 },
   group: { gap: 4, marginTop: 8 },
   groupLabel: { color: colors.muted, fontSize: uiScale.type.caption, letterSpacing: 1, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 8 },
   menuItem: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14 },
@@ -153,7 +170,8 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   itemText: { color: colors.ink, fontSize: 14, fontWeight: '600' },
   selectedText: { color: colors.teal, fontWeight: '700', fontSize: 14 },
   description: { color: colors.muted, fontSize: 14, lineHeight: 20 },
-  copyright: { color: colors.muted, fontSize: 12, textAlign: 'center', marginTop: 24 },
+  navigationFooter: { marginTop: 24, gap: 4 },
+  copyright: { color: colors.muted, fontSize: 12, textAlign: 'center' },
   notification: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
   dot: { width: 10, height: 10, borderRadius: 5, marginTop: 6 },
   viewAll: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: colors.teal },
