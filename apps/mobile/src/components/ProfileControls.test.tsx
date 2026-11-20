@@ -26,7 +26,7 @@ describe('profile placeholder controls', () => {
       const style = item.props.style;
       return typeof style === 'object' && style !== null && 'borderColor' in style && style.borderColor === '#c4d2e880';
     });
-    expect(wrappers).toHaveLength(2);
+    expect(wrappers).toHaveLength(0);
     expect(elements(controls, 'Text').map((item) => item.props.children)).not.toContain('Phone on file:');
     expect(elements(controls, 'Text').map((item) => item.props.children)).not.toContain('Email on file:');
   });

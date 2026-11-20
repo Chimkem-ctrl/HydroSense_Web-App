@@ -102,6 +102,9 @@ Some web features, including audit-log filtering and export, tolerance editing,
 and full reporting, remain on the web. The mobile report builder exports PDF,
 CSV or XLSX with tank, date and section selections. It stops rather than
 producing incomplete reports when the API reading or alert limit is reached.
+History offers separate tank, parameter and date filters. Pages opened from
+More have a back button to return to the More menu. The profile's change
+password control is currently unavailable.
 The statistics section includes a chart of valid readings within thresholds in
 the mobile preview and PDF. Missing measurements are shown as no data.
 UI route restrictions are not a security boundary; the backend must

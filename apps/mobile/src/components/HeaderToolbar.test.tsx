@@ -19,8 +19,8 @@ vi.mock('react-native', () => ({
 vi.mock('@react-native-community/netinfo', () => ({ default: { addEventListener: vi.fn() } }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [], isError: false }) }));
 vi.mock('lucide-react-native', () => Object.fromEntries([
-  'Activity', 'AlertTriangle', 'Bell', 'ChevronDown', 'ClipboardList', 'Database', 'FileText',
-  'LayoutDashboard', 'LogOut', 'Menu', 'Sliders', 'UserRound', 'Users', 'Waves', 'Wifi', 'WifiOff', 'X',
+  'Activity', 'AlertTriangle', 'ArrowLeft', 'Bell', 'Check', 'ChevronDown', 'ClipboardList', 'Database', 'FileText',
+  'LayoutDashboard', 'LogOut', 'MapPin', 'Menu', 'Sliders', 'UserRound', 'Users', 'Waves', 'Wifi', 'WifiOff', 'X',
 ].map((name) => [name, name])));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ top: 24, bottom: 34, left: 0, right: 0 }) }));
 vi.mock('../services/client', () => ({ api: {}, listPendingAccounts: vi.fn(), liveClient: null }));
@@ -46,6 +46,15 @@ function elements(node: ReactNode, type: string): ReactElement<Record<string, un
   ];
 }
 
+function elementMarkers(node: ReactNode): string[] {
+  if (!isValidElement<Record<string, unknown>>(node)) return [];
+  return [
+    ...(node.type === 'HatcheryPicker' ? ['hatchery'] : []),
+    ...(node.props.accessibilityLabel === 'Connection Offline' ? ['connection'] : []),
+    ...Children.toArray(node.props.children as ReactNode).flatMap(elementMarkers),
+  ];
+}
+
 const props = { navigation: { navigate: vi.fn() }, route: { key: 'home', name: 'Home' } } as unknown as BottomTabHeaderProps;
 
 beforeEach(() => {
@@ -59,6 +68,13 @@ beforeEach(() => {
 });
 
 describe('account profile controls', () => {
+  it('returns secondary pages to More without showing back on main tabs', () => {
+    expect(elements(HeaderToolbar(props), 'Pressable').some((item) => item.props.accessibilityLabel === 'Back to More')).toBe(false);
+    const root = HeaderToolbar({ ...props, route: { ...props.route, name: 'Reports' } });
+    const back = elements(root, 'Pressable').find((item) => item.props.accessibilityLabel === 'Back to More');
+    (back?.props.onPress as () => void)();
+    expect(props.navigation.navigate).toHaveBeenCalledWith('More');
+  });
   it('shows the brand and caption in the navigation header', () => {
     state.panel = 'navigation';
     const root = HeaderToolbar(props);
@@ -107,7 +123,10 @@ describe('account profile controls', () => {
   it('offers the hatchery filter only in the administrator account menu', () => {
     state.role = 'admin';
     state.panel = 'account';
-    expect(elements(HeaderToolbar(props), 'HatcheryPicker')).toHaveLength(1);
+    const root = HeaderToolbar(props);
+    expect(elements(root, 'HatcheryPicker')).toHaveLength(1);
+    const markers = elementMarkers(root);
+    expect(markers.indexOf('connection')).toBeLessThan(markers.indexOf('hatchery'));
     state.panel = 'navigation';
     expect(elements(HeaderToolbar(props), 'HatcheryPicker')).toHaveLength(0);
   });

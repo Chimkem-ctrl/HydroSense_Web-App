@@ -64,10 +64,10 @@ export function Brand({ compact = false, showCaption = !compact, onLogoPress, lo
   </View>;
 }
 
-export function Title({ children, detail, centered = false }: { children: string; detail?: string; centered?: boolean }) {
+export function Title({ children, detail, centered = false, icon }: { children: string; detail?: string; centered?: boolean; icon?: ReactNode }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  return <View style={[styles.heading, centered && styles.centered]}><Text style={[styles.title, centered && styles.centerText]}>{children}</Text>{detail ? <Text style={[styles.muted, centered && styles.centerText]}>{detail}</Text> : null}</View>;
+  return <View style={[styles.heading, centered && styles.centered]}><View style={styles.titleRow}>{icon}<Text style={[styles.title, centered && styles.centerText]}>{children}</Text></View>{detail ? <Text style={[styles.muted, centered && styles.centerText]}>{detail}</Text> : null}</View>;
 }
 
 export function Card({ children, title, action, toneColor }: { children: ReactNode; title?: string; action?: ReactNode; toneColor?: string }) {
@@ -105,12 +105,12 @@ function DialogBlur({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof 
   return glassBlur(blurTarget, createStyles(colors));
 }
 
-export function Button({ label, onPress, disabled, secondary, style }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean; style?: StyleProp<ViewStyle> }) {
+export function Button({ label, onPress, disabled, secondary, style, icon }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean; style?: StyleProp<ViewStyle>; icon?: ReactNode }) {
   const { colors, reduceMotion } = useTheme();
   const styles = createStyles(colors);
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, secondary && styles.secondaryButton, disabled && styles.disabled, pressed && !reduceMotion && styles.pressed, style]}>
-    {secondary ? <Text style={styles.secondaryText}>{label}</Text> :
-      <LinearGradient colors={['#1d4ed8', '#0369a1']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.buttonGradient}><Text style={styles.buttonText}>{label}</Text></LinearGradient>}
+    {secondary ? <View style={styles.buttonContent}>{icon}<Text style={styles.secondaryText}>{label}</Text></View> :
+      <LinearGradient colors={['#1d4ed8', '#0369a1']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.buttonGradient}><View style={styles.buttonContent}>{icon}<Text style={styles.buttonText}>{label}</Text></View></LinearGradient>}
   </Pressable>;
 }
 
@@ -180,9 +180,10 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   brandCaption: { color: colors.muted, fontSize: uiScale.type.caption, letterSpacing: 0.9, fontWeight: '700' },
   brandCaptionCompact: { fontSize: 10, letterSpacing: 0.2 },
   heading: { gap: uiScale.spacing[2], paddingVertical: uiScale.spacing[1] / 2 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   centered: { alignItems: 'center' },
   centerText: { textAlign: 'center' },
-  title: { color: colors.ink, fontSize: uiScale.type.title, lineHeight: 34, fontWeight: '700', letterSpacing: -0.4 },
+  title: { color: colors.ink, fontSize: uiScale.type.title, lineHeight: 34, fontWeight: '700', letterSpacing: -0.4, flexShrink: 1 },
   muted: { color: colors.muted, fontSize: uiScale.type.body, lineHeight: 24 },
   card: { backgroundColor: Platform.OS === 'android' ? 'transparent' : 'rgba(255,255,255,0.04)', borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: uiScale.spacing[4], gap: uiScale.spacing[3], boxShadow: '0px 8px 32px rgba(0,0,0,0.25)' },
   dialog: { backgroundColor: Platform.OS === 'android' ? 'transparent' : 'rgba(255,255,255,0.04)', borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', elevation: 0, boxShadow: '0px 8px 32px rgba(0,0,0,0.25)' },
@@ -192,9 +193,10 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   cardTitle: { color: colors.ink, fontSize: uiScale.type.section, fontWeight: '700', flexShrink: 1 },
   button: { minHeight: 48, borderRadius: uiScale.radius.pill, overflow: 'hidden', justifyContent: 'center' },
   buttonGradient: { flexGrow: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
-  buttonText: { color: 'white', fontWeight: '700', fontSize: 14, textAlign: 'center' },
+  buttonContent: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  buttonText: { color: 'white', fontWeight: '700', fontSize: 14, textAlign: 'center', flexShrink: 1 },
   secondaryButton: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, paddingVertical: 10 },
-  secondaryText: { color: colors.ink, fontWeight: '700', fontSize: 14, textAlign: 'center' },
+  secondaryText: { color: colors.ink, fontWeight: '700', fontSize: 14, textAlign: 'center', flexShrink: 1 },
   filterField: { flex: 1, minWidth: 0, gap: 6 },
   filterLabel: { color: colors.muted, fontSize: uiScale.type.caption },
   filterInput: { minHeight: 44, minWidth: 0, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3], paddingVertical: uiScale.spacing[2], backgroundColor: colors.surface, color: colors.ink, fontSize: 14 },

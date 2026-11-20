@@ -1,12 +1,11 @@
 import { useMemo, useState, useEffect } from 'react';
-import type { ReactNode } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Portal } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ClipboardList, Database, FileText, UserRound, Wifi } from 'lucide-react-native';
+import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, Database, Droplets, Eye, FileDown, FileSpreadsheet, FileText, ListFilter, Maximize2, MoreHorizontal, Plus, Trash2, UserRound, Waves, Wifi } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { fromByteArray } from 'base64-js';
@@ -44,13 +43,17 @@ import { api, getConfiguredThreshold, listConfiguredThresholds, listPendingAccou
 import { canAccess } from './access';
 import { useSession, useTankSelection } from './state';
 import { Button, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, Page, StateMessage, Title } from './components/ui';
-import { AlertFilterSection } from './components/AlertFilterSection';
+import { AlertFilters } from './components/AlertFilters';
 import { RangeBar } from './components/RangeBar';
 import { uiScale, useTheme } from './theme';
 import type { Palette, ThemeChoice } from './theme';
 import { createReportFile } from './services/reportFiles';
 import { getAssignedDevices, hasReportedField, pendingRecordTotal } from './services/deviceTelemetry';
 import { TrendChart } from './components/TrendChart';
+import { TrendFilters } from './components/TrendFilters';
+import { ActivityLogActions } from './components/ActivityLogActions';
+import { FilterDropdown } from './components/FilterDropdown';
+import { ReportChoice } from './components/ReportChoice';
 
 type Props<T extends keyof MainTabParamList> = BottomTabScreenProps<MainTabParamList, T>;
 type RootProps<T extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, T>;
@@ -89,7 +92,6 @@ const createLogScreenStyles = (colors: Palette) => StyleSheet.create({
   actions: { flexDirection: 'row', alignItems: 'stretch', gap: uiScale.spacing[3] },
   stackedActions: { flexDirection: 'column', alignItems: 'stretch' },
   actionButton: { flex: 1, minHeight: 48 },
-  stackedActionButton: { flex: 0 },
   count: { color: colors.muted, fontSize: uiScale.type.caption },
   modalOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: uiScale.spacing[4] },
   modalScroll: { width: '100%', maxHeight: '90%' },
@@ -153,7 +155,7 @@ export function HomeScreen() {
   const openCount = alerts.data?.filter((item) => item.status !== 'resolved').length ?? 0;
   return <Page>
     <View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700', letterSpacing: 1 }}>WATER QUALITY MONITORING</Text><Text style={{ color: colors.ink, fontSize: uiScale.type.title, fontWeight: '500' }}>Welcome, {user?.name}.</Text></View>
-    <Title detail={tank ? `${tank.name} · ${tank.site} · rearing day ${getRaisingDay(tank.rearingStartDate)}/21` : 'Live water-quality status'}>Live monitor</Title>
+    <Title icon={<Activity size={23} color={colors.teal} />} detail={tank ? `${tank.name} · ${tank.site} · rearing day ${getRaisingDay(tank.rearingStartDate)}/21` : 'Live water-quality status'}>Live monitor</Title>
     <TankPicker />
     {tanksLoading || (Boolean(tankId) && isLoading) || thresholds.isLoading ? <StateMessage message="Loading latest readings and thresholds…" loading /> : tanksError ? null : isError || thresholds.isError ? <Card><StateMessage message={`Could not load readings or thresholds: ${(readingError ?? thresholds.error)?.message ?? 'Check your connection.'}`} /><Button label="Retry" onPress={() => { void refetch(); void thresholds.refetch(); }} secondary /></Card> : reading && statuses && thresholds.data ? <>
       {freshness?.stale && <View accessibilityLiveRegion="polite" style={{ backgroundColor: mode === 'dark' ? '#3d354d' : '#fff7e6', borderColor: mode === 'dark' ? '#b5a68f' : '#d4bd94', borderWidth: 1, borderRadius: uiScale.radius.control, paddingVertical: uiScale.spacing[3], paddingHorizontal: uiScale.spacing[4] }}>
@@ -192,8 +194,8 @@ function TankSummaryCard({ tank, onOpen, onRemove }: { tank: { id: string; name:
     }).join(' · ')}</Text> : <StateMessage message="No reading available." />}
     {freshness && <Text style={{ color: colors.muted }}>{freshness.stale ? 'Stale reading' : 'Last reading'} · {readingAge(freshness.ageMs)}</Text>}
     <View style={{ flexDirection: 'row', gap: uiScale.spacing[2] }}>
-      <Button label="View live" secondary onPress={onOpen} style={onRemove ? { flex: 1, minWidth: 0 } : undefined} />
-      {onRemove && <Button label="Remove tank" secondary onPress={onRemove} style={{ flex: 1, minWidth: 0 }} />}
+      <Button label="View live" icon={<Eye size={18} color={colors.teal} />} secondary onPress={onOpen} style={onRemove ? { flex: 1, minWidth: 0 } : undefined} />
+      {onRemove && <Button label="Remove tank" icon={<Trash2 size={18} color={colors.critical} />} secondary onPress={onRemove} style={{ flex: 1, minWidth: 0 }} />}
     </View>
   </Card>;
 }
@@ -246,14 +248,14 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
     ]);
   }
   return <Page>
-    <Title detail="Select a tank to view its live readings">Tanks</Title>
-    {can(user?.role, 'registerTank') && <Button label="Register tank" onPress={() => { register.reset(); setFormOpen(true); }} />}
+    <Title icon={<Waves size={23} color={colors.teal} />} detail="Select a tank to view its live readings">Tanks</Title>
+    {can(user?.role, 'registerTank') && <Button label="Register tank" icon={<Plus size={18} color="white" />} onPress={() => { register.reset(); setFormOpen(true); }} />}
     {remove.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>Could not remove tank: {remove.error.message}</Text>}
     {isLoading ? <StateMessage message="Loading tanks…" loading /> : error ? <Card><StateMessage message={`Could not load tanks: ${error.message}`} /><Button label="Retry" secondary onPress={refetch} /></Card> : tanks.length ? tanks.map((tank) => <TankSummaryCard key={tank.id} tank={tank} onOpen={() => { setTankId(tank.id); navigation.navigate('Home'); }} onRemove={can(user?.role, 'removeTank') ? () => confirmRemove(tank) : undefined} />) : <StateMessage message="No tanks are available." />}
     <Modal visible={formOpen && canRegisterTank} animationType="slide" onRequestClose={() => setFormOpen(false)}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}>
         <Page>
-          <Title detail="Link monitoring hardware to a tank">Register tank</Title>
+          <Title icon={<Waves size={23} color={colors.teal} />} detail="Link monitoring hardware to a tank">Register tank</Title>
           <Field label="Tank name" value={name} onChangeText={setName} />
           <Field label="Hatchery" value={site} onChangeText={setSite} />
           <Field label="Rearing start date (YYYY-MM-DD)" value={rearingStartDate} onChangeText={setRearingStartDate} />
@@ -285,7 +287,7 @@ export function MoreScreen({ navigation }: Props<'More'>) {
     ] },
   ];
   return <Page>
-    <Title detail="Records, tools and settings">More</Title>
+    <Title icon={<MoreHorizontal size={23} color={colors.teal} />} detail="Records, tools and settings">More</Title>
     {groups.map((group) => <Card key={group.title} title={group.title}>
       {group.items.map((item, index) => <Pressable key={item.label} accessibilityRole="button" onPress={item.open} style={{ minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: index ? 1 : 0, borderColor: colors.border }}>
         <View style={{ width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.selected }}><item.icon size={18} color={colors.teal} /></View>
@@ -321,33 +323,9 @@ export function AlertsScreen({ navigation }: Props<'Alerts'>) {
   const [statusFilter, setStatusFilter] = useState<AlertItem['status'] | 'all'>('all');
   const [severityFilter, setSeverityFilter] = useState<AlertItem['severity'] | 'all'>('all');
   const [parameterFilter, setParameterFilter] = useState<'temperature' | 'do' | 'ph' | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [expandedFilter, setExpandedFilter] = useState<'status' | 'severity' | 'parameter' | null>(null);
   const [page, setPage] = useState(1);
   const query = useQuery({ queryKey: ['alerts', 'all'], queryFn: () => api.listAlerts(), refetchInterval: 5000 });
   const pending = useQuery({ queryKey: ['pending-accounts', user?.id], queryFn: listPendingAccounts, enabled: user?.role === 'admin', refetchInterval: 5000 });
-  const statusOptions = [
-    { value: 'all', label: 'All statuses' },
-    { value: 'open', label: 'New' },
-    { value: 'acknowledged', label: 'Acknowledged' },
-    { value: 'resolved', label: 'Resolved' },
-  ] as const;
-  const severityOptions = [
-    { value: 'all', label: 'All severities' },
-    { value: 'critical', label: 'Critical' },
-    { value: 'warning', label: 'Warning' },
-  ] as const;
-  const parameterOptions = [
-    { value: null, label: 'All parameters' },
-    { value: 'temperature', label: 'Temperature' },
-    { value: 'do', label: 'Dissolved oxygen' },
-    { value: 'ph', label: 'pH' },
-  ] as const;
-  const filterSummary = [
-    statusOptions.find((option) => option.value === statusFilter)?.label,
-    severityOptions.find((option) => option.value === severityFilter)?.label,
-    parameterOptions.find((option) => option.value === parameterFilter)?.label,
-  ].join(' · ');
   const rows = [...(query.data ?? [])]
     .filter((alert) => tanks.some((tank) => tank.id === alert.tankId))
     .filter((alert) => statusFilter === 'all' || alert.status === statusFilter)
@@ -362,21 +340,15 @@ export function AlertsScreen({ navigation }: Props<'Alerts'>) {
     setPage((current) => Math.min(current, pageCount));
   }, [pageCount]);
   return <Page>
-    <Title detail="Review alerts and responses">Alerts</Title>
+    <Title icon={<AlertTriangle size={23} color={colors.teal} />} detail="Review alerts and responses">Alerts</Title>
     {user?.role === 'admin' && <Card title="Account requests">
       {pending.isLoading ? <StateMessage message="Loading account requests..." loading /> : pending.isError ? <><StateMessage message={`Could not load requests: ${pending.error.message}`} /><Button label="Retry requests" secondary onPress={() => void pending.refetch()} /></> : <Button label={`${pending.data?.length ?? 0} pending requests · Review`} secondary onPress={() => navigation.navigate('Users')} />}
     </Card>}
     <Card title="Alert list">
-      <View style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3] }}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Sort by: ${filterSummary}`} accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen((open) => !open)} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] }}>
-          <Text style={{ color: colors.ink, fontWeight: '700' }}>Filter by:</Text>{filtersOpen ? <ChevronUp size={20} color={colors.muted} /> : <ChevronDown size={20} color={colors.muted} />}
-        </Pressable>
-        {filtersOpen && <View style={{ paddingBottom: uiScale.spacing[2] }}>
-          <AlertFilterSection title="Status" options={statusOptions} value={statusFilter} expanded={expandedFilter === 'status'} onToggle={() => setExpandedFilter((current) => current === 'status' ? null : 'status')} onChange={(value) => { if (statusFilter !== value) { setStatusFilter(value); setPage(1); } }} />
-          <AlertFilterSection title="Severity" options={severityOptions} value={severityFilter} expanded={expandedFilter === 'severity'} onToggle={() => setExpandedFilter((current) => current === 'severity' ? null : 'severity')} onChange={(value) => { if (severityFilter !== value) { setSeverityFilter(value); setPage(1); } }} />
-          <AlertFilterSection title="Parameter" options={parameterOptions} value={parameterFilter} expanded={expandedFilter === 'parameter'} onToggle={() => setExpandedFilter((current) => current === 'parameter' ? null : 'parameter')} onChange={(value) => { if (parameterFilter !== value) { setParameterFilter(value); setPage(1); } }} />
-        </View>}
-      </View>
+      <AlertFilters status={statusFilter} severity={severityFilter} parameter={parameterFilter}
+        onStatusChange={(value) => { if (statusFilter !== value) { setStatusFilter(value); setPage(1); } }}
+        onSeverityChange={(value) => { if (severityFilter !== value) { setSeverityFilter(value); setPage(1); } }}
+        onParameterChange={(value) => { if (parameterFilter !== value) { setParameterFilter(value); setPage(1); } }} />
       {query.isLoading || tanksLoading ? <StateMessage message="Loading alerts…" loading /> : tanksError ? <><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry tank list" secondary onPress={refetchTanks} /></> : query.isError ? <><StateMessage message={`Alert data could not be loaded: ${query.error.message}`} /><Button label="Retry alerts" secondary onPress={() => void query.refetch()} /></> : rows.length === 0 ? <StateMessage message={statusFilter === 'all' && severityFilter === 'all' && parameterFilter === null ? 'No alerts are recorded for the selected hatchery.' : 'No alerts match these filters.'} /> : <>
       {rows.slice((currentPage - 1) * 5, currentPage * 5).map((alert) => {
         const StatusIcon = alert.severity === 'critical' ? AlertCircle : AlertTriangle;
@@ -447,14 +419,14 @@ export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
   });
   const alert = alertQuery.data;
   return <Page>
-    <Title detail="Review the alert and record verified actions">Alert detail</Title>
+    <Title icon={<AlertTriangle size={23} color={colors.teal} />} detail="Review the alert and record verified actions">Alert detail</Title>
     {alertQuery.isLoading ? <StateMessage message="Loading alert…" loading /> : alertQuery.isError ? <StateMessage message="Could not load alert details." /> : !alert ? <StateMessage message="Alert was not found." /> : <Card title={alertTitle(alert)}>
       <DataRow label="Tank" value={alert.tankId} />
       <DataRow label="Value" value={`${alert.value}`} detail={`Threshold: ${alert.threshold}`} />
       <DataRow label="Status" value={alert.status} detail={`Created ${formatManilaDateTime(alert.createdAt)} PHT`} />
       {alert.status !== 'resolved' && <Field label={alert.status === 'open' ? 'Acknowledgement note (optional)' : 'Resolution note'} value={note} onChangeText={setNote} placeholder="What did you observe or verify?" />}
-      {alert.status === 'open' && <Button label="Acknowledge" disabled={mutation.isPending} onPress={() => mutation.mutate('acknowledge')} secondary />}
-      {alert.status === 'acknowledged' && can(user?.role, 'resolveAlert') && <Button label="Resolve alert" disabled={mutation.isPending} onPress={() => mutation.mutate('resolve')} />}
+      {alert.status === 'open' && <Button label="Acknowledge" icon={<CheckCircle2 size={18} color={colors.teal} />} disabled={mutation.isPending} onPress={() => mutation.mutate('acknowledge')} secondary />}
+      {alert.status === 'acknowledged' && can(user?.role, 'resolveAlert') && <Button label="Resolve alert" icon={<CheckCircle2 size={18} color="white" />} disabled={mutation.isPending} onPress={() => mutation.mutate('resolve')} />}
       {mutation.isError && <Text style={{ color: colors.critical }}>{mutation.error.message}</Text>}
       <Text style={{ color: colors.ink, fontWeight: '800', marginTop: 8 }}>Response history</Text>
       {responses.isLoading ? <StateMessage message="Loading responses…" loading /> : responses.isError ? <><StateMessage message={`Could not load responses: ${responses.error.message}`} /><Button label="Retry responses" secondary onPress={() => void responses.refetch()} /></> : (responses.data ?? []).length === 0 ? <Text style={{ color: colors.muted }}>No responses recorded.</Text> : responses.data?.map((response) => <View key={response.id} style={record.row}>
@@ -466,87 +438,29 @@ export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
   </Page>;
 }
 
-function TrendFilterSection({ title, options, value, expanded, onToggle, onChange }: {
-  title: string;
-  options: readonly { value: string; label: string }[];
-  value: string;
-  expanded: boolean;
-  onToggle: () => void;
-  onChange: (value: string) => void;
-}) {
-  const { colors } = useTheme();
-  const selectedLabel = options.find((option) => option.value === value)?.label ?? 'None available';
-  const Chevron = expanded ? ChevronUp : ChevronDown;
-  return <View>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${selectedLabel}`} accessibilityState={{ expanded }} onPress={onToggle} style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: uiScale.spacing[2] }}>
-      <View style={{ flex: 1 }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{title}</Text><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{selectedLabel}</Text></View>
-      <Chevron size={18} color={colors.ink} />
-    </Pressable>
-    {expanded && <View accessibilityRole="radiogroup" accessibilityLabel={`Filter trends by ${title.toLowerCase()}`} style={{ paddingLeft: uiScale.spacing[3] }}>
-      {options.map((option) => {
-        const selected = option.value === value;
-        return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => onChange(option.value)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2] }}>
-          <Text style={{ color: colors.ink, flex: 1 }}>{option.label}</Text>
-          <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: selected ? colors.ink : colors.muted, alignItems: 'center', justifyContent: 'center' }}>{selected && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.ink }} />}</View>
-        </Pressable>;
-      })}
-    </View>}
-  </View>;
-}
-
-function HistoryFilterSection({ title, summary, expanded, onToggle, children }: {
-  title: string;
-  summary: string;
-  expanded: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  const { colors } = useTheme();
-  const Chevron = expanded ? ChevronUp : ChevronDown;
-  return <View>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${summary}`} accessibilityState={{ expanded }} onPress={onToggle} style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: uiScale.spacing[2] }}>
-      <View style={{ flex: 1 }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{title}</Text><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{summary}</Text></View>
-      <Chevron size={18} color={colors.ink} />
-    </Pressable>
-    {expanded && <View style={{ paddingLeft: uiScale.spacing[3] }}>{children}</View>}
-  </View>;
-}
-
 export function TrendsScreen() {
   const { colors } = useTheme();
-  const { tanks, tankId, setTankId } = useTankSelection();
+  const { tanks, tankId, setTankId, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const [days, setDays] = useState(1);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [expandedFilter, setExpandedFilter] = useState<'tank' | 'range' | null>(null);
   const [expanded, setExpanded] = useState<MeasuredParameter | null>(null);
   const from = useMemo(() => new Date(Date.now() - days * 86_400_000).toISOString(), [days]);
   const readings = useQuery({ queryKey: ['mobile-trends', tankId, from], queryFn: () => api.listReadings({ tankId, from }), enabled: Boolean(tankId) });
   const thresholds = useQuery({ queryKey: ['configured-thresholds'], queryFn: listConfiguredThresholds });
   const parameters = [{ key: 'temperature', label: 'Temperature', unit: '°C' }, { key: 'do', label: 'Dissolved oxygen', unit: 'mg/L' }, { key: 'ph', label: 'pH', unit: 'pH' }] as const;
   const tankOptions = tanks.map((tank) => ({ value: tank.id, label: tank.name }));
-  const rangeOptions = [{ value: '1', label: '24 hours' }, { value: '7', label: '7 days' }, { value: '21', label: '21 days' }];
-  const filterSummary = `${tankOptions.find((option) => option.value === tankId)?.label ?? 'Select tank'} · ${rangeOptions.find((option) => option.value === `${days}`)?.label}`;
   return <Page>
-    <Title detail="Sensor readings · 3-hour sampling">Trends</Title>
-    <View style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3] }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Filter by: ${filterSummary}`} accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen((open) => !open)} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] }}>
-        <Text style={{ color: colors.ink, fontWeight: '700' }}>Filter by:</Text>{filtersOpen ? <ChevronUp size={20} color={colors.muted} /> : <ChevronDown size={20} color={colors.muted} />}
-      </Pressable>
-      {filtersOpen && <View style={{ paddingBottom: uiScale.spacing[2] }}>
-        <TrendFilterSection title="Tank" options={tankOptions} value={tankId ?? ''} expanded={expandedFilter === 'tank'} onToggle={() => setExpandedFilter((current) => current === 'tank' ? null : 'tank')} onChange={setTankId} />
-        <TrendFilterSection title="Date range" options={rangeOptions} value={`${days}`} expanded={expandedFilter === 'range'} onToggle={() => setExpandedFilter((current) => current === 'range' ? null : 'range')} onChange={(value) => setDays(Number(value))} />
-      </View>}
-    </View>
-    {readings.isLoading || thresholds.isLoading ? <StateMessage message="Loading trend data…" loading /> : readings.isError || thresholds.isError ? <Card><StateMessage message={`Could not load trends: ${(readings.error ?? thresholds.error)?.message}`} /><Button label="Retry" secondary onPress={() => { void readings.refetch(); void thresholds.refetch(); }} /></Card> : (readings.data?.length ?? 0) >= 500 ? <StateMessage message="The reading limit was reached; trends may be incomplete. Choose a shorter range." /> : parameters.map(({ key, label, unit }) => {
+    <Title icon={<Activity size={23} color={colors.teal} />} detail="Sensor readings · 3-hour sampling">Trends</Title>
+    <TrendFilters tanks={tankOptions} tankId={tankId ?? ''} onTankChange={setTankId} days={days} onDaysChange={setDays} />
+    {tanksLoading || (Boolean(tankId) && readings.isLoading) || thresholds.isLoading ? <StateMessage message="Loading trend data…" loading /> : tanksError ? <Card><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry" secondary onPress={refetchTanks} /></Card> : !tankId ? <StateMessage message="No tanks are available for the selected hatchery." /> : readings.isError || thresholds.isError ? <Card><StateMessage message={`Could not load trends: ${(readings.error ?? thresholds.error)?.message}`} /><Button label="Retry" secondary onPress={() => { void readings.refetch(); void thresholds.refetch(); }} /></Card> : (readings.data?.length ?? 0) >= 500 ? <StateMessage message="The reading limit was reached; trends may be incomplete. Choose a shorter range." /> : parameters.map(({ key, label, unit }) => {
       const stats = calculateParameterStatistics(key, readings.data ?? [], thresholds.data ?? []);
-      return <Card key={key} title={`${label} · ${unit}`} action={<Pressable accessibilityRole="button" accessibilityLabel={`Expand ${label} chart`} onPress={() => setExpanded(key)}><Text style={{ color: colors.teal }}>Expand</Text></Pressable>}>
+      return <Card key={key} title={`${label} · ${unit}`} action={<Pressable accessibilityRole="button" accessibilityLabel={`Expand ${label} chart`} onPress={() => setExpanded(key)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface }}><Maximize2 size={18} color={colors.teal} /></Pressable>}>
         <TrendChart readings={readings.data ?? []} parameter={key} />
         <Text style={{ color: colors.muted }}>Mean {stats.mean === null ? '—' : stats.mean.toFixed(2)} · In range {stats.percentInRange === null ? '—' : `${stats.percentInRange.toFixed(1)}%`} · {stats.readings} valid</Text>
         {stats.invalidReadings > 0 && <Text style={{ color: colors.warning }}>{stats.invalidReadings} invalid readings excluded. Check probe.</Text>}
         <Text style={{ color: colors.muted }}>Lines break at invalid or missing samples. Times shown in Asia/Manila.</Text>
       </Card>;
     })}
-    <Modal visible={expanded !== null} animationType="slide" onRequestClose={() => setExpanded(null)}><SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}><Page><Title detail="Times shown in Asia/Manila">{`${parameters.find((item) => item.key === expanded)?.label ?? 'Trend'} trend`}</Title>{expanded && <Card><TrendChart readings={readings.data ?? []} parameter={expanded} expanded /></Card>}<Button label="Close" secondary onPress={() => setExpanded(null)} /></Page></SafeAreaView></Modal>
+    <Modal visible={expanded !== null} animationType="slide" onRequestClose={() => setExpanded(null)}><SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}><Page><Title icon={<Activity size={23} color={colors.teal} />} detail="Times shown in Asia/Manila">{`${parameters.find((item) => item.key === expanded)?.label ?? 'Trend'} trend`}</Title>{expanded && <Card><TrendChart readings={readings.data ?? []} parameter={expanded} expanded /></Card>}<Button label="Close" secondary onPress={() => setExpanded(null)} /></Page></SafeAreaView></Modal>
   </Page>;
 }
 
@@ -558,7 +472,7 @@ export function StatusScreen() {
     .filter(({ tank }) => hatchery === 'all' || hatcheryId(tank.site) === hatchery);
   const pendingTotal = pendingRecordTotal(devices.map(({ device }) => device));
   return <Page>
-    <Title detail="Sensor and connectivity health">System health</Title>
+    <Title icon={<Wifi size={23} color={colors.teal} />} detail="Sensor and connectivity health">System health</Title>
     {statuses.isLoading || isLoading ? <StateMessage message="Loading device status…" loading /> : statuses.isError || error ? <Card><StateMessage message={`Could not load device status: ${(statuses.error ?? error)?.message}`} /><Button label="Retry" secondary onPress={() => { void statuses.refetch(); refetch(); }} /></Card> : devices.length === 0 ? <StateMessage message="No device status is available." /> : <>
       <Card title="Overview"><DataRow label="Devices" value={`${devices.length}`} /><DataRow label="Online" value={`${devices.filter(({ device }) => device.online).length}`} /><DataRow label="Offline" value={`${devices.filter(({ device }) => !device.online).length}`} /><DataRow label="Pending offline records" value={pendingTotal === null ? 'Unavailable' : `${pendingTotal}`} /></Card>
       {devices.map(({ device, tank }) => <Card key={device.deviceId} title={tank.name}>
@@ -573,13 +487,14 @@ export function StatusScreen() {
 }
 
 export function ManagerReviewScreen() {
+  const { colors } = useTheme();
   const { user } = useSession();
   const allowed = canAccess(user?.role ?? null, 'validation');
   const rows = useQuery({ queryKey: ['validation'], queryFn: () => api.listValidationRows(), enabled: allowed });
   const tolerances = useQuery({ queryKey: ['validation-tolerances'], queryFn: () => api.getValidationTolerances(), enabled: allowed });
   if (!allowed) return <Page><StateMessage message="You do not have access to validation." /></Page>;
   return <Page>
-    <Title detail="Compare sensor averages with reference readings">Manager review</Title>
+    <Title icon={<ClipboardList size={23} color={colors.teal} />} detail="Compare sensor averages with reference readings">Manager review</Title>
     {rows.isLoading || tolerances.isLoading ? <StateMessage message="Loading validation…" loading /> :
       rows.isError || tolerances.isError ? <Card><StateMessage message={`Could not load validation: ${(rows.error ?? tolerances.error)?.message ?? 'Unknown error'}`} /><Button label="Retry" secondary onPress={() => { void rows.refetch(); void tolerances.refetch(); }} /></Card> :
       !rows.data?.length || !tolerances.data ? <StateMessage message="No validation comparisons are available." /> :
@@ -706,12 +621,9 @@ export function ActivityLogsScreen() {
     createLog.mutate(entry);
   }
   return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
-    <Title detail="Log operations and environmental events">Activity logs</Title>
+    <Title icon={<ClipboardList size={23} color={colors.teal} />} detail="Log operations and environmental events">Activity logs</Title>
     <TankPicker horizontal />
-    <View style={[layout.actions, width < 360 && layout.stackedActions]}>
-      <Button style={[layout.actionButton, width < 360 && layout.stackedActionButton]} label="Log operation" onPress={() => openLog('OPERATION')} />
-      <Button style={[layout.actionButton, width < 360 && layout.stackedActionButton]} label="Log weather / event" onPress={() => openLog('ENVIRONMENT')} />
-    </View>
+    <ActivityLogActions role={user?.role ?? null} width={width} onOpen={openLog} />
     <View style={layout.cards}>
       <Card title="Filters">
         <View style={layout.filters}>
@@ -727,8 +639,7 @@ export function ActivityLogsScreen() {
           </View>
         </View>
       </Card>
-      <Card title="Activity records">
-        {user?.role === 'admin' && <Button label={exportingLogs ? 'Preparing CSV…' : 'Share CSV'} disabled={exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0} secondary onPress={() => void shareLogs()} />}
+      <Card title="Activity records" action={user?.role === 'admin' ? <Pressable accessibilityRole="button" accessibilityLabel={exportingLogs ? 'Preparing CSV' : 'Share CSV'} accessibilityState={{ disabled: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 }} disabled={exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0} onPress={() => void shareLogs()} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface, opacity: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 ? 0.5 : 1 }}><FileDown size={18} color={colors.teal} /></Pressable> : undefined}>
         {logs.isLoading || tanks.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message="Could not load activity logs." /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : tanks.error ? <StateMessage message={`Could not load tanks: ${tanks.error.message}`} /> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." spacious /> : <View>{filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={record.row}>
           <View style={record.top}>
             <Text style={record.caption}>{formatManilaDateTime(log.occurredAt)} PHT</Text>
@@ -772,7 +683,6 @@ export function HistoryScreen() {
   const [parameter, setParameter] = useState<'all' | 'temperature' | 'do' | 'ph'>('all');
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - 7 * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [expandedFilter, setExpandedFilter] = useState<'tank' | 'dates' | 'parameter' | null>(null);
   const parameterOptions = [{ value: 'all', label: 'All measured' }, { value: 'temperature', label: 'Temperature' }, { value: 'do', label: 'Dissolved oxygen' }, { value: 'ph', label: 'pH' }] as const;
   const parameterLabel = parameterOptions.find((option) => option.value === parameter)?.label ?? 'All measured';
@@ -799,32 +709,19 @@ export function HistoryScreen() {
     setPage((current) => Math.min(current, pageCount));
   }, [pageCount]);
   return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
-    <Title detail="Scheduled readings every 3 hours · extra threshold readings included">History</Title>
+    <Title icon={<Database size={23} color={colors.teal} />} detail="Scheduled readings every 3 hours · extra threshold readings included">History</Title>
     <View style={layout.cards}>
-      <View style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3] }}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Filter by: ${tankLabel} · ${from} to ${to} · ${parameterLabel}`} accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen((open) => !open)} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] }}>
-          <Text style={{ color: colors.ink, fontWeight: '700' }}>Filter by:</Text>{filtersOpen ? <ChevronUp size={20} color={colors.muted} /> : <ChevronDown size={20} color={colors.muted} />}
-        </Pressable>
-        {filtersOpen && <View style={{ paddingBottom: uiScale.spacing[2] }}>
-          <TrendFilterSection title="Tank" options={tankOptions} value={tankId ?? ''} expanded={expandedFilter === 'tank'} onToggle={() => setExpandedFilter((current) => current === 'tank' ? null : 'tank')} onChange={(value) => { setTankId(value); setPage(1); }} />
-          <HistoryFilterSection title="Date range" summary={`${from} to ${to}`} expanded={expandedFilter === 'dates'} onToggle={() => setExpandedFilter((current) => current === 'dates' ? null : 'dates')}>
+      <View style={{ gap: uiScale.spacing[3] }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: uiScale.spacing[3] }}>
+          <FilterDropdown label="Tank" summary={tankLabel} icon={<Droplets size={16} color={colors.teal} />} options={tankOptions} value={tankId ?? ''} expanded={expandedFilter === 'tank'} onToggle={() => setExpandedFilter((current) => current === 'tank' ? null : 'tank')} onChange={(value) => { setTankId(value); setPage(1); setExpandedFilter(null); }} />
+          <FilterDropdown label="Parameter" summary={parameterLabel} icon={<ListFilter size={16} color={colors.teal} />} options={parameterOptions} value={parameter} expanded={expandedFilter === 'parameter'} onToggle={() => setExpandedFilter((current) => current === 'parameter' ? null : 'parameter')} onChange={(value) => { const selected = parameterOptions.find((option) => option.value === value); if (selected) { setParameter(selected.value); setPage(1); setExpandedFilter(null); } }} />
+        </View>
+          <FilterDropdown label="Date range" summary={`${from} to ${to}`} icon={<CalendarDays size={16} color={colors.teal} />} expanded={expandedFilter === 'dates'} onToggle={() => setExpandedFilter((current) => current === 'dates' ? null : 'dates')}>
             <View style={layout.dates}>
               <FilterField label="From date (PHT)" value={from} onChangeText={(value) => { setFrom(value); setPage(1); }} placeholder={from} />
               <FilterField label="To date (PHT)" value={to} onChangeText={(value) => { setTo(value); setPage(1); }} placeholder={to} />
             </View>
-          </HistoryFilterSection>
-          <HistoryFilterSection title="Parameter" summary={parameterLabel} expanded={expandedFilter === 'parameter'} onToggle={() => setExpandedFilter((current) => current === 'parameter' ? null : 'parameter')}>
-            <View accessibilityRole="radiogroup" accessibilityLabel="Filter readings by parameter">
-              {parameterOptions.map((option) => {
-                const selected = parameter === option.value;
-                return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => { setParameter(option.value); setPage(1); }} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2] }}>
-                  <Text style={{ color: colors.ink, flex: 1 }}>{option.label}</Text>
-                  <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: selected ? colors.ink : colors.muted, alignItems: 'center', justifyContent: 'center' }}>{selected && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.ink }} />}</View>
-                </Pressable>;
-              })}
-            </View>
-          </HistoryFilterSection>
-        </View>}
+          </FilterDropdown>
       </View>
       <Card title="Readings">
         {query.isLoading ? <StateMessage message="Loading readings…" loading /> : query.isError ? <><StateMessage message="Could not load readings." /><Button label="Retry" secondary onPress={() => void query.refetch()} /></> : <>
@@ -867,8 +764,9 @@ export function ReportsScreen() {
   const [format, setFormat] = useState<'pdf' | 'csv' | 'xlsx'>('pdf');
   const [sections, setSections] = useState<ReportSection[]>(['summary', 'statistics', 'alerts', 'raw-readings']);
   const [sharing, setSharing] = useState(false);
-  const matchingIds = (selectedTanks ?? []).filter((id) => tanks.some((tank) => tank.id === id));
-  const selectedIds = matchingIds.length ? matchingIds : tanks.some((tank) => tank.id === tankId) ? [tankId] : [];
+  const selectedIds = selectedTanks === null
+    ? tanks.some((tank) => tank.id === tankId) ? [tankId] : []
+    : selectedTanks.filter((id) => tanks.some((tank) => tank.id === id));
   const start = new Date(`${from}T00:00:00+08:00`);
   const end = new Date(`${to}T23:59:59.999+08:00`);
   const validDates = /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to)
@@ -913,20 +811,22 @@ export function ReportsScreen() {
     }
   }
   return <Page>
-    <Title detail="Select tanks, dates, sections and format">Report builder</Title>
+    <Title icon={<FileText size={23} color={colors.teal} />} detail="Select tanks, dates, sections and format">Report builder</Title>
     <Card title="Tanks">
       {tanksLoading ? <StateMessage message="Loading tanks…" loading /> : tanksError ? <><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry tank list" secondary onPress={refetchTanks} /></> : tanks.length === 0 ? <StateMessage message="No tanks are available for this account." /> : null}
-      {tanks.map((tank) => <Pressable key={tank.id} accessibilityRole="checkbox" accessibilityState={{ checked: selectedIds.includes(tank.id) }} onPress={() => setSelectedTanks((current) => {
+      {tanks.map((tank) => <ReportChoice key={tank.id} kind="checkbox" label={tank.name} selected={selectedIds.includes(tank.id)} onPress={() => setSelectedTanks((current) => {
         const existing = (current ?? (tankId ? [tankId] : [])).filter((id) => tanks.some((tank) => tank.id === id));
         return existing.includes(tank.id) ? existing.filter((id) => id !== tank.id) : [...existing, tank.id];
-      })} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{selectedIds.includes(tank.id) ? '☑' : '☐'} {tank.name}</Text></Pressable>)}
+      })} />)}
     </Card>
     <Card title="Date range">
-      <Field label="From (YYYY-MM-DD)" value={from} onChangeText={setFrom} />
-      <Field label="To (YYYY-MM-DD)" value={to} onChangeText={setTo} />
+      <View style={{ flexDirection: 'row', gap: uiScale.spacing[3] }}>
+        <FilterField label="From (YYYY-MM-DD)" value={from} onChangeText={setFrom} />
+        <FilterField label="To (YYYY-MM-DD)" value={to} onChangeText={setTo} />
+      </View>
     </Card>
     <Card title="Sections">
-      {([['summary', 'Summary'], ['statistics', 'Statistics'], ['alerts', 'Alerts'], ['raw-readings', 'Readings']] as const).map(([key, label]) => <Pressable key={key} accessibilityRole="checkbox" accessibilityState={{ checked: sections.includes(key) }} onPress={() => setSections((current) => current.includes(key) ? current.filter((value) => value !== key) : [...current, key])} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{sections.includes(key) ? '☑' : '☐'} {label}</Text></Pressable>)}
+      {([['summary', 'Summary'], ['statistics', 'Statistics'], ['alerts', 'Alerts'], ['raw-readings', 'Readings']] as const).map(([key, label]) => <ReportChoice key={key} kind="checkbox" label={label} selected={sections.includes(key)} onPress={() => setSections((current) => current.includes(key) ? current.filter((value) => value !== key) : [...current, key])} />)}
     </Card>
     {sections.includes('statistics') && <Card title="Readings in range">
       <Text style={{ color: colors.muted }}>Percentage of valid readings within configured thresholds</Text>
@@ -936,8 +836,10 @@ export function ReportsScreen() {
       </View>)}
     </Card>}
     <Card title="Format">
-      {(['pdf', 'csv', 'xlsx'] as const).map((value) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: format === value }} onPress={() => setFormat(value)} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{format === value ? '●' : '○'} {value.toUpperCase()}</Text></Pressable>)}
-      <Button label={sharing ? 'Preparing report…' : 'Share report'} disabled={sharing} onPress={() => void shareReport()} />
+      <View accessibilityRole="radiogroup" accessibilityLabel="Report format" style={{ gap: uiScale.spacing[2] }}>
+        {(['pdf', 'csv', 'xlsx'] as const).map((value) => <ReportChoice key={value} kind="radio" label={value.toUpperCase()} icon={value === 'pdf' ? <FileText size={18} color={colors.teal} /> : <FileSpreadsheet size={18} color={colors.teal} />} selected={format === value} onPress={() => setFormat(value)} />)}
+      </View>
+      <Button label={sharing ? 'Preparing report…' : 'Share report'} icon={<FileDown size={18} color="white" />} disabled={sharing} onPress={() => void shareReport()} />
     </Card>
     <Text style={{ color: colors.muted, fontSize: 12 }}>Prepared by {user?.name ?? 'user'}.</Text>
   </Page>;

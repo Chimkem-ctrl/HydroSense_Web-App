@@ -9,17 +9,13 @@ export function AlertPreferenceControls() {
     <View style={{ gap: 6, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <Text style={{ color: colors.ink, fontSize: 15, lineHeight: 22, fontWeight: '700' }}>SMS alerts</Text>
-        <View style={{ borderWidth: 1, borderColor: `${colors.border}80`, borderRadius: 999, backgroundColor: 'transparent', paddingHorizontal: 2 }}>
-          <Switch accessibilityLabel="SMS alerts" accessibilityState={{ disabled: true, checked: false }} value={false} disabled />
-        </View>
+        <Switch accessibilityLabel="SMS alerts" accessibilityState={{ disabled: true, checked: false }} value={false} disabled />
       </View>
     </View>
     <View style={{ gap: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <Text style={{ color: colors.ink, fontSize: 15, lineHeight: 22, fontWeight: '700' }}>Email alerts</Text>
-        <View style={{ borderWidth: 1, borderColor: `${colors.border}80`, borderRadius: 999, backgroundColor: 'transparent', paddingHorizontal: 2 }}>
-          <Switch accessibilityLabel="Email alerts" accessibilityState={{ disabled: true, checked: false }} value={false} disabled />
-        </View>
+        <Switch accessibilityLabel="Email alerts" accessibilityState={{ disabled: true, checked: false }} value={false} disabled />
       </View>
     </View>
   </>;

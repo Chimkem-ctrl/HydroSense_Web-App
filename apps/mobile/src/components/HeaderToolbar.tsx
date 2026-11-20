@@ -3,8 +3,9 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowD
 import NetInfo from '@react-native-community/netinfo';
 import { useQuery } from '@tanstack/react-query';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
-import { Activity, AlertTriangle, Bell, ClipboardList, Database, FileText, LayoutDashboard, LogOut, UserRound, Users, Wifi, WifiOff, X } from 'lucide-react-native';
+import { Activity, AlertTriangle, ArrowLeft, Bell, ClipboardList, Database, FileText, LayoutDashboard, LogOut, UserRound, Users, Wifi, WifiOff, X } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { isBottomBarRoute } from '../navigation';
 import type { MainTabParamList } from '../navigation';
 import { canAccess } from '../access';
 import { api, listPendingAccounts, liveClient } from '../services/client';
@@ -86,6 +87,7 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safe}>
     <View style={styles.header}>
       <View style={styles.brandRow}>
+        {!isBottomBarRoute(route.name) && <Pressable accessibilityRole="button" accessibilityLabel="Back to More" onPress={() => navigation.navigate('More')} style={styles.iconButton}><ArrowLeft size={20} color={colors.ink} /></Pressable>}
         <View style={styles.brandSlot}><Brand compact onLogoPress={() => setPanel('navigation')} logoExpanded={panel === 'navigation'} /></View>
         <Pressable accessibilityRole="button" accessibilityLabel={alerts.isError ? 'Alerts unavailable; open alerts' : alertCount === undefined ? 'Loading alerts; open alerts' : `${alertCount} open alerts and pending requests${pending.isError ? ', account requests unavailable' : ''}`} accessibilityState={{ expanded: panel === 'notifications' }} onPress={() => setPanel('notifications')} style={styles.iconButton}>
           <Bell size={20} color={colors.ink} />
@@ -125,14 +127,14 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
             </>}
             {panel === 'account' && <>
               <View style={styles.accountIdentity}><Text style={styles.panelTitle}>{user?.name}</Text><Text style={styles.description}>{user?.role}</Text></View>
-              {user?.role === 'admin' && (tanksLoading ? <Text style={styles.description}>Loading hatcheries...</Text> : tanksError ? <View>
-                <Text accessibilityRole="alert" style={styles.error}>Could not load hatcheries: {tanksError.message}</Text>
-                <Pressable accessibilityRole="button" onPress={refetchTanks} style={styles.menuItem}><Text style={styles.itemText}>Retry</Text></Pressable>
-              </View> : <HatcheryPicker />)}
               <View accessibilityLabel={`Connection ${connectionLabel}`} style={styles.connection}>
                 {connectionLabel === 'Live' ? <Wifi size={19} color={connectionColor} /> : <WifiOff size={19} color={connectionColor} />}
                 <Text style={styles.description}>Connection</Text><Text style={[styles.connectionText, { color: connectionColor }]}>{connectionLabel}</Text>
               </View>
+              {user?.role === 'admin' && (tanksLoading ? <Text style={styles.description}>Loading hatcheries...</Text> : tanksError ? <View>
+                <Text accessibilityRole="alert" style={styles.error}>Could not load hatcheries: {tanksError.message}</Text>
+                <Pressable accessibilityRole="button" onPress={refetchTanks} style={styles.menuItem}><Text style={styles.itemText}>Retry</Text></Pressable>
+              </View> : <HatcheryPicker />)}
               <View>
                 <Pressable accessibilityRole="button" onPress={() => goTo('Profile')} style={styles.menuItem}><UserRound size={19} color={colors.muted} /><Text style={styles.itemText}>My profile</Text></Pressable>
                 <Pressable accessibilityRole="button" onPress={() => void handleSignOut()} style={styles.menuItem}><LogOut size={19} color={colors.critical} /><Text style={[styles.itemText, { color: colors.critical }]}>Sign out</Text></Pressable>

@@ -4,10 +4,10 @@ import { Dialog } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatManilaDateTime } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
-import { Check, Search, X } from 'lucide-react-native';
+import { Check, ClipboardList, LockKeyhole, Search, UserRound, Users, X } from 'lucide-react-native';
 import { canAccess } from './access';
 import { Button, Card, GlassDialog, Page, StateMessage, Title } from './components/ui';
-import { AlertPreferenceControls, DeviceMaintenanceControls, SecurityControls } from './components/ProfileControls';
+import { AlertPreferenceControls, DeviceMaintenanceControls } from './components/ProfileControls';
 import { AppearanceOptions } from './components/AppearanceOptions';
 import { groupByHatchery, hatcheryLabel } from './management';
 import { api, getAccountProfile, listPendingAccounts, removeAccount, reviewPendingAccount } from './services/client';
@@ -41,12 +41,12 @@ function sameHatchery(left: string, right: string) {
 
 function ChangePasswordRow() {
   const { colors } = useTheme();
-  const [hover, setHover] = useState(false);
   return <View style={{ paddingVertical: 6, gap: 3 }}>
     <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18, fontWeight: '600' }}>Change Password</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel="Change password" accessibilityState={{ disabled: true }} disabled onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} style={{ height: 24, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: hover ? colors.ink : colors.border, backgroundColor: hover ? `${colors.ink}14` : 'transparent' }}>
-      <Text style={{ color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: '600' }}>Change password</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="Change password, unavailable" accessibilityState={{ disabled: true }} disabled style={{ minHeight: 48, alignSelf: 'stretch', flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: colors.critical, backgroundColor: `${colors.critical}12` }}>
+      <LockKeyhole size={18} color={colors.critical} /><Text style={{ color: colors.critical, fontSize: 14, fontWeight: '700' }}>Change password</Text>
     </Pressable>
+    <Text style={{ color: colors.muted, fontSize: 12 }}>Password changes are currently unavailable.</Text>
   </View>;
 }
 
@@ -74,7 +74,7 @@ export function ProfileScreen() {
     ? tanks.filter((item) => isTankOne(item.name) && sameHatchery(item.site, selectedHatchery))
     : [];
   return <Page maxWidth={680}>
-    <Title detail="View your account, role, hatchery, and alert preferences.">My profile</Title>
+    <Title icon={<UserRound size={23} color={colors.teal} />} detail="View your account, role, hatchery, and alert preferences.">My profile</Title>
     {profile.isLoading ? <Card><StateMessage message="Loading profile..." loading /></Card> :
       profile.isError ? <Card><StateMessage message={`Could not load profile: ${profile.error.message}`} /><Button label="Retry profile" secondary onPress={() => void profile.refetch()} /></Card> : <>
         <Card title="Contact details & assignment">
@@ -176,7 +176,7 @@ export function UsersScreen() {
   };
   const filteredPending = (pending.data ?? []).filter((account) => matches(requestSearch, [account.firstName, account.lastName, ` ${account.lastName}`, account.email, account.phone, account.requestedRole, account.site, account.createdAt ? formatManilaDateTime(account.createdAt) : '']));
   return <Page maxWidth={680}>
-    <Title detail={admin ? 'Manage team accounts and review requests.' : 'Review accounts for your hatchery.'}>Users & roles</Title>
+    <Title icon={<Users size={23} color={colors.teal} />} detail={admin ? 'Manage team accounts and review requests.' : 'Review accounts for your hatchery.'}>Users & roles</Title>
     {!admin && profile.isLoading ? <StateMessage message="Loading hatchery assignment..." loading /> :
       !admin && profile.isError ? <Card><StateMessage message={`Could not load hatchery: ${profile.error.message}`} /><Button label="Retry" secondary onPress={() => void profile.refetch()} /></Card> :
       !admin && !profile.data?.site?.trim() ? <StateMessage message="No hatchery is assigned to your account. Contact an administrator." /> : <>
@@ -314,7 +314,7 @@ export function AuditLogsScreen() {
   const allowed = canAccess(user?.role ?? null, 'admin');
   const logs = useQuery({ queryKey: ['audit-logs', user?.id], queryFn: () => api.listAuditLogs(), enabled: allowed });
   if (!allowed) return <Page><StateMessage message="You do not have access to audit logs." /></Page>;
-  return <Page maxWidth={680}><Title detail="Review admin actions and operational events.">Audit & system logs</Title><Card>
+  return <Page maxWidth={680}><Title icon={<ClipboardList size={23} color={colors.teal} />} detail="Review admin actions and operational events.">Audit & system logs</Title><Card>
     {logs.isLoading ? <StateMessage message="Loading audit events..." loading /> : logs.isError ? <><StateMessage message={`Could not load audit events: ${logs.error.message}`} /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> :
       !logs.data?.length ? <StateMessage message="No audit or system logs are available." /> : logs.data.map((log) => <View key={log.id} style={{ gap: 4, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{log.action} · {log.user}</Text><Text style={{ color: colors.muted }}>{formatManilaDateTime(log.timestamp)} PHT · {log.detail}</Text></View>)}
   </Card></Page>;

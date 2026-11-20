@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ choice: 'system', error: null as string | null, setChoice: vi.fn() }));
 vi.mock('react-native', () => ({ Pressable: 'Pressable', Text: 'Text', View: 'View' }));
+vi.mock('lucide-react-native', () => ({ Sun: 'Sun', Moon: 'Moon' }));
 vi.mock('../theme', () => ({
   uiScale: { spacing: { 1: 4, 2: 8 } },
   useTheme: () => ({
