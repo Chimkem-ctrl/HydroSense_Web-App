@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { resetSessionOnLaunch } from './services/authService';
 import './styles/tokens.css';
 import './styles/app.css';
 import './styles/auth-variables.css';
@@ -15,6 +16,8 @@ import './styles/glass-theme.css';
 import './styles/ui-fixes.css';
 import './styles/dash-layout.css';
 import './styles/ui-overhaul.css';
+
+resetSessionOnLaunch();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

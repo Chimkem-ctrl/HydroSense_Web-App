@@ -10,7 +10,7 @@ const javascript = stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, '')
 
 function setup(role = 'admin', status = 'approved') {
   const profiles = [
-    { id: 'actor', first_name: 'Admin', last_name: 'User', email: 'admin@example.test', role, status, site: 'camiguin-sagay' },
+    { id: 'actor', first_name: 'Admin', last_name: 'User', email: 'admin@example.test', role, status, site: 'camiguin-sagay', active: true },
     { id: 'pending', first_name: 'Jane', last_name: 'Smith', email: 'jane@example.test', role: null, status: 'pending', requested_role: null },
     { id: 'member', first_name: 'John', last_name: 'Smith', email: 'john@example.test', role: 'operator', status: 'approved', site: 'site', active: true, last_active: 'today' },
     { id: 'other-admin', first_name: 'Other', last_name: 'Admin', email: 'other@example.test', role: 'admin', status: 'approved' },
@@ -18,6 +18,8 @@ function setup(role = 'admin', status = 'approved') {
   const tables = { profiles, tanks: [{ id: 'tank', device_id: 'node', site: 'Camiguin, Sagay Multispecies Hatchery' }], sms_alert_queue: [], thresholds: [{ parameter: 'temperature', min_value: 26, max_value: 30 }, { parameter: 'do', min_value: 4, max_value: null }, { parameter: 'ph', min_value: 6, max_value: 8 }], alerts: [], alert_responses: [], device_statuses: [], audit_logs: [], manual_entries: [], activity_logs: [], calibration_logs: [], validation_rows: [], readings: [], advisory_settings: [{ id: true, salinity_watch_temperature_c: 31, salinity_high_temperature_c: 32, ammonia_watch_temperature_c: 31, ammonia_high_ph: 7.8 }] };
   const failures = {};
   const uploads = [];
+  const authUsers = profiles.map(({ id, email }) => ({ id, email }));
+  let nextUserId = 0;
   let signupRequest;
   const db = {
     storage: {
@@ -31,7 +33,14 @@ function setup(role = 'admin', status = 'approved') {
         };
       },
     },
-    auth: { admin: { deleteUser: async () => ({ error: failures.auth ? { message: failures.auth } : null }) } },
+    auth: { admin: { deleteUser: async (id) => {
+      if (failures.auth) return { error: { message: failures.auth } };
+      const index = authUsers.findIndex((user) => user.id === id);
+      if (index < 0) return { error: { status: 404, message: 'User not found' } };
+      authUsers.splice(index, 1);
+      tables.profiles = tables.profiles.filter((user) => user.id !== id);
+      return { error: null };
+    } } },
     async rpc(name, args) {
       if (name === 'latest_tank_readings') {
         if (failures.readings) return { data: null, error: { message: failures.readings } };
@@ -124,6 +133,15 @@ function setup(role = 'admin', status = 'approved') {
         signInWithPassword: async () => ({ data: { user: { id: 'actor' }, session: { access_token: 'access', refresh_token: 'refresh' } }, error: null }),
         signUp: async (body) => {
           signupRequest = body;
+          if (failures.trackSignups) {
+            if (authUsers.some((user) => user.email.toLowerCase() === body.email.toLowerCase())) {
+              return { data: null, error: { message: 'Email already registered' } };
+            }
+            const user = { id: `new-${++nextUserId}`, email: body.email };
+            authUsers.push(user);
+            tables.profiles.push({ ...user, role: null, status: 'pending', first_name: body.options.data.firstName, last_name: body.options.data.lastName });
+            return { data: { user }, error: null };
+          }
           return { data: { user: { id: 'new', email: body.email } }, error: null };
         },
       },
@@ -137,6 +155,7 @@ function setup(role = 'admin', status = 'approved') {
   runInNewContext(javascript, context);
   return {
     tables,
+    authUsers,
     failures,
     uploads,
     get signupRequest() { return signupRequest; },
@@ -246,7 +265,7 @@ test('signup accepts Benoni', async () => {
     hatcheryId: 'camiguin-benoni', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
   });
   assert.equal(response.status, 201);
-  assert.equal(app.createdUser.user_metadata.hatcheryId, 'camiguin-benoni');
+  assert.equal(app.signupRequest.options.data.hatcheryId, 'camiguin-benoni');
 });
 
 test('CORS preflight permits settings and role updates', async () => {
@@ -669,18 +688,49 @@ test('operational mutations validate input and use the authenticated actor', asy
   assert.equal(app.tables.calibration_logs[0].user_name, 'Admin User');
 });
 
-test('deletion reports partial failure and reviews retain their existing role', async () => {
+test('failed auth deletion preserves the profile and reviews retain their existing role', async () => {
   const app = setup();
   app.failures.auth = 'sensitive detail';
   const deleted = await app.request('/v1/admin/users/member', 'DELETE');
   assert.equal(deleted.status, 500);
   assert.doesNotMatch((await deleted.json()).error, /sensitive detail/);
-  assert.equal(app.tables.profiles.some((user) => user.id === 'member'), false);
-  assert.match(app.tables.audit_logs[0].detail, /auth deletion failed/);
+  assert.equal(app.tables.profiles.some((user) => user.id === 'member'), true);
+  assert.equal(app.authUsers.some((user) => user.id === 'member'), true);
+  assert.equal(app.tables.audit_logs.length, 0);
   app.tables.profiles.find((user) => user.id === 'pending').role = 'operator';
   assert.equal((await app.request('/v1/admin/pending-requests/pending/reject', 'PUT')).status, 200);
   assert.equal(app.tables.profiles.find((user) => user.id === 'pending').role, 'operator');
-  assert.equal(app.tables.audit_logs[1].action, 'Request rejected');
+  assert.equal(app.tables.audit_logs[0].action, 'Request rejected');
+});
+
+test('deleting an approved user frees the email for a new pending signup', async () => {
+  const app = setup();
+  app.failures.trackSignups = true;
+  const body = {
+    firstName: 'New', lastName: 'User', email: 'reuse@example.test', password: 'password123', employeeId: '123',
+    phone: '+639123456789', emergencyContactName: 'John', emergencyContactPhone: '+639123456789',
+    hatcheryId: 'camiguin-sagay', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
+  };
+  assert.equal((await app.request('/v1/auth/signup', 'POST', body)).status, 201);
+  const originalId = app.authUsers.find((user) => user.email === body.email).id;
+  assert.equal((await app.request(`/v1/admin/pending-requests/${originalId}/approve`, 'PUT', { role: 'operator' })).status, 200);
+  assert.equal((await app.request(`/v1/admin/users/${originalId}`, 'DELETE')).status, 200);
+  assert.equal(app.tables.profiles.some((user) => user.id === originalId), false);
+  assert.equal(app.tables.audit_logs.at(-1).action, 'User deleted');
+  const response = await app.request('/v1/auth/signup', 'POST', body);
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).status, 'verify-email');
+  assert.notEqual(app.authUsers.find((user) => user.email === body.email).id, originalId);
+  assert.equal(app.tables.profiles.find((user) => user.email === body.email).status, 'pending');
+});
+
+test('deletes an orphaned auth user and reports a missing user', async () => {
+  const app = setup();
+  app.tables.profiles = app.tables.profiles.filter((user) => user.id !== 'member');
+  assert.equal((await app.request('/v1/admin/users/member', 'DELETE')).status, 200);
+  assert.equal(app.authUsers.some((user) => user.id === 'member'), false);
+  assert.equal(app.tables.audit_logs.at(-1).action, 'User deleted');
+  assert.equal((await app.request('/v1/admin/users/member', 'DELETE')).status, 404);
 });
 
 test('malformed JSON returns 400 and signup trims email', async () => {

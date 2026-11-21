@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { ROLE_ACCESS } from './config';
@@ -32,14 +32,15 @@ function Guarded({ path, children }: { path: keyof typeof ROLE_ACCESS; children:
 
 function SplashRoute({ onSeen }: { onSeen: () => void }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const user = useAuth();
   const completed = useRef(false);
   const continueToApp = useCallback(() => {
     if (completed.current) return;
     completed.current = true;
     onSeen();
-    navigate(user?.role ? '/' : '/signin', { replace: true });
-  }, [navigate, onSeen, user]);
+    navigate(user?.role ? '/' : location.state?.verified ? '/signin?verified=1' : '/signin', { replace: true });
+  }, [location.state, navigate, onSeen, user]);
 
   return <SplashScreen onGetStarted={continueToApp} />;
 }
@@ -58,9 +59,11 @@ export default function AppRoutes() {
   const user = useAuth();
   const [splashSeen, setSplashSeen] = useState(() => Boolean(user?.role && location.pathname !== '/' && location.pathname !== '/splash'));
   const markSplashSeen = useCallback(() => setSplashSeen(true), []);
-  useEffect(() => {
-    if (['/signup', '/forgot-password', '/pending-approval'].includes(location.pathname)) setSplashSeen(true);
-  }, [location.pathname]);
+
+  if (!splashSeen && !user?.role && location.pathname !== '/splash') {
+    const verified = location.pathname === '/signin' && new URLSearchParams(location.search).get('verified') === '1';
+    return <Navigate to="/splash" replace state={{ verified }} />;
+  }
 
   return (
     <Routes>

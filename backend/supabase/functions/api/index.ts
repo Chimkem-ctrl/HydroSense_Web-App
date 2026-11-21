@@ -989,20 +989,18 @@ Deno.serve(async (request) => {
       if (userId === profile.id) return json({ error: "The administrator account cannot be removed." }, 400);
       const { data: target, error: targetError } = await admin.from("profiles").select("role").eq("id", userId).maybeSingle();
       if (targetError) return serverError(targetError);
-      if (!target) return json({ error: "Account was not found." }, 404);
-      if (target.role === "admin") return json({ error: "Administrator accounts cannot be removed." }, 400);
-      const { error: deleteProfileError } = await admin.from("profiles").delete().eq("id", userId);
-      if (deleteProfileError) return serverError(deleteProfileError);
+      if (target?.role === "admin") return json({ error: "Administrator accounts cannot be removed." }, 400);
       const { error: deleteAuthError } = await admin.auth.admin.deleteUser(userId);
-      const { error: auditError } = await admin.from("audit_logs").insert({
-        user_name: actor, action: "User deleted",
-        detail: deleteAuthError ? `${userId}: profile deleted; auth deletion failed` : userId,
-      });
+      if (deleteAuthError && deleteAuthError.status !== 404) return serverError(deleteAuthError);
+      if (deleteAuthError && !target) return json({ error: "Account was not found." }, 404);
       if (deleteAuthError) {
-        console.error(`Profile ${userId} deleted, but auth deletion failed:`, deleteAuthError);
-        if (auditError) console.error("Could not record partial deletion audit:", auditError);
-        return json({ error: "Profile was removed, but the authentication account could not be removed." }, 500);
+        const { data: remaining, error: remainingError } = await admin.from("profiles").select("id").eq("id", userId).maybeSingle();
+        if (remainingError) return serverError(remainingError);
+        if (remaining) return json({ error: "Authentication account was not found; profile was not removed." }, 500);
       }
+      const { error: auditError } = await admin.from("audit_logs").insert({
+        user_name: actor, action: "User deleted", detail: userId,
+      });
       if (auditError) {
         console.error("Could not record user deletion audit:", auditError);
         return json({ error: "Account was removed, but its audit record could not be saved." }, 500);

@@ -25,7 +25,7 @@ function signInAs(role: 'operator' | 'admin') {
       passwordHash: 'hash',
     }]));
   }
-  window.localStorage.setItem(SESSION_KEY, JSON.stringify({ userId: user.id }));
+  window.sessionStorage.setItem(SESSION_KEY, JSON.stringify({ userId: user.id }));
 }
 
 describe('RoleGuard', () => {
@@ -33,6 +33,7 @@ describe('RoleGuard', () => {
 
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it('shows protected content to an authorized role from the stored account', () => {

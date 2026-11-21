@@ -30,7 +30,7 @@ const queryDefaults = queryClient.getDefaultOptions();
 beforeEach(() => {
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
   queryClient.setDefaultOptions({ ...queryDefaults, queries: { ...queryDefaults.queries, retry: false } });
-  window.localStorage.setItem(sessionKey, JSON.stringify({ userId: 'demo-admin' }));
+  window.sessionStorage.setItem(sessionKey, JSON.stringify({ userId: 'demo-admin' }));
   window.history.replaceState({}, '', '/alerts');
 });
 
@@ -41,7 +41,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.localStorage.removeItem(accountsKey);
-  window.localStorage.removeItem(sessionKey);
+  window.sessionStorage.removeItem(sessionKey);
   window.localStorage.removeItem('hydrosense.theme');
 });
 
@@ -95,7 +95,7 @@ describe('admin account request alerts', () => {
 
   it('does not fetch or display requests for a non-admin', async () => {
     window.localStorage.setItem(accountsKey, JSON.stringify([pendingAccount, operatorAccount]));
-    window.localStorage.setItem(sessionKey, JSON.stringify({ userId: 'operator' }));
+    window.sessionStorage.setItem(sessionKey, JSON.stringify({ userId: 'operator' }));
     const listRequests = vi.spyOn(authService, 'listPendingRequests');
     render(<App />);
     await screen.findByRole('heading', { name: 'Alerts Center' });
@@ -111,7 +111,7 @@ describe('admin account request alerts', () => {
     await screen.findByText('New account request: Jane Smith');
     listRequests.mockClear();
 
-    window.localStorage.setItem(sessionKey, JSON.stringify({ userId: 'operator' }));
+    window.sessionStorage.setItem(sessionKey, JSON.stringify({ userId: 'operator' }));
     fireEvent(window, new Event('hydrosense:auth-change'));
 
     await waitFor(() => expect(screen.queryByText('New account request: Jane Smith')).toBeNull());

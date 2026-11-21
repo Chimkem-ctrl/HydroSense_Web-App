@@ -102,6 +102,16 @@ Managers can list approved non-admin profiles only for their own assigned site;
 administrators can manage profiles across sites. Apply the profile manager-scope
 migration alongside the updated API function.
 
+Account deletion removes the Supabase Auth user first; the profile is deleted
+by its cascading foreign key. To inspect accounts left without profiles by an
+earlier partial deletion, set `SUPABASE_DB_URL` locally and run
+`node backend\scripts\cleanup-orphaned-auth.mjs` from the repository root.
+Review each result: an absent profile alone does not establish that an account
+should be deleted. After confirming an individual UUID, delete it with
+`node backend\scripts\cleanup-orphaned-auth.mjs --delete USER_UUID`. This
+explicit operation deletes the Auth row and writes an audit entry in one
+transaction; it is not run automatically during migration.
+
 The role-matrix profile-access migration restricts direct profile listing to
 approved admins while preserving a user's access to their own profile. Profile
 changes must go through the API, which applies account-management checks. Apply
