@@ -100,6 +100,8 @@ describe('users and roles', () => {
     expect(within(requests).getByRole('button', { name: 'Approve Local Applicant' })).toBeInTheDocument();
     expect(within(requests).getByRole('button', { name: 'Reject Local Applicant' })).toBeInTheDocument();
     expect(within(requests).getAllByRole('columnheader', { name: 'Requested role' })).toHaveLength(2);
+    expect(within(requests).getByText('Local Applicant').closest('tr')?.cells[3]).toHaveTextContent('Manager');
+    expect(within(requests).getByText('Other Applicant').closest('tr')?.cells[3]).toHaveTextContent('Operator');
     expect(within(requests).getAllByRole('columnheader', { name: 'Review Role' })).toHaveLength(2);
     expect(within(requests).getAllByRole('columnheader', { name: 'Action' })).toHaveLength(2);
     const accounts = await screen.findByRole('region', { name: 'Team accounts table' });

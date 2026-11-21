@@ -282,7 +282,9 @@ describe('themed dashboard routes', () => {
     vi.spyOn(authService, 'getProfileSite').mockRejectedValue(new Error('Site lookup failed'));
     window.history.replaceState({}, '', '/profile');
     render(<App />);
-    expect(await screen.findByText('Site lookup failed', {}, { timeout: 5000 })).toBeInTheDocument();
+    const maintenance = await screen.findByRole('region', { name: 'Device maintenance' });
+    expect(await within(maintenance).findByText('Site lookup failed', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Profile' })).getByText('Site lookup failed')).toBeInTheDocument();
   });
 
   it.each(['operator', 'manager', 'admin'] as const)('exposes the %s role on the shell and sidebar', async (role) => {
@@ -689,11 +691,11 @@ describe('themed dashboard routes', () => {
     expect(screen.queryByText(/valid for sms/i)).not.toBeInTheDocument();
   });
 
-  it('offers only the backend Tank 01 for maintenance selection', async () => {
+  it('offers backend tanks for the selected hatchery in maintenance', async () => {
     signInAs('admin');
     vi.spyOn(api, 'listTanks').mockResolvedValue([
       { id: 'tank-one-id', name: 'Tank 01', site: 'Camiguin, Sagay Multispecies Hatchery', rearingStartDate: '2026-01-01', deviceId: 'HS-001' },
-      { id: 'tank-two-id', name: 'Tank 02', site: 'Camiguin, Sagay Multispecies Hatchery', rearingStartDate: '2026-01-01', deviceId: 'HS-002' },
+      { id: 'tank-two-id', name: 'Tank 02', site: 'Camiguin, Benoni Experimental Station', rearingStartDate: '2026-01-01', deviceId: 'HS-002' },
     ]);
     window.history.replaceState({}, '', '/profile');
     render(<App />);
@@ -706,6 +708,13 @@ describe('themed dashboard routes', () => {
     expect(screen.queryByRole('option', { name: 'Tank 02' })).toBeNull();
     fireEvent.click(screen.getByRole('option', { name: 'Tank 01' }));
     expect(tankSelect).toHaveTextContent('Tank 01');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Benoni Experimental Station' }));
+    expect(tankSelect).toHaveTextContent('Select a tank');
+    fireEvent.click(tankSelect);
+    expect(screen.queryByRole('option', { name: 'Tank 01' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: 'Tank 02' }));
+    expect(tankSelect).toHaveTextContent('Tank 02');
     expect(within(maintenance).queryByText('HS-001')).not.toBeInTheDocument();
   });
 

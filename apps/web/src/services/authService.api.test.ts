@@ -41,6 +41,7 @@ describe('API account review', () => {
       email: 'jane@example.test',
       redirectPath: '/verify-email',
     });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ requestedRole: 'operator' });
   });
 
   it('resends signup verification emails through Supabase Auth', async () => {
@@ -113,6 +114,7 @@ describe('API account review', () => {
     const pending = await authService.listPendingRequests();
     const approved = await authService.listApprovedUsers();
     expect(pending[0].hatcheryId).toBe('camiguin-sagay');
+    expect(pending[0].requestedRole).toBe('operator');
     expect(approved[0].hatcheryId).toBe('camiguin-sagay');
     expect(hatcheryLabel(pending[0].hatcheryId)).toBe('Camiguin, Sagay Multispecies Hatchery');
     expect(fetchMock.mock.calls[0][0]).toContain('status=pending');

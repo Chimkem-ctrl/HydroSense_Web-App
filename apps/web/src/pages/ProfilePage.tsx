@@ -15,10 +15,6 @@ import { AppearancePanel } from '../components/settings/AppearancePanel';
 import ToggleSwitch from '../components/settings/ToggleSwitch';
 import '../styles/profile.css';
 
-function isTankOne(name: string) {
-  return /^tank\s+0?1\b/i.test(name.trim());
-}
-
 export default function ProfilePage() {
   const { hash } = useLocation();
   const { role, userName } = useRole();
@@ -30,7 +26,7 @@ export default function ProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState<string>();
   const [avatarLoadError, setAvatarLoadError] = useState<Error | null>(null);
   const avatarInput = useRef<HTMLInputElement>(null);
-  const maintenanceTanks = scopedTanks.filter((item) => isTankOne(item.name));
+  const maintenanceTanks = scopedTanks;
   const saveAvatar = useMutation({
     mutationFn: (file: File) => authService.saveProfileAvatar(file),
     onSuccess: (url) => {
@@ -144,14 +140,14 @@ export default function ProfilePage() {
         <section id="device-maintenance" className="card profile-preferences" aria-labelledby="device-maintenance-title">
           <div className="profile-panel-heading"><h2 id="device-maintenance-title">Device maintenance</h2></div>
           <div className="profile-maintenance-fields">
-          {tanks.isLoading ? <LoadingState label="Loading available tanks" /> : tanks.isError ? <ErrorState error={tanks.error} onRetry={() => void tanks.refetch()} /> : <>
+          {tanks.isLoading || (role !== 'admin' && site.isLoading) ? <LoadingState label="Loading available tanks" /> : tanks.isError ? <ErrorState error={tanks.error} onRetry={() => void tanks.refetch()} /> : role !== 'admin' && site.isError ? <ErrorState error={site.error} onRetry={() => void site.refetch()} /> : <>
             <label className="field">Tank
               <Select value={maintenanceTanks.some((item) => item.id === maintenanceTankId) ? maintenanceTankId : ''} disabled={maintenanceTanks.length === 0} onChange={(event) => setMaintenanceTankId(event.target.value)}>
-                <option value="">Select Tank 01</option>
+                <option value="">Select a tank</option>
                 {maintenanceTanks.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </Select>
             </label>
-            {hatchery && maintenanceTanks.length === 0 && <p className="small muted">Tank 01 is not available for this hatchery.</p>}
+            {hatchery && maintenanceTanks.length === 0 && <p className="small muted">No tanks are available for this hatchery.</p>}
           </>}
           <div className="profile-actions">
             {role === 'operator' ? <>
