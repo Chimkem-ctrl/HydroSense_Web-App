@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FileDown, FileImage, FileSpreadsheet } from 'lucide-react';
+import { FileDown, FileImage, FileSpreadsheet, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import { Brush, CartesianGrid, Line, LineChart, ReferenceArea, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { can, DEFAULT_THRESHOLDS, formatManilaDateTime, getManilaDateString, getRaisingDay, isValidMeasurement, toCsv } from '@hydrosense/shared';
 import type { AlertItem, MeasuredParameter, Reading, Tank } from '@hydrosense/shared';
@@ -324,7 +324,7 @@ export default function TrendsPage() {
                   <header className="trend-chart-heading">
                     <div><h2 className="card-title">{parameter.title}</h2><p className="small muted">Safe range: {parameter.safeMax === undefined ? `≥${parameter.safeMin} ${parameter.unit}` : `${parameter.safeMin}–${parameter.safeMax} ${parameter.unit}`}</p></div>
                     <div className="trend-chart-actions">
-                      <button type="button" className="button trends-chart-zoom-control" disabled={!canZoomIn} onClick={() => {
+                      <button type="button" className="icon-button trends-chart-zoom-control" aria-label={`Zoom in ${parameter.title}`} title="Zoom in" disabled={!canZoomIn} onClick={() => {
                         const nextSelection = adjustChartZoom(zoomSelection, plottedRows.length, 'in');
                         if (!nextSelection) return;
                         setChartZoom((current) => ({
@@ -334,20 +334,20 @@ export default function TrendsPage() {
                             [parameter.key]: nextSelection,
                           },
                         }));
-                      }}>Zoom in</button>
-                      <button type="button" className="button trends-chart-zoom-control" disabled={!isZoomed} onClick={() => setChartZoom((current) => {
+                      }}><ZoomIn size={18} aria-hidden="true" /></button>
+                      <button type="button" className="icon-button trends-chart-zoom-control" aria-label={`Zoom out ${parameter.title}`} title="Zoom out" disabled={!isZoomed} onClick={() => setChartZoom((current) => {
                         const nextSelection = adjustChartZoom(zoomSelection, plottedRows.length, 'out');
                         const ranges = { ...(current.key === chartZoomKey ? current.ranges : {}) };
                         if (nextSelection) ranges[parameter.key] = nextSelection;
                         else delete ranges[parameter.key];
                         return { key: chartZoomKey, ranges };
-                      })}>Zoom out</button>
-                      <button type="button" className="button trends-chart-zoom-reset" disabled={!isZoomed} onClick={() => setChartZoom((current) => ({
+                      })}><ZoomOut size={18} aria-hidden="true" /></button>
+                      <button type="button" className="icon-button trends-chart-zoom-reset" aria-label={`Reset zoom ${parameter.title}`} title="Reset zoom" disabled={!isZoomed} onClick={() => setChartZoom((current) => ({
                         key: chartZoomKey,
                         ranges: current.key === chartZoomKey
                           ? Object.fromEntries(Object.entries(current.ranges).filter(([key]) => key !== parameter.key))
                           : {},
-                      }))}>Reset zoom</button>
+                      }))}><RotateCcw size={18} aria-hidden="true" /></button>
                     </div>
                   </header>
                   <div className="trend-chart-frame" id={`trend-chart-${parameter.key}`} role="img" aria-label={`${parameter.title} trend chart. Configured safe range ${parameter.safeMin}${parameter.safeMax === undefined ? ' and above' : ` to ${parameter.safeMax}`} ${parameter.unit}; overnight windows and sensor gaps highlighted.`}>
