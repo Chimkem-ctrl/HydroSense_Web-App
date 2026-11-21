@@ -6,23 +6,14 @@
 .admin-users-count { display: inline-flex; align-items: center; min-height: 30px; padding: 3px 10px; border: 1px solid var(--control-border); border-radius: var(--radius-pill); color: var(--text-secondary); background: var(--control-fill); font-size: 12px; font-weight: 700; white-space: nowrap; }
 .admin-users-count--pending { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 42%, var(--control-border)); background: color-mix(in srgb, var(--critical) 9%, var(--control-fill)); }
 .admin-users-count--accounts { color: var(--normal); border-color: color-mix(in srgb, var(--normal) 42%, var(--control-border)); background: color-mix(in srgb, var(--normal) 9%, var(--control-fill)); }
-.admin-users-page .table-wrap { position: relative; min-width: 0; }
+.admin-users-page .table-wrap { position: relative; min-width: 0; overflow-x: auto; }
 .admin-users-page .admin-users-site { min-width: 0; margin-bottom: 20px; }
 .admin-users-page .admin-users-site:last-child { margin-bottom: 0; }
 .admin-users-page .admin-users-site h3 { margin: 0 0 10px; font-size: 16px; overflow-wrap: anywhere; }
-.admin-users-page .admin-users-table { width: 100%; min-width: 900px; table-layout: auto; }
-.admin-users-page .admin-requests-table { min-width: 1250px; }
-.admin-users-page .admin-users-table th { white-space: nowrap; }
-.admin-users-page .admin-users-table th:nth-child(1) { min-width: 140px; }
-.admin-users-page .admin-users-table th:nth-child(2) { min-width: 200px; }
-.admin-users-page .admin-users-table th:nth-child(3) { min-width: 160px; }
-.admin-users-page .admin-requests-table th:nth-child(4) { min-width: 125px; }
-.admin-users-page .admin-requests-table th:nth-child(5) { min-width: 165px; }
-.admin-users-page .admin-requests-table th:nth-child(6) { min-width: 95px; }
-.admin-users-page .admin-requests-table th:nth-child(7) { min-width: 175px; }
-.admin-users-page .admin-requests-table th:nth-child(8) { min-width: 160px; }
+.admin-users-page .admin-users-table { width: max-content; min-width: 100%; table-layout: auto; }
+.admin-users-page .admin-accounts-table th:nth-child(2) { width: 1%; }
+.admin-users-page .admin-users-table th, .admin-users-page .admin-users-table td { white-space: nowrap; }
 .admin-users-page .admin-users-table th, .admin-users-page .admin-users-table td { padding: 12px; vertical-align: middle; }
-.admin-users-page .admin-users-table td { overflow-wrap: anywhere; }
 .admin-users-page .admin-users-table td:first-child { font-weight: 700; }
 .admin-users-page .admin-user-identity { display: inline-flex; align-items: center; gap: 10px; }
 .admin-users-page .admin-user-avatar { display: inline-grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid var(--control-border); border-radius: 50%; background: var(--accent-soft); color: var(--text-primary); font-size: 12px; font-weight: 700; object-fit: cover; }

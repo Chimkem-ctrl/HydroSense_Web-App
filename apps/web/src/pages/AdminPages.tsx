@@ -126,7 +126,7 @@ export function AdminUsersPage() {
   const confirmationDetails = confirmation && {
     title: confirmation.action === 'approve' ? 'Approve account request?' : confirmation.action === 'reject' ? 'Reject account request?' : 'Remove account?',
     message: confirmation.action === 'approve'
-      ? `Approve ${confirmation.name} as ${ROLE_LABELS[confirmation.role]}?`
+      ? `Are you sure you want to approve ${confirmation.name} as ${ROLE_LABELS[confirmation.role]}?`
       : confirmation.action === 'reject'
         ? `Are you sure you want to reject "${confirmation.name}"?`
         : `Are you sure you want to remove "${confirmation.name}"?`,
@@ -196,7 +196,7 @@ export function AdminUsersPage() {
           {tierConfig.teamAccounts && !users.isLoading && !users.isError && <span className="admin-users-count admin-users-count--accounts">{visibleAdminUsers.length} {visibleAdminUsers.length === 1 ? 'account' : 'accounts'}</span>}
         </div>
         {!tierConfig.teamAccounts ? null : users.isLoading ? <LoadingState /> : users.isError ? <ErrorState error={users.error} onRetry={() => void users.refetch()} /> : !visibleAdminUsers.length ? <EmptyState>No administrator accounts are registered.</EmptyState> :
-          <div className="table-wrap" role="region" aria-label="Admin accounts table"><table className="admin-users-table"><thead><tr><th scope="col">Name</th><th scope="col">ID</th><th scope="col">Email</th><th scope="col">Phone number</th><th scope="col">Role</th><th scope="col">Hatchery / site</th><th scope="col">Last active</th></tr></thead><tbody>
+          <div className="table-wrap" role="region" aria-label="Admin accounts table" tabIndex={0}><table className="admin-users-table admin-accounts-table"><thead><tr><th scope="col">Name</th><th scope="col">ID</th><th scope="col">Email</th><th scope="col">Phone number</th><th scope="col">Role</th><th scope="col">Hatchery / site</th><th scope="col">Last active</th></tr></thead><tbody>
             {visibleAdminUsers.map((user) => <tr key={user.id}><td><UserIdentity user={user} /></td><td>{user.employeeId || '—'}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{ROLE_LABELS[user.role]}</td><td>{hatcheryLabel(user.site)}</td><td>{formatManilaDateTime(user.lastActive)} PHT</td></tr>)}
           </tbody></table></div>}
       </section>}
@@ -275,14 +275,17 @@ export function AdminLogsPage() {
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
       {hatchery !== 'all' ? <EmptyState>Audit and system logs cannot be filtered by hatchery because their records do not include a hatchery. Select All hatcheries to view them.</EmptyState> : query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data?.length ? <EmptyState>No audit or system logs are available.</EmptyState> : (
         <section className="card stack">
+          <div className="admin-users-heading-tools audit-log-tools">
+            <label className="admin-users-search"><Search size={16} aria-hidden="true" /><input type="search" aria-label="Search detail" placeholder="Search detail" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></label>
+            <button className="button" type="button" onClick={clearFilters}>Clear filters</button>
+            <button className="button" type="button" disabled={!filtered.length} onClick={() => downloadCsv(auditLogCsv(filtered), 'hydrosense-audit-logs.csv')}><FileDown size={18} aria-hidden="true" />Export CSV</button>
+          </div>
           <div className="form-grid audit-log-filters">
             <label className="field">From date (Manila)<input type="date" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} /></label>
             <label className="field">To date (Manila)<input type="date" value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} /></label>
             <label className="field">User<Select value={user} clearable placeholder="User" onChange={(event) => { setUser(event.target.value); setPage(1); }}>{users.map((value) => <option key={value} value={value}>{value}</option>)}</Select></label>
             <label className="field">Action<Select value={action} clearable placeholder="Action" onChange={(event) => { setAction(event.target.value); setPage(1); }}>{actions.map((value) => <option key={value} value={value}>{value}</option>)}</Select></label>
-            <label className="field audit-log-search">Search detail<input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></label>
           </div>
-          <div className="inline"><button className="button" type="button" onClick={clearFilters}>Clear filters</button><button className="button" type="button" disabled={!filtered.length} onClick={() => downloadCsv(auditLogCsv(filtered), 'hydrosense-audit-logs.csv')}><FileDown size={18} aria-hidden="true" />Export CSV</button></div>
           <p className="small muted">{filtered.length} {filtered.length === 1 ? 'result' : 'results'}</p>
           {!filtered.length ? <EmptyState>No audit or system logs match the filters.</EmptyState> : <><div className="table-wrap"><table className="audit-log-table"><colgroup><col /><col /><col /><col /></colgroup><thead><tr><th scope="col">Time (PHT)</th><th scope="col">User</th><th scope="col">Action</th><th scope="col">Detail</th></tr></thead><tbody>{filtered.slice((currentPage - 1) * 25, currentPage * 25).map((log) => <tr key={log.id}><td>{formatManilaDateTime(log.timestamp)}</td><td>{log.user}</td><td>{log.action}</td><td>{log.detail}</td></tr>)}</tbody></table></div>
             <nav className="log-pagination" aria-label="Audit log pages"><button type="button" aria-label="Previous" title="Previous page" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={18} aria-hidden="true" /></button><span aria-current="page">Page {currentPage} of {totalPages}</span><button type="button" aria-label="Next" title="Next page" disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)}><ChevronRight size={18} aria-hidden="true" /></button></nav></>}

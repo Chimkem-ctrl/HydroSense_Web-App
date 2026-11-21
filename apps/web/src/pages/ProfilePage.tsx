@@ -78,7 +78,7 @@ export default function ProfilePage() {
               </div>
               <div className="profile-summary-details">
                 <h2>{userName.trim() || 'N/A'}</h2>
-                <p>{ROLE_LABELS[role]}</p>
+                <p className="profile-summary-role">{ROLE_LABELS[role]}</p>
                 <input
                   ref={avatarInput}
                   className="sr-only"
@@ -107,7 +107,7 @@ export default function ProfilePage() {
                   <div><dt>Position</dt><dd>{user.position || 'N/A'}</dd></div>
                   <div><dt>Email</dt><dd>{user.email || 'N/A'}</dd></div>
                   <div><dt>Address</dt><dd>{user.address || 'N/A'}</dd></div>
-                  <div id="security" className="profile-security"><dt>Change Password</dt><dd><button className="button" type="button" disabled>Change password</button></dd></div>
+                  <div id="security" className="profile-security"><dt>Change Password</dt><dd><button className="button button-danger" type="button" disabled>Change password</button></dd></div>
                   <div><dt>Phone</dt><dd>{user.phone || 'N/A'}</dd></div>
                 </dl>
               </section>

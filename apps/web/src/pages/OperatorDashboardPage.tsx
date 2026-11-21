@@ -205,7 +205,7 @@ function ReadingTrend({ values, color }: { values: number[]; color: string }) {
     return `${x},${y}`;
   });
   return (
-    <svg className="operator-sparkline" viewBox="0 0 100 34" role="img" aria-label="Recent 3-hour sensor trend">
+    <svg className="operator-sparkline" viewBox="0 0 100 34" role="img" aria-label="Recent sensor trend">
       <polyline points={coords.join(' ')} fill="none" stroke={color} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -247,7 +247,6 @@ function TrendPanel({
       <ReadingTrend values={values} color={color} />
       <div className="operator-trend-meta">
         <span>24-hour avg <b>{average.toFixed(1)} {unit}</b></span>
-        <span>Updated every 3 hours</span>
       </div>
     </article>
   );
@@ -502,7 +501,7 @@ export default function OperatorDashboardPage() {
 
   function refreshReadings() {
     setLastRefresh(new Date());
-    setMessage('Demo sensor view refreshed. Sensors report on a 3-hour cadence; no live hardware was contacted.');
+    setMessage('Demo sensor view refreshed. No live hardware was contacted.');
   }
 
   function downloadLog() {
@@ -636,7 +635,6 @@ export default function OperatorDashboardPage() {
               <div className="operator-status-stats">
                 <div><span>Last reading</span><b>{formatManilaTimestamp(time.now)} PHT</b></div>
                 <div><span>Connected sensors</span><b>{sensorStatus === 'ONLINE' ? '3 online' : 'Disconnected'}</b></div>
-                <div><span>Reading interval</span><b>Every 3 hours</b></div>
               </div>
             </article>
 
@@ -650,7 +648,7 @@ export default function OperatorDashboardPage() {
           </section>}
 
           {currentPage === 'readings' && <section className="operator-section" id="operator-readings">
-            <OperatorSectionHeading title="Current Water Quality" detail={`${selectedTank.name} · Sensor readings are collected every 3 hours`} action={<span className="operator-last-sync"><span className="operator-online-dot" /> Last sync {formatManilaTimestamp(lastRefresh)} PHT</span>} />
+            <OperatorSectionHeading title="Current Water Quality" detail={`${selectedTank.name} · Current sensor readings`} action={<span className="operator-last-sync"><span className="operator-online-dot" /> Last sync {formatManilaTimestamp(lastRefresh)} PHT</span>} />
             <div className="operator-reading-grid">
               <article className={`operator-card operator-reading-card${latestReading.dissolvedOxygen < DO_DEMO_THRESHOLD ? ' has-critical-reading' : ''}`}>
                 <div className="operator-reading-card-top"><span className="operator-reading-icon operator-reading-icon--aqua"><Droplets size={18} /></span><OperatorBadge tone={latestReading.dissolvedOxygen < DO_DEMO_THRESHOLD ? 'critical' : 'safe'}>{latestReading.dissolvedOxygen < DO_DEMO_THRESHOLD ? 'LOW' : 'IN RANGE'}</OperatorBadge></div>
@@ -658,7 +656,7 @@ export default function OperatorDashboardPage() {
                 <div className="operator-reading-value">{latestReading.dissolvedOxygen.toFixed(1)} <small>mg/L</small></div>
                 <div className="operator-reading-context">{latestReading.dissolvedOxygen < DO_DEMO_THRESHOLD ? `Below demo minimum of ${DO_DEMO_THRESHOLD.toFixed(1)} mg/L` : 'Compare with your hatchery guidance'}</div>
                 <ReadingTrend values={readings.map((item) => item.dissolvedOxygen)} color={latestReading.dissolvedOxygen < DO_DEMO_THRESHOLD ? '#ff777c' : '#55c7e8'} />
-                <span className="operator-reading-updated"><Clock3 size={12} /> Latest 3-hour sample</span>
+                <span className="operator-reading-updated"><Clock3 size={12} /> Latest available sample</span>
               </article>
               <article className="operator-card operator-reading-card">
                 <div className="operator-reading-card-top"><span className="operator-reading-icon operator-reading-icon--orange"><Thermometer size={18} /></span><OperatorBadge tone={sensorStatus === 'ONLINE' ? 'safe' : 'muted'}>{sensorStatus === 'ONLINE' ? 'SENSOR ONLINE' : 'HARDWARE OFFLINE'}</OperatorBadge></div>
@@ -666,7 +664,7 @@ export default function OperatorDashboardPage() {
                 <div className="operator-reading-value">{latestReading.temperature.toFixed(1)} <small>°C</small></div>
                 <div className="operator-reading-context">Review against tank-specific guidance</div>
                 <ReadingTrend values={readings.map((item) => item.temperature)} color="#f0b467" />
-                <span className="operator-reading-updated"><Clock3 size={12} /> Latest 3-hour sample</span>
+                <span className="operator-reading-updated"><Clock3 size={12} /> Latest available sample</span>
               </article>
               <article className="operator-card operator-reading-card">
                 <div className="operator-reading-card-top"><span className="operator-reading-icon operator-reading-icon--blue"><FlaskConical size={18} /></span><OperatorBadge tone={sensorStatus === 'ONLINE' ? 'safe' : 'muted'}>{sensorStatus === 'ONLINE' ? 'SENSOR ONLINE' : 'HARDWARE OFFLINE'}</OperatorBadge></div>
@@ -674,7 +672,7 @@ export default function OperatorDashboardPage() {
                 <div className="operator-reading-value">{latestReading.ph.toFixed(1)} <small>pH units</small></div>
                 <div className="operator-reading-context">Compare with your hatchery guidance</div>
                 <ReadingTrend values={readings.map((item) => item.ph)} color="#88a8ff" />
-                <span className="operator-reading-updated"><Clock3 size={12} /> Latest 3-hour sample</span>
+                <span className="operator-reading-updated"><Clock3 size={12} /> Latest available sample</span>
               </article>
               <article className="operator-card operator-reading-card operator-salinity-card">
                 <div className="operator-reading-card-top"><span className="operator-reading-icon operator-reading-icon--violet"><Waves size={18} /></span><OperatorBadge tone="warning">VERIFY</OperatorBadge></div>
@@ -717,9 +715,9 @@ export default function OperatorDashboardPage() {
           </section>}
 
           {currentPage === 'history' && <section className="operator-section" id="operator-history">
-            <OperatorSectionHeading title="3-Hour Sensor Readings" detail="Eight sample intervals cover the last 24 hours. Historical readings are not a substitute for direct verification." action={<button type="button" className="operator-button operator-button--quiet" onClick={refreshReadings}><RefreshCw size={13} /> Refresh view</button>} />
+            <OperatorSectionHeading title="Recent Sensor Readings" detail="Historical readings are not a substitute for direct verification." action={<button type="button" className="operator-button operator-button--quiet" onClick={refreshReadings}><RefreshCw size={13} /> Refresh view</button>} />
             <div className="operator-card operator-history-card">
-              <div className="operator-history-legend"><span><i className="legend-dot legend-dot--do" /> Dissolved Oxygen (mg/L)</span><span><i className="legend-dot legend-dot--temp" /> Temperature (°C)</span><span><i className="legend-dot legend-dot--ph" /> pH</span><span className="operator-cadence"><Clock3 size={12} /> 3-hour cadence</span></div>
+              <div className="operator-history-legend"><span><i className="legend-dot legend-dot--do" /> Dissolved Oxygen (mg/L)</span><span><i className="legend-dot legend-dot--temp" /> Temperature (°C)</span><span><i className="legend-dot legend-dot--ph" /> pH</span></div>
               <div className="operator-table-wrap">
                 <table className="operator-table">
                   <thead><tr><th>Sample interval</th><th>Dissolved oxygen</th><th>Temperature</th><th>pH</th><th>Salinity</th><th>Sensor status</th></tr></thead>
@@ -785,7 +783,6 @@ export default function OperatorDashboardPage() {
                     <span className="operator-sensor-icon"><Icon size={16} /></span>
                     <span className="operator-sensor-name"><b>{name}</b><small>{id}</small></span>
                     <span className={`operator-table-online${sensorStatus === 'OFFLINE' ? ' is-offline' : ''}`}><i /> {sensorStatus}</span>
-                    <small className="operator-sensor-sync">3-hour interval</small>
                   </div>
                 ))}
                 <div className="operator-device-footer"><span className="operator-online-dot" /> Last transmission {formatManilaTimestamp(lastRefresh)} PHT</div>
@@ -840,7 +837,7 @@ export default function OperatorDashboardPage() {
       )}
 
       {modal === 'resolve' && (
-        <OperatorModal title="Record corrective action" description="Only mark the alert resolved after action and verification. The resolution is added to your activity log." onClose={() => setModal(null)}>
+        <OperatorModal title="Record corrective action" description="Are you sure you want to resolve this alert? Continue only after taking action and verifying the condition. The resolution is added to your activity log." onClose={() => setModal(null)}>
           <form className="operator-form" onSubmit={submitResolution}>
             {(() => {
               const alert = alerts.find((item) => item.id === resolutionAlertId);

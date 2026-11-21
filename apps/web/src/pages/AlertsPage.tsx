@@ -9,6 +9,7 @@ import { useRole } from '../app/auth/RoleContext';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { usePendingRequests, useTanks } from '../app/data/hooks';
 import { PageHeading } from '../components/common/PageHeading';
+import { ConfirmActionDialog } from '../components/common/ConfirmActionDialog';
 import { Select } from '../components/common/Select';
 import { StatusBadge } from '../components/readings/StatusBadge';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
@@ -34,13 +35,6 @@ function parameterUnit(parameter: string) {
   return name === 'Temperature' ? '°C' : name === 'Dissolved oxygen' ? 'mg/L' : name === 'pH' ? 'pH' : '';
 }
 
-function getPaginationItems(pageCount: number, currentPage: number): Array<number | 'ellipsis'> {
-  if (pageCount <= 5) return Array.from({ length: pageCount }, (_, index) => index);
-  if (currentPage <= 2) return [0, 1, 2, 3, 'ellipsis', pageCount - 1];
-  if (currentPage >= pageCount - 3) return [0, 'ellipsis', pageCount - 4, pageCount - 3, pageCount - 2, pageCount - 1];
-  return [0, 'ellipsis', currentPage - 1, currentPage, currentPage + 1, 'ellipsis', pageCount - 1];
-}
-
 export default function AlertsPage() {
   const { role, userName } = useRole();
   const { tankId, hatchery } = useSelectedTank();
@@ -56,6 +50,7 @@ export default function AlertsPage() {
   const [formError, setFormError] = useState('');
   const [activityError, setActivityError] = useState('');
   const [resolveDialog, setResolveDialog] = useState(false);
+  const [resolveConfirmation, setResolveConfirmation] = useState(false);
   const [alertsPage, setAlertsPage] = useState(0);
   const [alertsPageSize, setAlertsPageSize] = useState(10);
   const query = useQuery({ queryKey: ['alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
@@ -113,7 +108,6 @@ export default function AlertsPage() {
     .sort((left, right) => right.acknowledgedAt!.localeCompare(left.acknowledgedAt!))[0];
   const alertsPageCount = Math.max(1, Math.ceil(items.length / alertsPageSize));
   const currentAlertsPage = Math.min(alertsPage, alertsPageCount - 1);
-  const alertPaginationItems = getPaginationItems(alertsPageCount, currentAlertsPage);
   const visibleAlerts = items.slice(currentAlertsPage * alertsPageSize, (currentAlertsPage + 1) * alertsPageSize);
   const tankNames = new Map((tanks.data ?? []).map((tank) => [tank.id, tank.name]));
 
@@ -122,6 +116,9 @@ export default function AlertsPage() {
     setSelected(null);
     setResolveDialog(false);
   }, [period, severity, tab, tankId]);
+  useEffect(() => {
+    setResolveConfirmation(false);
+  }, [selected?.id]);
 
   useEffect(() => {
     if (!selected) return undefined;
@@ -232,7 +229,6 @@ export default function AlertsPage() {
             </div>
             <div className="trends-alert-pagination">
               <div className="trends-alert-pagination-info">
-                <span>Page {currentAlertsPage + 1} of {alertsPageCount} · {items.length} alerts</span>
                 <label htmlFor="alerts-page-size">Rows per page</label>
                 <Select id="alerts-page-size" value={alertsPageSize} onChange={(event) => { setAlertsPageSize(Number(event.target.value)); setAlertsPage(0); }}>
                   <option value={10}>10</option>
@@ -241,12 +237,10 @@ export default function AlertsPage() {
                   <option value={100}>100</option>
                 </Select>
               </div>
-              <nav className="trends-alert-page-buttons" aria-label="Alert history pages">
-                <button className="icon-button" type="button" aria-label="Previous" title="Previous page" disabled={currentAlertsPage === 0} onClick={() => setAlertsPage((page) => Math.max(0, page - 1))}><ChevronLeft size={18} aria-hidden="true" /></button>
-                {alertPaginationItems.map((item, index) => item === 'ellipsis'
-                  ? <span className="trends-alert-page-ellipsis" key={`ellipsis-${index}`} aria-hidden="true">…</span>
-                  : <button className="button" type="button" key={item} aria-label={`Page ${item + 1}`} aria-current={item === currentAlertsPage ? 'page' : undefined} onClick={() => setAlertsPage(item)}>{item + 1}</button>)}
-                <button className="icon-button" type="button" aria-label="Next" title="Next page" disabled={currentAlertsPage >= alertsPageCount - 1} onClick={() => setAlertsPage((page) => Math.min(alertsPageCount - 1, page + 1))}><ChevronRight size={18} aria-hidden="true" /></button>
+              <nav className="log-pagination" aria-label="Alert history pages">
+                <button type="button" aria-label="Previous" title="Previous page" disabled={currentAlertsPage === 0} onClick={() => setAlertsPage((page) => Math.max(0, page - 1))}><ChevronLeft size={18} aria-hidden="true" /></button>
+                <span aria-current="page">Page {currentAlertsPage + 1} of {alertsPageCount}</span>
+                <button type="button" aria-label="Next" title="Next page" disabled={currentAlertsPage >= alertsPageCount - 1} onClick={() => setAlertsPage((page) => Math.min(alertsPageCount - 1, page + 1))}><ChevronRight size={18} aria-hidden="true" /></button>
               </nav>
             </div>
           </>
@@ -258,7 +252,7 @@ export default function AlertsPage() {
             <header className="alerts-response-heading">
               <div><h2 id="alert-response-title" className="card-title">Response history</h2><p>{parameterName(selected.parameter)} alert · {formatManilaDateTime(new Date(selected.createdAt))} PHT · {tankNames.get(selected.tankId) ?? 'Unknown tank'}</p></div>
               <div className="alerts-response-actions">
-                {selected.status === 'acknowledged' && can(role, 'resolveAlert') && <button type="button" className="button button-primary" onClick={() => { setResolveDialog(true); setNote(''); setFormError(''); }}>Resolve alert</button>}
+                {selected.status === 'acknowledged' && can(role, 'resolveAlert') && <button type="button" className="button button-primary button-soft-action" onClick={() => { setResolveDialog(true); setNote(''); setFormError(''); }}>Resolve alert</button>}
                 <button type="button" className="button" onClick={() => { setSelected(null); setResolveDialog(false); }}>Close history</button>
               </div>
             </header>
@@ -273,11 +267,19 @@ export default function AlertsPage() {
             {mutation.isError && <ErrorState error={mutation.error} />}
             {(selected.status === 'open' || (resolveDialog && selected.status === 'acknowledged')) && <footer className="inline">
               {selected.status === 'open' && <button className="button button-primary" type="button" disabled={mutation.isPending} onClick={() => submitResponse(false)}>Acknowledge alert</button>}
-              {resolveDialog && selected.status === 'acknowledged' && <button type="button" className="button button-primary" disabled={mutation.isPending} onClick={() => submitResponse(true)}>Confirm resolve</button>}
+              {resolveDialog && selected.status === 'acknowledged' && <button type="button" className="button button-primary button-soft-action" disabled={mutation.isPending} onClick={() => setResolveConfirmation(true)}>Confirm resolve</button>}
             </footer>}
           </section>
         </div>
       )}
+      {resolveConfirmation && selected && <ConfirmActionDialog
+        title="Resolve alert?"
+        message={`Are you sure you want to resolve the ${parameterName(selected.parameter)} alert for ${tankNames.get(selected.tankId) ?? 'this tank'}? Confirm only after verifying the condition.`}
+        confirmLabel={mutation.isPending ? 'Resolving…' : 'Confirm resolve'}
+        disabled={mutation.isPending}
+        onCancel={() => setResolveConfirmation(false)}
+        onConfirm={() => { setResolveConfirmation(false); submitResponse(true); }}
+      />}
     </div>
   );
 }

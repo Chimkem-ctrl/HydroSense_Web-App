@@ -124,7 +124,7 @@ describe('themed dashboard routes', () => {
     const pages = await screen.findByRole('navigation', { name: 'Historical log pages' });
     fireEvent.click(within(pages).getByRole('button', { name: 'Next' }));
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Benoni Experimental Station' }));
     await waitFor(() => expect(screen.getByRole('navigation', { name: 'Historical log pages' })).toHaveTextContent('1'));
     expect(screen.getByRole('cell', { name: 'b' })).toBeInTheDocument();
   });
@@ -150,7 +150,7 @@ describe('themed dashboard routes', () => {
     expect(exportButton).toHaveAttribute('title', 'Export CSV');
     expect(within(records).queryByRole('combobox', { name: 'Hatchery' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Benoni Experimental Station' }));
     expect(screen.getByText('Benoni event')).toBeInTheDocument();
     expect(screen.queryByText('Sagay event')).not.toBeInTheDocument();
     fireEvent.click(exportButton);
@@ -164,7 +164,7 @@ describe('themed dashboard routes', () => {
     render(<App />);
     await screen.findByRole('button', { name: 'Sagay tank' });
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Benoni Experimental Station' }));
     expect(await screen.findByText('No tank or reading is available. Check the tank selector and device status.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sagay tank' })).not.toBeInTheDocument();
   });
@@ -184,7 +184,7 @@ describe('themed dashboard routes', () => {
     render(<App />);
     await screen.findByText('Sagay event');
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Benoni Experimental Station' }));
     expect(screen.getByText('Benoni event')).toBeInTheDocument();
     expect(screen.queryByText('Sagay event')).not.toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /including 1 pending account request/ })).toBeInTheDocument();
@@ -231,7 +231,7 @@ describe('themed dashboard routes', () => {
     const settings = screen.getByRole('heading', { name: 'Export settings' }).closest('section')!;
     expect(within(settings).queryByRole('combobox', { name: 'Hatchery' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Benoni Experimental Station' }));
     const preview = screen.getByRole('heading', { name: 'Report preview' }).closest('section')!;
     expect(await within(preview).findByText(/Benoni tank ·/)).toBeInTheDocument();
     expect(within(preview).getAllByText('31.00').length).toBeGreaterThan(0);
@@ -253,7 +253,7 @@ describe('themed dashboard routes', () => {
     render(<App />);
     await screen.findByRole('heading', { name: 'Audit & System Logs' });
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Benoni Experimental Station' }));
     expect(screen.getByText(/Audit and system logs cannot be filtered by hatchery/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Export CSV' })).not.toBeInTheDocument();
   });
@@ -264,7 +264,7 @@ describe('themed dashboard routes', () => {
     render(<App />);
     await screen.findByText(/Sagay tank ·/);
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Benoni' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Benoni Experimental Station' }));
     expect(await screen.findByText('No tanks are available for the selected hatchery.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Download CSV' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Print / Save PDF' })).not.toBeInTheDocument();
@@ -382,6 +382,18 @@ describe('themed dashboard routes', () => {
     expect(advisories).not.toHaveBeenCalled();
   });
 
+  it('requires confirmation before removing a tank', async () => {
+    const removeTank = vi.spyOn(api, 'deleteTank').mockRejectedValue(new Error('Removal failed'));
+    window.history.replaceState({}, '', '/tanks');
+    render(<App />);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Remove' }))[0]);
+    const confirmation = screen.getByRole('dialog', { name: 'Remove tank?' });
+    expect(within(confirmation).getByText(/Are you sure you want to remove/)).toBeInTheDocument();
+    expect(removeTank).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Remove tank' }));
+    await waitFor(() => expect(removeTank).toHaveBeenCalledTimes(1));
+  });
+
   it.each([
     ['operator', false],
     ['manager', true],
@@ -420,7 +432,7 @@ describe('themed dashboard routes', () => {
     expect(await screen.findByRole('heading', { name: 'Reports' })).toBeInTheDocument();
     const downloadButton = await screen.findByRole('button', { name: 'Download CSV' });
     const printButton = await screen.findByRole('button', { name: 'Print / Save PDF' });
-    expect(downloadButton.className).toBe('button button-primary');
+    expect(downloadButton).toHaveClass('button-primary', 'button-soft-action');
     expect(printButton.className).toBe(downloadButton.className);
     const statistics = screen.getByRole('region', { name: 'Report statistics' });
     expect(within(statistics).getByRole('columnheader', { name: 'Std dev' })).toBeInTheDocument();
@@ -461,7 +473,7 @@ describe('themed dashboard routes', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'Acknowledged (1)' }));
     expect(await screen.findByRole('columnheader', { name: 'Date and time (PHT)' })).toBeInTheDocument();
     const pagination = screen.getByRole('navigation', { name: 'Alert history pages' });
-    expect(within(pagination).getByRole('button', { name: 'Page 1' })).toHaveAttribute('aria-current', 'page');
+    expect(within(pagination).getByText('Page 1 of 1')).toHaveAttribute('aria-current', 'page');
     expect(within(pagination).getByRole('button', { name: 'Previous' })).toBeDisabled();
     expect(within(pagination).getByRole('button', { name: 'Next' }).querySelector('svg')).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: 'pH' })).toBeInTheDocument();
@@ -476,8 +488,29 @@ describe('themed dashboard routes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Resolve alert' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Resolution note' }), { target: { value: 'Verified readings are back in range.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm resolve' }));
+    const resolveConfirmation = screen.getByRole('dialog', { name: 'Resolve alert?' });
+    expect(within(resolveConfirmation).getByText(/Are you sure you want to resolve/)).toBeInTheDocument();
+    fireEvent.click(within(resolveConfirmation).getByRole('button', { name: 'Confirm resolve' }));
     expect(await screen.findByRole('tab', { name: 'Acknowledged (0)' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Resolved (1)' })).toBeInTheDocument();
+  });
+
+  it('paginates alert history with arrows and resets when the page size changes', async () => {
+    vi.spyOn(api, 'listAlerts').mockResolvedValue(Array.from({ length: 31 }, (_, index) => ({
+      id: `alert-${index}`, tankId: 'tank-a', parameter: 'ph', value: 9, threshold: '8',
+      severity: 'warning' as const, status: 'open' as const, createdAt: new Date().toISOString(),
+    })));
+    window.history.replaceState({}, '', '/alerts');
+    render(<App />);
+    const pagination = await screen.findByRole('navigation', { name: 'Alert history pages' });
+    expect(within(pagination).getByText('Page 1 of 4')).toBeInTheDocument();
+    expect(within(pagination).getByRole('button', { name: 'Previous' })).toBeDisabled();
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Next' }));
+    expect(within(pagination).getByText('Page 2 of 4')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Rows per page' }));
+    fireEvent.click(screen.getByRole('option', { name: '25' }));
+    expect(within(pagination).getByText('Page 1 of 2')).toBeInTheDocument();
+    expect(screen.queryByText('Page 1 of 4 · 31 alerts')).not.toBeInTheDocument();
   });
 
   it('allows an open alert to be acknowledged without a note', async () => {
@@ -509,6 +542,7 @@ describe('themed dashboard routes', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Resolve alert' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Resolution note' }), { target: { value: 'Verified readings' } });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm resolve' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Resolve alert?' })).getByRole('button', { name: 'Confirm resolve' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('The alert was resolved, but its activity log could not be saved: Network unavailable');
     expect(await screen.findByRole('tab', { name: 'Resolved (1)' })).toBeInTheDocument();
   });
@@ -665,7 +699,7 @@ describe('themed dashboard routes', () => {
     render(<App />);
     const maintenance = await screen.findByRole('region', { name: 'Device maintenance' });
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Sagay' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Sagay Multispecies Hatchery' }));
     const tankSelect = await within(maintenance).findByRole('combobox', { name: 'Tank' });
     fireEvent.click(tankSelect);
     expect(screen.getByRole('option', { name: 'Tank 01' })).toBeInTheDocument();

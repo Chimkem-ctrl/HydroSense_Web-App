@@ -53,15 +53,17 @@ export default function LiveMonitorPage() {
       thresholds.isError ? <ErrorState error={thresholds.error} onRetry={() => void thresholds.refetch()} /> :
       !tank || !reading.data ? <EmptyState>No tank or reading is available. Check the tank selector and device status.</EmptyState> : <>
       {reading.dataUpdatedAt && Date.now() - reading.dataUpdatedAt > 3 * 3_600_000 && <StaleState updatedAt={reading.dataUpdatedAt} />}
+      <section className={`card live-status-banner live-status-${freshness?.stale ? 'offline' : invalidReading ? 'warning' : overallLevel}`} aria-label="Current reading status">
+        <div className="live-status-copy">
+          {!freshness?.stale && !invalidReading && overallLevel === 'normal' ? <CheckCircle2 size={24} aria-hidden="true" /> : <AlertTriangle size={24} aria-hidden="true" />}
+          <div><h2>{freshness?.stale ? 'Reading status unavailable while offline' : invalidReading ? 'Check probe: invalid sensor reading' : `${tank.name} ${overallLevel === 'normal' ? 'readings are within the configured ranges' : 'has readings that need attention'}`}</h2><p>{freshness?.stale ? `Last reading ${readingAge(freshness.ageMs)}.` : invalidReading ? 'Invalid readings are excluded from analysis.' : overallLevel === 'normal' ? 'Temperature, dissolved oxygen and pH are normal.' : 'Review the measured readings and their status below.'}</p></div>
+        </div>
+        <div className="live-status-actions"><Link className="button button-primary button-soft-action" to="/entries">Activity Logs</Link><Link className="button" to="/trends">View trends</Link></div>
+      </section>
       {freshness?.stale && <section className="offline-banner" role="status">
         <div><strong>Offline, last reading {readingAge(freshness.ageMs)}.</strong><span> Showing the last readings received {formatManilaDateTime(reading.data.timestamp)} PHT.</span></div>
         <Link to="/tanks">Tank &amp; device health</Link>
       </section>}
-      <section className={`card live-status-banner live-status-${freshness?.stale ? 'offline' : invalidReading ? 'warning' : overallLevel}`} aria-label="Current reading status">
-        {!freshness?.stale && !invalidReading && overallLevel === 'normal' ? <CheckCircle2 size={24} aria-hidden="true" /> : <AlertTriangle size={24} aria-hidden="true" />}
-        <div><h2>{freshness?.stale ? 'Reading status unavailable while offline' : invalidReading ? 'Check probe: invalid sensor reading' : `${tank.name} ${overallLevel === 'normal' ? 'readings are within the configured ranges' : 'has readings that need attention'}`}</h2><p>{freshness?.stale ? `Last reading ${readingAge(freshness.ageMs)}.` : invalidReading ? 'Invalid readings are excluded from analysis.' : overallLevel === 'normal' ? 'Temperature, dissolved oxygen and pH are normal.' : 'Review the measured readings and their status below.'}</p></div>
-        <div className="live-status-actions"><Link className="button button-primary" to="/entries">Activity Logs</Link><Link className="button" to="/trends">View trends</Link></div>
-      </section>
       <section className="live-section" aria-labelledby="live-readings-title">
         <div className="live-section-heading">
           <div><h2 id="live-readings-title">Current water quality</h2><p>Latest measured readings for the selected tank</p></div>
@@ -74,7 +76,7 @@ export default function LiveMonitorPage() {
       </section>
       <div className="live-overview-grid">
       <section className="card live-panel" aria-labelledby="live-device-title">
-        <div className="live-section-heading"><div><h2 id="live-device-title">Device connection</h2><p>{tank.deviceId} · sampled every 3 hours</p></div></div>
+        <div className="live-section-heading"><div><h2 id="live-device-title">Device connection</h2><p>{tank.deviceId}</p></div></div>
         {devices.isLoading ? <LoadingState label="Loading device status" /> : devices.isError ? <ErrorState error={devices.error} onRetry={() => void devices.refetch()} /> : device ? (
           <div className="live-device-metrics">
             <div><span>Connection</span><strong className={deviceOnline ? 'status-online' : 'status-offline'}>{deviceOnline ? <Wifi size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}{deviceOnline ? 'Online' : 'Offline'}</strong></div>

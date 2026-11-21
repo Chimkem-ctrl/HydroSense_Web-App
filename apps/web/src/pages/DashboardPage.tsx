@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Logo from '../components/common/Logo';
+import { ConfirmActionDialog } from '../components/common/ConfirmActionDialog';
 import { getCurrentUser, signOut } from '../services/authService';
 import {
   dashboardAlerts,
@@ -313,6 +314,7 @@ export default function DashboardPage() {
     : location.pathname.split('/')[2] ?? 'dashboard';
   const [selectedTankId, setSelectedTankId] = useState(tanks[0].id);
   const [availableTanks, setAvailableTanks] = useState(tanks);
+  const [tankToRemove, setTankToRemove] = useState<Tank | null>(null);
   const [alerts, setAlerts] = useState(dashboardAlerts);
   const [alertFilter, setAlertFilter] = useState<AlertFilter>('ALL');
   const [trendRange, setTrendRange] = useState<TrendRange>('24h');
@@ -442,13 +444,11 @@ export default function DashboardPage() {
       setNotice('At least one tank must remain available.');
       return;
     }
-    if (!window.confirm(`Remove ${tankToRemove.name} and its hardware association? This cannot be undone.`)) {
-      return;
-    }
     const nextTanks = availableTanks.filter((item) => item.id !== tankToRemove.id);
     if (!persistTankChanges(nextTanks)) return;
     if (selectedTankId === tankToRemove.id) setSelectedTankId(nextTanks[0].id);
     setNotice(`${tankToRemove.name} removed.`);
+    setTankToRemove(null);
   }
 
   function refreshReadings() {
@@ -799,7 +799,7 @@ export default function DashboardPage() {
                     <span className={`tank-hardware-status${item.hardwareConnected === false ? ' is-disconnected' : ''}`}>{item.hardwareConnected === false ? 'Not connected' : 'Connected'}</span>
                     <div className="tank-management-actions">
                       <button type="button" className="dashboard-button dashboard-button--subtle" onClick={() => connectHardware(item)}>{item.hardwareConnected === false ? 'Connect hardware' : 'Update connection'}</button>
-                      <button type="button" className="dashboard-button dashboard-button--danger" onClick={() => removeTank(item)} disabled={availableTanks.length <= 1}>Remove tank</button>
+                      <button type="button" className="dashboard-button dashboard-button--danger" onClick={() => setTankToRemove(item)} disabled={availableTanks.length <= 1}>Remove tank</button>
                     </div>
                   </div>
                 ))}
@@ -835,6 +835,13 @@ export default function DashboardPage() {
           <button type="button" aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={15} /></button>
         </div>
       )}
+      {tankToRemove && <ConfirmActionDialog
+        title="Remove tank?"
+        message={`Are you sure you want to remove ${tankToRemove.name} and its hardware association? This cannot be undone.`}
+        confirmLabel="Remove tank"
+        onCancel={() => setTankToRemove(null)}
+        onConfirm={() => removeTank(tankToRemove)}
+      />}
       {selectedAlert && (
         <div className="dashboard-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedAlert(null); }}>
           <section className="dashboard-modal" role="dialog" aria-modal="true" aria-labelledby="alert-modal-title">

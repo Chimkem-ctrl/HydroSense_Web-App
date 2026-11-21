@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Portal } from 'react-native-paper';
+import { Dialog, Portal } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, Database, Droplets, Eye, FileDown, FileSpreadsheet, FileText, ListFilter, Maximize2, MoreHorizontal, Plus, Trash2, UserRound, Waves, Wifi } from 'lucide-react-native';
@@ -42,7 +42,7 @@ import type { MainTabParamList, RootStackParamList } from './navigation';
 import { api, getConfiguredThreshold, listConfiguredThresholds, listPendingAccounts } from './services/client';
 import { canAccess } from './access';
 import { useSession, useTankSelection } from './state';
-import { Button, CalendarFilterField, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, Page, StateMessage, Title } from './components/ui';
+import { Button, CalendarFilterField, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, GlassDialog, Page, StateMessage, Title } from './components/ui';
 import { AlertFilters } from './components/AlertFilters';
 import { RangeBar } from './components/RangeBar';
 import { uiScale, useTheme } from './theme';
@@ -164,7 +164,7 @@ export function HomeScreen() {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>
         {(['temperature', 'do', 'ph'] as const).map((parameter) => <View key={parameter} style={{ width: width >= 950 ? '32%' : width >= 600 ? '48%' : '100%' }}><ReadingCard parameter={parameter} reading={reading} threshold={getConfiguredThreshold(thresholds.data, parameter)} stale={freshness?.stale ?? false} /></View>)}
       </View>
-      <Card title="Last update"><View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text><Text style={{ color: colors.muted }}>Readings are sampled every 3 hours.</Text></View></Card>
+      <Card title="Last update"><View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text></View></Card>
       <Card title="Device connection">
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: deviceExpanded }} onPress={() => setDeviceExpanded((current) => !current)} hitSlop={{ top: 8, bottom: 8 }} style={{ paddingVertical: uiScale.spacing[1] }}><Text style={{ color: colors.teal }}>{deviceExpanded ? 'Hide device details' : 'Show device details'}</Text></Pressable>
         {deviceExpanded && (devices.isLoading ? <StateMessage message="Loading device status…" loading /> : devices.isError ? <StateMessage message={`Could not load device status: ${devices.error.message}`} /> : !device ? <StateMessage message="No device is registered for this tank." /> : <>
@@ -177,7 +177,7 @@ export function HomeScreen() {
   </Page>;
 }
 
-function TankSummaryCard({ tank, onOpen, onRemove }: { tank: { id: string; name: string; deviceId: string; rearingStartDate: string }; onOpen: () => void; onRemove?: () => void }) {
+function TankSummaryCard({ tank, onOpen, onRemove, removeDisabled = false }: { tank: { id: string; name: string; deviceId: string; rearingStartDate: string }; onOpen: () => void; onRemove?: () => void; removeDisabled?: boolean }) {
   const { colors } = useTheme();
   const reading = useQuery({ queryKey: ['latest-reading', tank.id], queryFn: () => api.getLatestReading(tank.id) });
   const statuses = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses() });
@@ -195,7 +195,7 @@ function TankSummaryCard({ tank, onOpen, onRemove }: { tank: { id: string; name:
     {freshness && <Text style={{ color: colors.muted }}>{freshness.stale ? 'Stale reading' : 'Last reading'} · {readingAge(freshness.ageMs)}</Text>}
     <View style={{ flexDirection: 'row', gap: uiScale.spacing[2] }}>
       <Button label="View live" icon={<Eye size={18} color={colors.teal} />} secondary onPress={onOpen} style={onRemove ? { flex: 1, minWidth: 0 } : undefined} />
-      {onRemove && <Button label="Remove tank" icon={<Trash2 size={18} color={colors.critical} />} secondary onPress={onRemove} style={{ flex: 1, minWidth: 0 }} />}
+      {onRemove && <Button label="Remove tank" icon={<Trash2 size={18} color={colors.critical} />} secondary disabled={removeDisabled} onPress={onRemove} style={{ flex: 1, minWidth: 0 }} />}
     </View>
   </Card>;
 }
@@ -211,6 +211,7 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
   const [site, setSite] = useState('');
   const [rearingStartDate, setRearingStartDate] = useState(() => getManilaDateString());
   const [deviceId, setDeviceId] = useState('');
+  const [tankToRemove, setTankToRemove] = useState<{ id: string; name: string } | null>(null);
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['tanks'] }),
@@ -238,20 +239,13 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
     onSuccess: refresh,
   });
   function confirmRemove(tank: { id: string; name: string }) {
-    if (allTanks.length <= 1) {
-      Alert.alert('Cannot remove tank', 'At least one tank must remain registered.');
-      return;
-    }
-    Alert.alert('Remove tank', `Remove ${tank.name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => remove.mutate(tank.id) },
-    ]);
+    setTankToRemove(tank);
   }
   return <Page>
     <Title icon={<Waves size={23} color={colors.teal} />} detail="Select a tank to view its live readings">Tanks</Title>
     {can(user?.role, 'registerTank') && <Button label="Register tank" icon={<Plus size={18} color="white" />} onPress={() => { register.reset(); setFormOpen(true); }} />}
     {remove.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>Could not remove tank: {remove.error.message}</Text>}
-    {isLoading ? <StateMessage message="Loading tanks…" loading /> : error ? <Card><StateMessage message={`Could not load tanks: ${error.message}`} /><Button label="Retry" secondary onPress={refetch} /></Card> : tanks.length ? tanks.map((tank) => <TankSummaryCard key={tank.id} tank={tank} onOpen={() => { setTankId(tank.id); navigation.navigate('Home'); }} onRemove={can(user?.role, 'removeTank') ? () => confirmRemove(tank) : undefined} />) : <StateMessage message="No tanks are available." />}
+    {isLoading ? <StateMessage message="Loading tanks…" loading /> : error ? <Card><StateMessage message={`Could not load tanks: ${error.message}`} /><Button label="Retry" secondary onPress={refetch} /></Card> : tanks.length ? tanks.map((tank) => <TankSummaryCard key={tank.id} tank={tank} onOpen={() => { setTankId(tank.id); navigation.navigate('Home'); }} onRemove={can(user?.role, 'removeTank') ? () => confirmRemove(tank) : undefined} removeDisabled={allTanks.length <= 1} />) : <StateMessage message="No tanks are available." />}
     <Modal visible={formOpen && canRegisterTank} animationType="slide" onRequestClose={() => setFormOpen(false)}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}>
         <Page>
@@ -266,6 +260,18 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
         </Page>
       </SafeAreaView>
     </Modal>
+    <GlassDialog solid visible={Boolean(tankToRemove)} onDismiss={() => { if (!remove.isPending) setTankToRemove(null); }}>
+      <Dialog.Title style={{ marginTop: 24, color: colors.ink }}>Remove tank?</Dialog.Title>
+      <Dialog.Content><Text style={{ color: colors.ink, fontSize: 15, lineHeight: 22 }}>Are you sure you want to remove {tankToRemove?.name}? This cannot be undone.</Text></Dialog.Content>
+      <Dialog.Actions style={{ justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingBottom: 16 }}>
+        <Pressable accessibilityRole="button" disabled={remove.isPending} onPress={() => setTankToRemove(null)} style={{ minHeight: 42, justifyContent: 'center', paddingHorizontal: 14 }}><Text style={{ color: colors.ink, fontWeight: '700' }}>Cancel</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={remove.isPending} onPress={() => {
+          if (!tankToRemove) return;
+          remove.mutate(tankToRemove.id);
+          setTankToRemove(null);
+        }} style={{ minHeight: 42, justifyContent: 'center', paddingHorizontal: 14, borderRadius: uiScale.radius.pill, backgroundColor: colors.critical }}><Text style={{ color: '#fff', fontWeight: '700' }}>Remove tank</Text></Pressable>
+      </Dialog.Actions>
+    </GlassDialog>
   </Page>;
 }
 
@@ -391,6 +397,7 @@ export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
   const alertQuery = useQuery({ queryKey: ['alert-detail', route.params.alertId], queryFn: async () => (await api.listAlerts()).find((item) => item.id === route.params.alertId) ?? null });
   const responses = useQuery({ queryKey: ['alert-responses', route.params.alertId], queryFn: () => api.listAlertResponses(route.params.alertId) });
   const [note, setNote] = useState('');
+  const [resolveConfirmation, setResolveConfirmation] = useState(false);
   const mutation = useMutation({
     mutationFn: async (status: 'acknowledge' | 'resolve') => {
       const issues = status === 'resolve' || note.trim() ? validateAcknowledgeNote(note) : [];
@@ -402,6 +409,7 @@ export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
     onSuccess: async (result) => {
       if (result.activityError) Alert.alert('Alert resolved; activity log not saved', result.activityError);
       setNote('');
+      setResolveConfirmation(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['alerts'] }),
         queryClient.invalidateQueries({ queryKey: ['alert-detail', route.params.alertId] }),
@@ -426,7 +434,7 @@ export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
       <DataRow label="Status" value={alert.status} detail={`Created ${formatManilaDateTime(alert.createdAt)} PHT`} />
       {alert.status !== 'resolved' && <Field label={alert.status === 'open' ? 'Acknowledgement note (optional)' : 'Resolution note'} value={note} onChangeText={setNote} placeholder="What did you observe or verify?" />}
       {alert.status === 'open' && <Button label="Acknowledge" icon={<CheckCircle2 size={18} color={colors.teal} />} disabled={mutation.isPending} onPress={() => mutation.mutate('acknowledge')} secondary />}
-      {alert.status === 'acknowledged' && can(user?.role, 'resolveAlert') && <Button label="Resolve alert" icon={<CheckCircle2 size={18} color="white" />} disabled={mutation.isPending} onPress={() => mutation.mutate('resolve')} />}
+      {alert.status === 'acknowledged' && can(user?.role, 'resolveAlert') &&             <Button label="Resolve alert" icon={<CheckCircle2 size={18} color={colors.critical} />} disabled={mutation.isPending} onPress={() => setResolveConfirmation(true)} soft />}
       {mutation.isError && <Text style={{ color: colors.critical }}>{mutation.error.message}</Text>}
       <Text style={{ color: colors.ink, fontWeight: '800', marginTop: 8 }}>Response history</Text>
       {responses.isLoading ? <StateMessage message="Loading responses…" loading /> : responses.isError ? <><StateMessage message={`Could not load responses: ${responses.error.message}`} /><Button label="Retry responses" secondary onPress={() => void responses.refetch()} /></> : (responses.data ?? []).length === 0 ? <Text style={{ color: colors.muted }}>No responses recorded.</Text> : responses.data?.map((response) => <View key={response.id} style={record.row}>
@@ -435,6 +443,17 @@ export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
         {response.note ? <Text style={record.body}>{response.note}</Text> : null}
       </View>)}
     </Card>}
+    <GlassDialog solid visible={resolveConfirmation} onDismiss={() => { if (!mutation.isPending) setResolveConfirmation(false); }}>
+      <Dialog.Title style={{ marginTop: 24, color: colors.ink }}>Resolve alert?</Dialog.Title>
+      <Dialog.Content>
+        <Text style={{ color: colors.ink, fontSize: 15, lineHeight: 22 }}>Are you sure you want to resolve this alert? Verify the condition and provide a resolution note before continuing.</Text>
+        {mutation.isError && <Text accessibilityRole="alert" style={{ color: colors.critical, marginTop: 8 }}>{mutation.error.message}</Text>}
+      </Dialog.Content>
+      <Dialog.Actions style={{ justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingBottom: 16 }}>
+        <Pressable accessibilityRole="button" disabled={mutation.isPending} onPress={() => setResolveConfirmation(false)} style={{ minHeight: 42, justifyContent: 'center', paddingHorizontal: 14 }}><Text style={{ color: colors.ink, fontWeight: '700' }}>Cancel</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={mutation.isPending} onPress={() => mutation.mutate('resolve')} style={{ minHeight: 42, justifyContent: 'center', paddingHorizontal: 14, borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: colors.critical, backgroundColor: `${colors.critical}18` }}><Text style={{ color: colors.critical, fontWeight: '700' }}>{mutation.isPending ? 'Resolving…' : 'Confirm resolve'}</Text></Pressable>
+      </Dialog.Actions>
+    </GlassDialog>
   </Page>;
 }
 
@@ -449,7 +468,7 @@ export function TrendsScreen() {
   const parameters = [{ key: 'temperature', label: 'Temperature', unit: '°C' }, { key: 'do', label: 'Dissolved oxygen', unit: 'mg/L' }, { key: 'ph', label: 'pH', unit: 'pH' }] as const;
   const tankOptions = tanks.map((tank) => ({ value: tank.id, label: tank.name }));
   return <Page>
-    <Title icon={<Activity size={23} color={colors.teal} />} detail="Sensor readings · 3-hour sampling">Trends</Title>
+    <Title icon={<Activity size={23} color={colors.teal} />} detail="Sensor readings">Trends</Title>
     <TrendFilters tanks={tankOptions} tankId={tankId ?? ''} onTankChange={setTankId} days={days} onDaysChange={setDays} />
     {tanksLoading || (Boolean(tankId) && readings.isLoading) || thresholds.isLoading ? <StateMessage message="Loading trend data…" loading /> : tanksError ? <Card><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry" secondary onPress={refetchTanks} /></Card> : !tankId ? <StateMessage message="No tanks are available for the selected hatchery." /> : readings.isError || thresholds.isError ? <Card><StateMessage message={`Could not load trends: ${(readings.error ?? thresholds.error)?.message}`} /><Button label="Retry" secondary onPress={() => { void readings.refetch(); void thresholds.refetch(); }} /></Card> : (readings.data?.length ?? 0) >= 500 ? <StateMessage message="The reading limit was reached; trends may be incomplete. Choose a shorter range." /> : parameters.map(({ key, label, unit }) => {
       const stats = calculateParameterStatistics(key, readings.data ?? [], thresholds.data ?? []);
@@ -837,7 +856,7 @@ export function ReportsScreen() {
       <View accessibilityRole="radiogroup" accessibilityLabel="Report format" style={{ gap: uiScale.spacing[2] }}>
         {(['pdf', 'csv', 'xlsx'] as const).map((value) => <ReportChoice key={value} kind="radio" label={value.toUpperCase()} icon={value === 'pdf' ? <FileText size={18} color={colors.teal} /> : <FileSpreadsheet size={18} color={colors.teal} />} selected={format === value} onPress={() => setFormat(value)} />)}
       </View>
-      <Button label={sharing ? 'Preparing report…' : 'Share report'} icon={<FileDown size={18} color="white" />} disabled={sharing} onPress={() => void shareReport()} />
+      <Button label={sharing ? 'Preparing report…' : 'Share report'} icon={<FileDown size={18} color={colors.teal} />} disabled={sharing} onPress={() => void shareReport()} soft />
     </Card>
     <Text style={{ color: colors.muted, fontSize: 12 }}>Prepared by {user?.name ?? 'user'}.</Text>
   </Page>;

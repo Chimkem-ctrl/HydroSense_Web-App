@@ -15,6 +15,7 @@
 @media (prefers-reduced-motion: reduce) { .profile-page .profile-avatar-upload-spinner { animation: none; } }
 .profile-page .profile-summary-details { display: grid; justify-items: start; gap: 6px; min-width: 0; }
 .profile-page .profile-summary-details h2, .profile-page .profile-summary-details p { margin: 0; }
+.profile-page .profile-summary-details .profile-summary-role { width: 100%; text-align: center; }
 .profile-page .profile-summary-details .small { margin: 0; }
 .profile-page .profile-summary h3 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
 .profile-page .profile-summary p { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
@@ -40,9 +41,8 @@
 .profile-page .profile-actions { display: grid; gap: 8px; }
 .profile-page .profile-actions .button { width: 100%; }
 .profile-page .profile-details > .profile-security { align-items: center; padding-block: 8px; }
-.profile-page .profile-security .button { width: 100%; min-height: 0; height: 24px; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--control-border); background: transparent; color: var(--text); font-size: 12px; line-height: 1; cursor: not-allowed; opacity: 1; transition: background-color 200ms ease, border-color 200ms ease, backdrop-filter 200ms ease; }
-.profile-page .profile-security .button:hover { background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .5); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-[data-theme='light'] .profile-page .profile-security .button:hover { background: rgba(20, 33, 58, .08); border-color: rgba(20, 33, 58, .35); }
+.profile-page .profile-security .button { width: 100%; border-color: var(--critical); background: color-mix(in srgb, var(--critical) 10%, var(--surface)); color: var(--critical); cursor: not-allowed; opacity: 1; }
+.profile-page .profile-security .button:hover { border-color: var(--critical); background: color-mix(in srgb, var(--critical) 10%, var(--surface)); }
 .profile-page #device-maintenance { grid-column: 1 / -1; }
 .profile-page .profile-maintenance-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items: end; gap: 16px; }
 .profile-page .profile-maintenance-fields .profile-actions { display: flex; flex-wrap: wrap; align-self: end; align-items: center; }

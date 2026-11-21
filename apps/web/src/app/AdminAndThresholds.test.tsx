@@ -130,7 +130,7 @@ describe('users and roles', () => {
     render(<App />);
     await screen.findByText('Other Operator');
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Sagay' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Sagay Multispecies Hatchery' }));
     expect(screen.getByText('Local Applicant')).toBeInTheDocument();
     expect(screen.getByText('Local Operator')).toBeInTheDocument();
     expect(screen.getByText('Local Admin')).toBeInTheDocument();
@@ -152,7 +152,7 @@ describe('users and roles', () => {
     expect(within(accounts).getByText('Other Operator')).toBeInTheDocument();
     expect(within(accounts).queryByText('Local Manager')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Sagay' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Sagay Multispecies Hatchery' }));
     expect(within(accounts).getByText('Local Operator')).toBeInTheDocument();
     expect(within(accounts).queryByText('Other Operator')).not.toBeInTheDocument();
     expect(within(accounts).queryByText('Local Manager')).not.toBeInTheDocument();
@@ -240,6 +240,9 @@ describe('audit logs', () => {
     window.history.replaceState({}, '', '/admin/logs');
     render(<App />);
     expect(await screen.findByText('27 results')).toBeInTheDocument();
+    const searchTools = screen.getByRole('searchbox', { name: 'Search detail' }).closest('.audit-log-tools');
+    expect(searchTools).toContainElement(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(searchTools).toContainElement(screen.getByRole('button', { name: 'Export CSV' }));
     expect(screen.getAllByRole('row')).toHaveLength(26);
     expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Next' }).querySelector('svg')).not.toBeNull();

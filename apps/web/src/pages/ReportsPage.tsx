@@ -308,7 +308,7 @@ export default function ReportsPage() {
               {notice && <p role="status">{notice}</p>}
             </div>
             <div className={`dash-report-action-buttons${canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError ? ' has-csv' : ''}`}>
-              {canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError && <button className="button button-primary" type="button" onClick={downloadCsv}><FileDown size={18} aria-hidden="true" />Download CSV</button>}
+              {canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError && <button className="button button-primary button-soft-action" type="button" onClick={downloadCsv}><FileDown size={18} aria-hidden="true" />Download CSV</button>}
               <button
                 ref={filterButtonRef}
                 className="button dash-report-filter-button"
@@ -328,7 +328,7 @@ export default function ReportsPage() {
         <section className="card stack dash-card dash-report-preview print-preview" aria-labelledby="report-preview-title">
           <div className="dash-report-preview-header">
             <h2 id="report-preview-title" className="card-title">Report preview</h2>
-            {canExport && model && <button className="button button-primary" type="button" onClick={() => window.print()}><Printer size={18} aria-hidden="true" />Print / Save PDF</button>}
+            {canExport && model && <button className="button button-primary button-soft-action" type="button" onClick={() => window.print()}><Printer size={18} aria-hidden="true" />Print / Save PDF</button>}
           </div>
           {dataQuery.isLoading ? <LoadingState label="Preparing report..." /> : dataQuery.isError ? <ErrorState error={dataQuery.error} onRetry={() => void dataQuery.refetch()} /> : !model ? <EmptyState>No tanks are available for the selected hatchery.</EmptyState> : (
             <div className="dash-report-body">

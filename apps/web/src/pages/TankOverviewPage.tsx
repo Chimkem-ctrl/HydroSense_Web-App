@@ -11,6 +11,7 @@ import { DATA_MODE, tierConfig } from '../app/config';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { useDeviceStatuses } from '../app/data/hooks';
 import { PageHeading } from '../components/common/PageHeading';
+import { ConfirmActionDialog } from '../components/common/ConfirmActionDialog';
 import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 import { calculateTrendStatistics, countMissingSamples, prepareTrendRows, threeHourTicks } from './trendData';
@@ -69,7 +70,7 @@ function TankDataQuality({ tankId, tankName }: { tankId: string; tankName: strin
 
   return (
     <section className="card glass trends-quality-panel" aria-label="Data quality">
-      <header className="trends-section-heading"><div><h2 className="card-title">Data quality · {tankName}</h2><p>Last {days} days · production logging interval: 3 hours</p></div><span className="trends-quality-coverage">{receivedSamples} of {expectedSamples} sample slots · {receivedPercent}% coverage</span></header>
+      <header className="trends-section-heading"><div><h2 className="card-title">Data quality · {tankName}</h2><p>Last {days} days</p></div><span className="trends-quality-coverage">{receivedSamples} of {expectedSamples} sample slots · {receivedPercent}% coverage</span></header>
       {readingsQuery.isLoading ? <LoadingState /> : readingsQuery.isError ? <ErrorState error={readingsQuery.error} onRetry={() => void readingsQuery.refetch()} /> : <>
         <div className="trends-quality-slots" role="img" aria-label={`${receivedSamples} of ${expectedSamples} expected sample slots received`}>
           {qualitySlots.map((slot) => <span className={`trends-quality-slot is-${slot.status}`} key={slot.tick} title={`${formatManilaDateTime(new Date(slot.tick))}: ${slot.status}`} />)}
@@ -98,6 +99,7 @@ export default function TankOverviewPage() {
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [formError, setFormError] = useState('');
   const [formMessage, setFormMessage] = useState('');
+  const [tankToRemove, setTankToRemove] = useState<Tank | null>(null);
   const query = useQuery({
     queryKey: ['tank-overview'],
     queryFn: async (): Promise<TankSummary[]> => {
@@ -167,11 +169,13 @@ export default function TankOverviewPage() {
     }, { onError: (error) => setFormError(error.message) });
     event.currentTarget.reset();
   };
-  const removeTank = (tank: Tank) => {
-    if (window.confirm(`Remove ${tank.name} and unlink hardware ${tank.deviceId}? This cannot be undone.`)) {
-      setFormMessage('');
-      deleteTank.mutate({ tankId: tank.id, changedBy: userName }, { onError: (error) => setFormError(error.message) });
-    }
+  const removeTank = () => {
+    if (!tankToRemove) return;
+    setFormMessage('');
+    deleteTank.mutate({ tankId: tankToRemove.id, changedBy: userName }, {
+      onError: (error) => setFormError(error.message),
+      onSettled: () => setTankToRemove(null),
+    });
   };
 
   return (
@@ -240,7 +244,7 @@ export default function TankOverviewPage() {
                       <td className="table-numeric">{device?.pendingSyncCount ?? '—'}</td>
                       <td><div className="tank-table-actions">
                         <button type="button" className="button" onClick={() => { setTankId(tank.id); navigate('/'); }}>Open</button>
-                        {can(role, 'removeTank') && <button className="button button-danger" type="button" disabled={deleteTank.isPending || query.data.length <= 1} title={query.data.length <= 1 ? 'At least one tank must remain registered.' : undefined} onClick={() => removeTank(tank)}>Remove</button>}
+                        {can(role, 'removeTank') && <button className="button button-danger" type="button" disabled={deleteTank.isPending || query.data.length <= 1} title={query.data.length <= 1 ? 'At least one tank must remain registered.' : undefined} onClick={() => setTankToRemove(tank)}>Remove</button>}
                       </div></td>
                     </tr>;
                   })}
@@ -252,6 +256,14 @@ export default function TankOverviewPage() {
           {selectedTank && <TankDataQuality tankId={selectedTank.id} tankName={selectedTank.name} />}
         </>
       )}
+      {tankToRemove && <ConfirmActionDialog
+        title="Remove tank?"
+        message={`Are you sure you want to remove ${tankToRemove.name} and unlink hardware ${tankToRemove.deviceId}? This cannot be undone.`}
+        confirmLabel="Remove tank"
+        disabled={deleteTank.isPending}
+        onCancel={() => setTankToRemove(null)}
+        onConfirm={removeTank}
+      />}
     </div>
   );
 }

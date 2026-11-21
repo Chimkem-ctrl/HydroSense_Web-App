@@ -162,7 +162,7 @@ export function UsersScreen() {
   const confirmationDetails = confirmation && {
     title: confirmation.action === 'approve' ? 'Approve account request?' : confirmation.action === 'reject' ? 'Reject account request?' : 'Remove account?',
     message: confirmation.action === 'approve'
-      ? `Approve ${confirmation.name} as ${confirmation.role}?`
+      ? `Are you sure you want to approve ${confirmation.name} as ${confirmation.role}?`
       : confirmation.action === 'reject'
         ? `Are you sure you want to reject "${confirmation.name}"?`
         : `Are you sure you want to remove "${confirmation.name}"?`,

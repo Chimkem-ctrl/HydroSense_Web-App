@@ -147,18 +147,8 @@
 .trends-csv-button { margin-top: var(--space-2); }
 .trends-download-actions { margin-top: var(--space-2); }
 .trends-download-actions .trends-csv-button { margin-top: 0; }
-.trends-statistics-table { min-width: 1120px; table-layout: fixed; }
+.trends-statistics-table { min-width: 1120px; table-layout: auto; }
 .trends-statistics-table th, .trends-statistics-table td { white-space: nowrap; vertical-align: middle; }
-.trends-statistics-table th:nth-child(1), .trends-statistics-table td:nth-child(1) { width: 15%; }
-.trends-statistics-table th:nth-child(2), .trends-statistics-table td:nth-child(2) { width: 8%; }
-.trends-statistics-table th:nth-child(3), .trends-statistics-table td:nth-child(3),
-.trends-statistics-table th:nth-child(4), .trends-statistics-table td:nth-child(4),
-.trends-statistics-table th:nth-child(5), .trends-statistics-table td:nth-child(5) { width: 7.5%; }
-.trends-statistics-table th:nth-child(6), .trends-statistics-table td:nth-child(6) { width: 8%; }
-.trends-statistics-table th:nth-child(7), .trends-statistics-table td:nth-child(7) { width: 12%; }
-.trends-statistics-table th:nth-child(8), .trends-statistics-table td:nth-child(8) { width: 8%; }
-.trends-statistics-table th:nth-child(9), .trends-statistics-table td:nth-child(9) { width: 10%; }
-.trends-statistics-table th:nth-child(10), .trends-statistics-table td:nth-child(10) { width: 16%; }
 .glass-screen .trends-statistics-table th, .glass-screen .trends-statistics-table td,
 .glass-screen .trends-overnight-table th, .glass-screen .trends-overnight-table td,
 .glass-screen .trends-alert-table th, .glass-screen .trends-alert-table td { text-align: center; }
@@ -241,6 +231,9 @@
 .alerts-history-card > .trends-section-heading { align-items: flex-start; }
 .alerts-history-card .card-title { margin: 0; }
 .alerts-history-card > .trends-alert-pagination { margin-top: 0; }
+.alerts-history-card .trends-alert-pagination-info .hs-select { width: 76px; }
+.alerts-history-card .trends-alert-pagination-info label { margin-left: 0; white-space: nowrap; }
+.alerts-history-card .log-pagination { margin-top: 0; }
 .alerts-history-count { color: var(--text-secondary); font-size: var(--font-caption); white-space: nowrap; }
 .alerts-history-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); min-width: 0; }
 .alerts-status-tabs { margin: 0; }

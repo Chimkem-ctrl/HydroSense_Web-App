@@ -101,7 +101,7 @@ export default function CalibrationPage() {
                 <label className="field">After<input type="number" step="0.01" value={after} onChange={(event) => setAfter(event.target.value)} required /></label>
                 <label className="field">Calibration date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>
                 <label className="field">Next due<input type="date" value={nextDue} onChange={(event) => setNextDue(event.target.value)} required /></label>
-                <button className="button button-primary dash-save-button" type="submit" disabled={mutation.isPending}><Save size={18} aria-hidden="true" />Save calibration log</button>
+                <button className="button button-primary button-soft-action dash-save-button" type="submit" disabled={mutation.isPending}><Save size={18} aria-hidden="true" />Save calibration log</button>
               </div>
             </form>
             <section className="card stack dash-card dash-calibration-due">

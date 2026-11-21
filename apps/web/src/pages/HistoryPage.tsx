@@ -58,7 +58,7 @@ export default function HistoryPage() {
 
   return (
     <div className="stack history-page">
-      <PageHeading title="Historical Logs" description="Scheduled readings are logged every 3 hours; additional threshold-triggered readings are also shown." />
+      <PageHeading title="Historical Logs" description="Scheduled and threshold-triggered readings are shown." />
       <div className="history-top-grid">
         <section className="card history-filter-card" aria-label="History filters">
           <div className="history-filter-controls">

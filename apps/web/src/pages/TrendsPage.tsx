@@ -238,7 +238,7 @@ export default function TrendsPage() {
     <div className="stack trends-screen">
       <PageHeading
         title="Trends"
-        description={`${selectedTank?.site ?? 'Selected hatchery'} · ${selectedTank?.name ?? 'Selected tank'} · Sampled every 3 hours${latestReading ? ` · Last reading ${formatManilaDateTime(new Date(latestReading.timestamp))} PHT` : ''}`}
+        description={`${selectedTank?.site ?? 'Selected hatchery'} · ${selectedTank?.name ?? 'Selected tank'}${latestReading ? ` · Last reading ${formatManilaDateTime(new Date(latestReading.timestamp))} PHT` : ''}`}
       />
       <div className="trends-toolbar">
         <div className="tabs" role="group" aria-label="Trend range">
@@ -246,7 +246,7 @@ export default function TrendsPage() {
             <button type="button" className="tab" aria-pressed={range === value} disabled={days > tierConfig.retentionDays} key={value} onClick={() => setRange(value)}>{label}</button>
           ))}
         </div>
-        {canExport && <button className="button button-primary trends-export-button" type="button" onClick={() => window.print()}><FileDown size={18} aria-hidden="true" />Export report</button>}
+        {canExport && <button className="button button-primary button-soft-action trends-export-button" type="button" onClick={() => window.print()}><FileDown size={18} aria-hidden="true" />Export report</button>}
       </div>
       {range === 'custom' && <div className="trends-custom-range">
         <label className="field">From<input type="date" value={customFrom} min={getManilaDateString(new Date(Date.now() - Math.max(0, tierConfig.retentionDays - 1) * 86_400_000))} max={customTo} onChange={(event) => { if (event.target.value) setCustomFrom(event.target.value); }} /></label>
@@ -276,7 +276,6 @@ export default function TrendsPage() {
               <span>Safe bands use the configured thresholds.</span>
               <span>Overnight window 22:00–06:00 PHT</span>
               <span>Retention {tierConfig.retentionDays} days</span>
-              <span>Production sampling every 3 hours</span>
             </section>
 
             <section className="card glass trends-statistics-card">

@@ -108,11 +108,13 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
           <h2 className="card-title">Measured parameter thresholds</h2>
           {readOnly && <p className="small muted dash-subtitle">Reference values only. Calibration is logged above.</p>}
         </header>
+        <div className={readOnly ? 'threshold-table-wrap' : undefined}>
         <div className={`threshold-grid${readOnly ? ' threshold-grid-readonly' : ''}`} role="table" aria-label="Measured parameter thresholds">
           <div className="threshold-grid-header" role="row">
             <span role="columnheader">Parameter</span>
             <span role="columnheader">Minimum</span>
             <span role="columnheader">Maximum</span>
+          </div>
           </div>
           {parameters.map((parameter) => {
             const item = thresholds.find((threshold) => threshold.parameter === parameter);

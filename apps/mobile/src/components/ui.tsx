@@ -106,11 +106,12 @@ function DialogBlur({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof 
   return glassBlur(blurTarget, createStyles(colors));
 }
 
-export function Button({ label, onPress, disabled, secondary, style, icon }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean; style?: StyleProp<ViewStyle>; icon?: ReactNode }) {
+export function Button({ label, onPress, disabled, secondary, soft, style, icon }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean; soft?: boolean; style?: StyleProp<ViewStyle>; icon?: ReactNode }) {
   const { colors, reduceMotion } = useTheme();
   const styles = createStyles(colors);
-  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, secondary && styles.secondaryButton, disabled && styles.disabled, pressed && !reduceMotion && styles.pressed, style]}>
-    {secondary ? <View style={styles.buttonContent}>{icon}<Text style={styles.secondaryText}>{label}</Text></View> :
+  const outlined = secondary || soft;
+  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, outlined && styles.secondaryButton, soft && styles.softActionButton, disabled && styles.disabled, pressed && !reduceMotion && styles.pressed, style]}>
+    {outlined ? <View style={styles.buttonContent}>{icon}<Text style={styles.secondaryText}>{label}</Text></View> :
       <LinearGradient colors={['#1d4ed8', '#0369a1']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.buttonGradient}><View style={styles.buttonContent}>{icon}<Text style={styles.buttonText}>{label}</Text></View></LinearGradient>}
   </Pressable>;
 }
@@ -269,6 +270,7 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   buttonContent: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   buttonText: { color: 'white', fontWeight: '700', fontSize: 14, textAlign: 'center', flexShrink: 1 },
   secondaryButton: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, paddingVertical: 10 },
+  softActionButton: { borderColor: colors.teal, backgroundColor: colors.selected, shadowColor: colors.teal, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 1 },
   secondaryText: { color: colors.ink, fontWeight: '700', fontSize: 14, textAlign: 'center', flexShrink: 1 },
   filterField: { flex: 1, minWidth: 0, gap: 6 },
   filterLabel: { color: colors.muted, fontSize: uiScale.type.caption },
