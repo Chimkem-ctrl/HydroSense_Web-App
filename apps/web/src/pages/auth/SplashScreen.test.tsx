@@ -35,16 +35,29 @@ describe('splash routing', () => {
     const signIn = vi.spyOn(authService, 'signIn').mockRejectedValueOnce(new Error('Invalid credentials')).mockImplementationOnce(async () => {
       window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: 'demo-admin' }));
       window.dispatchEvent(new Event('hydrosense:auth-change'));
-      return { status: 'approved', redirectPath: '/' };
+      return {
+        status: 'approved',
+        user: {
+          id: 'demo-admin',
+          firstName: 'Demo',
+          lastName: 'Admin',
+          email: 'demo-admin@example.com',
+          role: 'admin',
+          requestedRole: null,
+          status: 'approved',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+        redirectPath: '/',
+      };
     });
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Get Started' }));
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'test@example.com' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
     expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/signin');
-    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
     expect(await screen.findByRole('heading', { name: 'Live Monitor', level: 1 })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
     expect(signIn).toHaveBeenCalledTimes(2);

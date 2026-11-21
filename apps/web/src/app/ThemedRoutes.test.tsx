@@ -304,7 +304,7 @@ describe('themed dashboard routes', () => {
     const { container } = render(<App />);
     await screen.findByRole('heading', { name: 'Tank Overview & System Health', level: 1 });
     expect(container.querySelector('.app-shell')?.getAttribute('data-role')).toBe(role);
-    expect(screen.getByText(`Pilot workspace · ${role.toUpperCase()}`)).not.toBeNull();
+    expect(screen.getByText(`${role.toUpperCase()} Workspace`)).not.toBeNull();
   });
 
   it.each(routes.flatMap(([path, title]) => (['light', 'dark'] as const).map((theme) => [path, title, theme] as const)))('renders %s in the shared shell (%s, %s)', async (path, title, theme) => {
@@ -871,7 +871,7 @@ describe('themed dashboard routes', () => {
 describe('themed authentication routes', () => {
   const authRoutes = [
     ['/signin', 'Welcome Back'],
-    ['/signup', 'Request an account'],
+    ['/signup', "Let's Get Started"],
     ['/forgot-password', 'Reset your password'],
     ['/pending-approval', 'Request submitted'],
   ] as const;

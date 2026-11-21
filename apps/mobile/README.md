@@ -20,6 +20,9 @@ Metro tools can resolve the mobile workspace's Expo installation. Use
 `npm run export --workspace @hydrosense/mobile -- --platform android` to export
 an Android bundle with the same configuration.
 For a browser preview, open `http://localhost:8081` after starting Expo.
+To start the browser preview with a fresh Metro cache, run
+`npm run dev:mobile -- --web --clear` from the repository root. Stop any
+previous Expo server first so the browser connects to the restarted server.
 The mobile interface adapts the web app's glass palette, gradients,
 branding, and reading cards to touch-friendly phone and tablet layouts. Cards
 and signup dialogs use native blur with a solid reduced-transparency fallback;

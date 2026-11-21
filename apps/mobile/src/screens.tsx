@@ -1,11 +1,12 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useContext, useMemo, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Dialog, Portal } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, Database, Droplets, Eye, FileDown, FileSpreadsheet, FileText, ListFilter, Maximize2, MoreHorizontal, Plus, Trash2, UserRound, Waves, Wifi } from 'lucide-react-native';
+import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ClipboardList, Database, Droplets, Eye, FileDown, FileSpreadsheet, FileText, ListFilter, Maximize2, MoreHorizontal, Plus, Trash2, UserRound, Waves, Wifi } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { fromByteArray } from 'base64-js';
@@ -37,17 +38,19 @@ import {
   validateAcknowledgeNote,
   validateActivityLog,
 } from '@hydrosense/shared';
-import type { ActivityLog, ActivityLogKind, AlertItem, MeasuredParameter, Reading, ReportSection, Threshold } from '@hydrosense/shared';
+import type { ActivityLog, ActivityLogKind, AlertItem, CalibrationLog, MeasuredParameter, Reading, ReportSection, Threshold } from '@hydrosense/shared';
 import type { MainTabParamList, RootStackParamList } from './navigation';
 import { api, getConfiguredThreshold, listConfiguredThresholds, listPendingAccounts } from './services/client';
 import { canAccess } from './access';
 import { useSession, useTankSelection } from './state';
-import { Button, CalendarFilterField, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, GlassDialog, Page, StateMessage, Title } from './components/ui';
+import { Button, CalendarFilterField, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, GlassDialog, Page, RedesignedContext, StateMessage, Title } from './components/ui';
 import { AlertFilters } from './components/AlertFilters';
+import { HatcheryPicker } from './components/HatcheryPicker';
 import { RangeBar } from './components/RangeBar';
 import { uiScale, useTheme } from './theme';
 import type { Palette, ThemeChoice } from './theme';
-import { createReportFile } from './services/reportFiles';
+import { createReportFile, reportDatasetRows } from './services/reportFiles';
+import type { ReportDataset } from './services/reportFiles';
 import { getAssignedDevices, hasReportedField, pendingRecordTotal } from './services/deviceTelemetry';
 import { TrendChart } from './components/TrendChart';
 import { TrendFilters } from './components/TrendFilters';
@@ -67,8 +70,9 @@ function Field({ label, value, onChangeText, placeholder, keyboardType = 'defaul
   secureTextEntry?: boolean;
 }) {
   const { colors } = useTheme();
+  const redesigned = useContext(RedesignedContext);
   const ui = createFormStyles(colors);
-  return <View style={ui.formField}><Text style={ui.label}>{label}</Text><TextInput style={ui.input} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} keyboardType={keyboardType} secureTextEntry={secureTextEntry} autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'} /></View>;
+  return <View style={ui.formField}><Text style={ui.label}>{label}</Text><TextInput accessibilityLabel={label} style={[ui.input, redesigned && { backgroundColor: colors.glassControl }]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} keyboardType={keyboardType} secureTextEntry={secureTextEntry} autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'} /></View>;
 }
 
 function TankPicker({ horizontal = false }: { horizontal?: boolean }) {
@@ -497,6 +501,9 @@ export function StatusScreen() {
       {devices.map(({ device, tank }) => <Card key={device.deviceId} title={tank.name}>
         <DataRow label="Device" value={device.deviceId} />
         <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} detail={`Last seen ${formatManilaDateTime(device.lastSeen)} PHT`} />
+        <DataRow label="Battery" value={device.batteryPct != null ? `${device.batteryPct}%` : 'Unavailable'} detail={`Power source: ${device.powerSource}`} />
+        <DataRow label="Wi-Fi signal" value={`${device.wifiRssi} dBm`} />
+        <DataRow label="Pending offline records" value={`${device.pendingSyncCount}`} />
         <DataRow label="Wi-Fi signal" value={hasReportedField(device, 'wifiRssi') ? `${device.wifiRssi} dBm` : 'Unavailable'} />
         <DataRow label="Pending offline records" value={hasReportedField(device, 'pendingSyncCount') ? `${device.pendingSyncCount}` : 'Unavailable'} />
         {device.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
@@ -513,7 +520,7 @@ export function ManagerReviewScreen() {
   const tolerances = useQuery({ queryKey: ['validation-tolerances'], queryFn: () => api.getValidationTolerances(), enabled: allowed });
   if (!allowed) return <Page><StateMessage message="You do not have access to validation." /></Page>;
   return <Page>
-    <Title icon={<ClipboardList size={23} color={colors.teal} />} detail="Compare sensor averages with reference readings">Validation</Title>
+    <Title detail="Compare sensor averages with reference readings">Manager review</Title>
     {rows.isLoading || tolerances.isLoading ? <StateMessage message="Loading validation…" loading /> :
       rows.isError || tolerances.isError ? <Card><StateMessage message={`Could not load validation: ${(rows.error ?? tolerances.error)?.message ?? 'Unknown error'}`} /><Button label="Retry" secondary onPress={() => { void rows.refetch(); void tolerances.refetch(); }} /></Card> :
       !rows.data?.length || !tolerances.data ? <StateMessage message="No validation comparisons are available." /> :
@@ -527,7 +534,7 @@ export function ManagerReviewScreen() {
           <DataRow label="Reference" value={`${row.reference}`} />
           <DataRow label="Error" value={`${Number(difference.toFixed(3))} (${percent}%)`} />
           <DataRow label="Tolerance" value={`±${tolerance}`} />
-          <DataRow label="Result" value={Math.abs(difference) <= tolerance ? 'Pass' : 'Fail'} />
+          <DataRow label="Result" value={Math.abs(difference) <= tolerance ? 'Pass' : 'Fail'} valueColor={Math.abs(difference) <= tolerance ? colors.normal : colors.critical} />
         </Card>;
       })}
   </Page>;
@@ -641,7 +648,7 @@ export function ActivityLogsScreen() {
     createLog.mutate(entry);
   }
   return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
-    <Title icon={<ClipboardList size={23} color={colors.teal} />} detail="Log operations and environmental events">Activity logs</Title>
+    <Title detail="Log operations and environmental events">Activity logs</Title>
     <TankPicker horizontal />
     <ActivityLogActions role={user?.role ?? null} width={width} onOpen={openLog} />
     <View style={layout.cards}>
@@ -674,9 +681,9 @@ export function ActivityLogsScreen() {
           <ScrollView style={layout.modalScroll} keyboardShouldPersistTaps="handled">
           <Card>
             <Text style={layout.modalTitle}>{modalKind === 'OPERATION' ? 'Log operation' : 'Log weather / event'}</Text>
-            <TextInput placeholder="Tank or scope" style={layout.modalInput} placeholderTextColor={colors.muted} value={scope} onChangeText={setScope} />
-            <TextInput placeholder="Type" style={layout.modalInput} placeholderTextColor={colors.muted} value={activityType} onChangeText={setActivityType} />
-            <TextInput placeholder="Notes" style={[layout.modalInput, layout.modalNotes]} placeholderTextColor={colors.muted} value={notes} onChangeText={setNotes} multiline />
+            <TextInput accessibilityLabel="Tank or scope" placeholder="Tank or scope" style={layout.modalInput} placeholderTextColor={colors.muted} value={scope} onChangeText={setScope} />
+            <TextInput accessibilityLabel="Type" placeholder="Type" style={layout.modalInput} placeholderTextColor={colors.muted} value={activityType} onChangeText={setActivityType} />
+            <TextInput accessibilityLabel="Notes" placeholder="Notes" style={[layout.modalInput, layout.modalNotes]} placeholderTextColor={colors.muted} value={notes} onChangeText={setNotes} multiline />
             {formError ? <Text style={layout.modalError}>{formError}</Text> : null}
             <View style={[layout.actions, width < 360 && layout.stackedActions]}>
               <Button style={layout.actionButton} label="Cancel" secondary onPress={() => setModalKind(null)} />
@@ -690,21 +697,165 @@ export function ActivityLogsScreen() {
   </Page>;
 }
 
+export function CalibrationAndMaintenanceScreen() {
+  const { colors } = useTheme();
+  const { tankId } = useTankSelection();
+  const { user } = useSession();
+  const queryClient = useQueryClient();
+  const canCalibrate = canAccess(user?.role ?? null, 'canCalibrate');
+  const [parameter, setParameter] = useState<CalibrationLog['parameter']>('ph');
+  const [standard, setStandard] = useState('pH 7.00 buffer');
+  const [before, setBefore] = useState('');
+  const [after, setAfter] = useState('');
+  const [date, setDate] = useState(getManilaDateString());
+  const [nextDue, setNextDue] = useState(getManilaDateString(new Date(Date.now() + 30 * 86_400_000)));
+  const [error, setError] = useState('');
+  const calibrationQuery = useQuery({ queryKey: ['calibrations', tankId], queryFn: () => api.listCalibrationLogs(tankId), enabled: Boolean(tankId) && canCalibrate });
+  const thresholdsQuery = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
+  const calibrationMutation = useMutation({
+    mutationFn: () => api.createCalibrationLog({
+      tankId,
+      parameter,
+      standard: standard.trim(),
+      before: Number(before),
+      after: Number(after),
+      date: new Date(`${date}T12:00:00+08:00`).toISOString(),
+      user: user?.name ?? 'Mobile user',
+      nextDue: new Date(`${nextDue}T12:00:00+08:00`).toISOString(),
+    }),
+    onSuccess: async () => {
+      setBefore('');
+      setAfter('');
+      setError('');
+      await queryClient.invalidateQueries({ queryKey: ['calibrations'] });
+    },
+  });
+  function submitCalibration() {
+    if (!tankId || !standard.trim() || !Number.isFinite(Number(before)) || !Number.isFinite(Number(after)) ||
+        !before || !after || !date || !nextDue || new Date(`${nextDue}T00:00:00`) <= new Date(`${date}T00:00:00`)) {
+      setError('Enter a calibration standard, valid before/after readings, and a due date after the calibration date.');
+      return;
+    }
+    setError('');
+    calibrationMutation.mutate();
+  }
+  return <Page redesigned>
+    <Title detail="Log pH and dissolved-oxygen calibration results and due dates.">Calibration & Maintenance</Title>
+    <TankPicker />
+    {canCalibrate && (
+      <Card title="Log calibration">
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}><Button label="pH" secondary={parameter !== 'ph'} onPress={() => setParameter('ph')} /><Button label="Dissolved oxygen" secondary={parameter !== 'do'} onPress={() => setParameter('do')} /></View>
+        <Field label="Calibration standard" value={standard} onChangeText={setStandard} />
+        <Field label="Before" value={before} onChangeText={setBefore} keyboardType="numeric" />
+        <Field label="After" value={after} onChangeText={setAfter} keyboardType="numeric" />
+        <Field label="Calibration date" value={date} onChangeText={setDate} />
+        <Field label="Next due" value={nextDue} onChangeText={setNextDue} />
+        {error && <Text style={{ color: colors.critical }}>{error}</Text>}
+        <Button label="Save calibration log" disabled={calibrationMutation.isPending} onPress={submitCalibration} />
+        {calibrationMutation.isError && <Text style={{ color: colors.critical }}>{calibrationMutation.error.message}</Text>}
+      </Card>
+    )}
+    {canCalibrate && (
+      <Card title="Calibration due dates">
+        {calibrationQuery.isLoading ? <StateMessage message="Loading calibrations…" loading /> : calibrationQuery.isError ? <><StateMessage message="Could not load calibrations." /><Button label="Retry" secondary onPress={() => void calibrationQuery.refetch()} /></> : !calibrationQuery.data?.length ? <StateMessage message="No calibration records." /> : calibrationQuery.data.map((log) => {
+          const overdue = new Date(log.nextDue) < new Date();
+          return <View key={log.id} style={{ gap: 4, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ color: overdue ? colors.critical : colors.ink, fontWeight: '700' }}>{log.parameter.toUpperCase()} · {formatManilaDateTime(log.nextDue)} {overdue ? '· OVERDUE' : ''}</Text>
+            <Text style={{ color: colors.muted }}>{log.standard} · Before: {log.before}, After: {log.after}</Text>
+          </View>;
+        })}
+      </Card>
+    )}
+    <Card title="Measurement thresholds">
+      <Text style={{ color: colors.muted }}>Reference values only. Use Log calibration to record sensor calibration.</Text>
+      {thresholdsQuery.isLoading ? <StateMessage message="Loading thresholds…" loading /> : thresholdsQuery.isError ? <><StateMessage message="Could not load thresholds." /><Button label="Retry" secondary onPress={() => void thresholdsQuery.refetch()} /></> : (['temperature', 'do', 'ph'] as const).map((param) => {
+        const item = thresholdsQuery.data?.find((threshold) => threshold.parameter === param);
+        const unit = param === 'temperature' ? '°C' : param === 'do' ? 'mg/L' : 'pH';
+        return <View key={param} style={{ gap: 8, marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ color: colors.muted, fontWeight: '700' }}>{param === 'do' ? 'Dissolved oxygen (mg/L)' : param === 'temperature' ? 'Temperature (°C)' : 'pH'}</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1, gap: 4 }}><Text style={{ color: colors.muted, fontWeight: '700' }}>Minimum</Text><Text style={{ color: item?.min === undefined ? colors.muted : colors.ink }}>{item?.min === undefined ? 'Not set' : `${item.min} ${unit}`}</Text></View>
+            <View style={{ flex: 1, gap: 4 }}><Text style={{ color: colors.muted, fontWeight: '700' }}>Maximum</Text><Text style={{ color: item?.max === undefined ? colors.muted : colors.ink }}>{item?.max === undefined ? 'Not set' : `${item.max} ${unit}`}</Text></View>
+          </View>
+        </View>;
+      })}
+    </Card>
+  </Page>;
+}
+
+function ManualEntryCard() {
+  const { colors } = useTheme();
+  const { tankId } = useTankSelection();
+  const { user } = useSession();
+  const queryClient = useQueryClient();
+  const [salinity, setSalinity] = useState('');
+  const [ammonia, setAmmonia] = useState('');
+  const [notes, setNotes] = useState('');
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const values = {
+        ...(salinity.trim() ? { salinity: Number(salinity) } : {}),
+        ...(ammonia.trim() ? { ammonia: Number(ammonia) } : {}),
+        method: 'Field test kit / refractometer',
+      };
+      const entry: Omit<ActivityLog, 'id' | 'occurredAt'> = {
+        tankId,
+        kind: 'OPERATION',
+        type: ACTIVITY_OPERATION_TYPES[1],
+        operator: user?.name ?? 'Mobile operator',
+        notes: notes.trim(),
+        manualReadings: values,
+      };
+      const issues = validateActivityLog(entry);
+      if (!tankId || issues.length) throw new Error(issues[0]?.message ?? 'Select a tank first.');
+      if (salinity && (!Number.isFinite(Number(salinity)) || Number(salinity) < 0 || Number(salinity) > 100)) throw new Error('Salinity must be between 0 and 100 ppt.');
+      if (ammonia && (!Number.isFinite(Number(ammonia)) || Number(ammonia) < 0 || Number(ammonia) > 100)) throw new Error('Ammonia must be between 0 and 100.');
+      return api.createActivityLog(entry);
+    },
+    onSuccess: async () => {
+      setSalinity(''); setAmmonia(''); setNotes('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['activity-logs'] }),
+      ]);
+      Alert.alert('Manual readings saved', 'The field readings are available in the activity log.');
+    },
+  });
+  return <Card title="Field water-quality entry">
+    <Field label="Salinity (ppt)" value={salinity} onChangeText={setSalinity} keyboardType="numeric" placeholder="Optional" />
+    <Field label="Ammonia (mg/L)" value={ammonia} onChangeText={setAmmonia} keyboardType="numeric" placeholder="Optional" />
+    <Field label="Notes (required)" value={notes} onChangeText={setNotes} placeholder="At least 4 characters" />
+    <Button label="Save field readings" disabled={mutation.isPending} onPress={() => mutation.mutate()} />
+    {mutation.isError && <Text style={{ color: colors.critical }}>{mutation.error.message}</Text>}
+  </Card>;
+}
+
+export function FieldEntryScreen() {
+  return <Page>
+    <Title detail="Record manual field water-quality measurements">Field water-quality entry</Title>
+    <TankPicker />
+    <ManualEntryCard />
+  </Page>;
+}
+
 export function HistoryScreen() {
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
   const tabBarHeight = useBottomTabBarHeight();
   const layout = createLogScreenStyles(colors);
   const record = createRecordStyles(colors);
   const { tanks, tankId, setTankId } = useTankSelection();
   const [page, setPage] = useState(1);
   const [parameter, setParameter] = useState<'all' | 'temperature' | 'do' | 'ph'>('all');
+  const [sortKey, setSortKey] = useState<'timestamp' | MeasuredParameter>('timestamp');
+  const [ascending, setAscending] = useState(false);
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - 7 * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [expandedFilter, setExpandedFilter] = useState<'tank' | 'dates' | 'parameter' | null>(null);
   const parameterOptions = [{ value: 'all', label: 'All measured' }, { value: 'temperature', label: 'Temperature' }, { value: 'do', label: 'Dissolved oxygen' }, { value: 'ph', label: 'pH' }] as const;
-  const parameterLabel = parameterOptions.find((option) => option.value === parameter)?.label ?? 'All measured';
   const tankOptions = tanks.map((tank) => ({ value: tank.id, label: tank.name }));
-  const tankLabel = tankOptions.find((option) => option.value === tankId)?.label ?? 'Select tank';
+  const tankLabel = tanks.find((tank) => tank.id === tankId)?.name ?? 'No tank selected';
+  const parameterLabel = parameterOptions.find((option) => option.value === parameter)?.label ?? 'All measured';
   const query = useQuery({
     queryKey: ['history', tankId, from, to, parameter],
     queryFn: () => api.listReadings({
@@ -716,7 +867,10 @@ export function HistoryScreen() {
     enabled: Boolean(tankId),
   });
   const parameterValue = (reading: Reading, param: 'do' | 'temperature' | 'ph') => param === 'do' ? reading.doMgL : reading[param];
-  const rows = (query.data ?? []).filter((row) => parameter === 'all' || Number.isFinite(parameterValue(row, parameter)));
+  const rows = (query.data ?? []).filter((row) => parameter === 'all' || Number.isFinite(parameterValue(row, parameter))).sort((a, b) => {
+    const difference = sortKey === 'timestamp' ? a.timestamp.localeCompare(b.timestamp) : parameterValue(a, sortKey) - parameterValue(b, sortKey);
+    return ascending ? difference : -difference;
+  });
   const pageCount = Math.max(1, Math.ceil(rows.length / 5));
   const currentPage = Math.min(page, pageCount);
   const firstPage = Math.max(1, Math.min(currentPage - 1, pageCount - 2));
@@ -726,30 +880,40 @@ export function HistoryScreen() {
     setPage((current) => Math.min(current, pageCount));
   }, [pageCount]);
   return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
-    <Title icon={<Database size={23} color={colors.teal} />} detail="Review sensor readings by tank, parameter, and date range">History</Title>
+    <Title detail="Scheduled readings every 3 hours · extra threshold readings included">History</Title>
     <View style={layout.cards}>
-      <View style={{ gap: uiScale.spacing[3] }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: uiScale.spacing[3] }}>
-          <FilterDropdown label="Tank" summary={tankLabel} icon={<Droplets size={16} color={colors.teal} />} options={tankOptions} value={tankId ?? ''} expanded={expandedFilter === 'tank'} onToggle={() => setExpandedFilter((current) => current === 'tank' ? null : 'tank')} onChange={(value) => { setTankId(value); setPage(1); setExpandedFilter(null); }} />
-          <FilterDropdown label="Parameter" summary={parameterLabel} icon={<ListFilter size={16} color={colors.teal} />} options={parameterOptions} value={parameter} expanded={expandedFilter === 'parameter'} onToggle={() => setExpandedFilter((current) => current === 'parameter' ? null : 'parameter')} onChange={(value) => { const selected = parameterOptions.find((option) => option.value === value); if (selected) { setParameter(selected.value); setPage(1); setExpandedFilter(null); } }} />
-        </View>
+      <View style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3] }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Filter by: ${tankLabel} · ${from} to ${to} · ${parameterLabel}`} accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen((open) => !open)} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] }}>
+          <Text style={{ color: colors.ink, fontWeight: '700' }}>Filter by:</Text>{filtersOpen ? <ChevronUp size={20} color={colors.muted} /> : <ChevronDown size={20} color={colors.muted} />}
+        </Pressable>
+        {filtersOpen && <View style={{ paddingBottom: uiScale.spacing[2], gap: uiScale.spacing[3] }}>
+          <FilterDropdown label="Tank" summary={tankLabel} icon={<Droplets size={16} color={colors.teal} />} options={tankOptions} value={tankId} expanded={expandedFilter === 'tank'} onToggle={() => setExpandedFilter((current) => current === 'tank' ? null : 'tank')} onChange={(value) => { setTankId(value); setPage(1); }} />
           <FilterDropdown label="Date range" summary={`${from} to ${to}`} icon={<CalendarDays size={16} color={colors.teal} />} expanded={expandedFilter === 'dates'} onToggle={() => setExpandedFilter((current) => current === 'dates' ? null : 'dates')}>
             <View style={layout.dates}>
               <CalendarFilterField label="From date (PHT)" value={from} onChangeText={(value) => { setFrom(value); setPage(1); }} />
               <CalendarFilterField label="To date (PHT)" value={to} onChangeText={(value) => { setTo(value); setPage(1); }} />
             </View>
           </FilterDropdown>
+          <FilterDropdown label="Parameter" summary={parameterLabel} icon={<ListFilter size={16} color={colors.teal} />} options={parameterOptions} value={parameter} expanded={expandedFilter === 'parameter'} onToggle={() => setExpandedFilter((current) => current === 'parameter' ? null : 'parameter')} onChange={(value) => { const selected = parameterOptions.find((option) => option.value === value); if (selected) { setParameter(selected.value); setPage(1); } }} />
+        </View>}
       </View>
       <Card title="Readings">
         {query.isLoading ? <StateMessage message="Loading readings…" loading /> : query.isError ? <><StateMessage message="Could not load readings." /><Button label="Retry" secondary onPress={() => void query.refetch()} /></> : <>
           <Text style={layout.count}>{rows.length} readings{rows.length > pageRows.length ? ` · Showing ${pageRows.length}` : ''}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>
+            {([{ key: 'timestamp', label: 'Time' }, { key: 'temperature', label: 'Temperature' }, { key: 'do', label: 'DO' }, { key: 'ph', label: 'pH' }] as const).map(({ key, label }) => <Pressable key={key} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} onPress={() => {
+              if (sortKey === key) setAscending((value) => !value);
+              else { setSortKey(key); setAscending(false); }
+            }} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: uiScale.spacing[2] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{label}{sortKey === key ? ascending ? ' ↑' : ' ↓' : ''}</Text></Pressable>)}
+          </View>
           {rows.length === 0 ? <StateMessage message="No readings match the selected filters." spacious /> : <>
           <View>{pageRows.map((row) => <View key={row.id} style={record.row}>
             <Text style={record.title}>{formatManilaDateTime(row.timestamp)} PHT</Text>
+            <Text style={record.caption}>{tanks.find((tank) => tank.id === row.tankId)?.name ?? 'Unknown tank'}</Text>
             <View style={record.metrics}>
               {([{ label: 'Temp (°C)', value: row.temperature }, { label: 'DO (mg/L)', value: row.doMgL }, { label: 'pH', value: row.ph }]).map((metric) => <View key={metric.label} style={record.metric}>
                 <Text style={record.caption}>{metric.label}</Text>
-                <Text style={record.value}>{Number.isFinite(metric.value) ? metric.value.toFixed(2) : '—'}</Text>
+                <Text style={[record.value, { textAlign: 'right' }]}>{Number.isFinite(metric.value) ? metric.value.toFixed(2) : '—'}</Text>
               </View>)}
             </View>
           </View>)}</View>
@@ -773,6 +937,7 @@ export function HistoryScreen() {
 
 export function ReportsScreen() {
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
   const { tankId, tanks, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const { user } = useSession();
   const [selectedTanks, setSelectedTanks] = useState<string[] | null>(null);
@@ -781,43 +946,54 @@ export function ReportsScreen() {
   const [format, setFormat] = useState<'pdf' | 'csv' | 'xlsx'>('pdf');
   const [sections, setSections] = useState<ReportSection[]>(['summary', 'statistics', 'alerts', 'raw-readings']);
   const [sharing, setSharing] = useState(false);
+  const [dataset, setDataset] = useState<ReportDataset>('readings');
   const selectedIds = selectedTanks === null
     ? tanks.some((tank) => tank.id === tankId) ? [tankId] : []
     : selectedTanks.filter((id) => tanks.some((tank) => tank.id === id));
   const start = new Date(`${from}T00:00:00+08:00`);
   const end = new Date(`${to}T23:59:59.999+08:00`);
-  const validDates = /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to)
-    && Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())
-    && getManilaDateString(start) === from && getManilaDateString(end) === to && start <= end;
-  const reportQuery = useQuery({
-    queryKey: ['mobile-report', selectedIds, from, to, sections, format, user?.name, user?.role],
-    enabled: validDates && selectedIds.length > 0 && sections.length > 0 && Boolean(user),
+  const validRange = /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) &&
+    Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) &&
+    getManilaDateString(start) === from && getManilaDateString(end) === to && start <= end;
+  const preview = useQuery({
+    queryKey: ['report-preview', user?.id, user?.role, selectedIds, from, to],
+    enabled: validRange && selectedIds.length > 0 && Boolean(user),
     queryFn: async () => {
-      if (!user || !validDates || !selectedIds.length || !sections.length) throw new Error('Select valid dates, tanks and sections.');
-      const [tankReadings, tankAlerts, thresholds] = await Promise.all([
+      const [readings, alerts, thresholds, activityLogs, calibrationLogs, validationRows] = await Promise.all([
         Promise.all(selectedIds.map((id) => api.listReadings({ tankId: id, from: start.toISOString(), to: end.toISOString() }))),
         Promise.all(selectedIds.map((id) => api.listAlerts(id))),
         listConfiguredThresholds(),
+        api.listActivityLogs(),
+        canAccess(user?.role ?? null, 'canCalibrate') ? api.listCalibrationLogs() : Promise.resolve([]),
+        canAccess(user?.role ?? null, 'validation') ? Promise.all(selectedIds.map((id) => api.listValidationRows(id))).then((rows) => rows.flat()) : Promise.resolve([]),
       ]);
-      if (tankReadings.some((rows) => rows.length >= 500)) throw new Error('The reading limit was reached. Select a shorter date range to avoid an incomplete report.');
-      if (tankAlerts.some((rows) => rows.length >= 1000)) throw new Error('The alert limit may have been reached. The report cannot be generated reliably.');
-      return buildReport({ tankIds: selectedIds, from: start.toISOString(), to: end.toISOString(), sections, format, generatedBy: { name: user.name, role: user.role } }, {
-        tanks, readings: tankReadings.flat(), alerts: tankAlerts.flat(), thresholds,
-        advisories: {}, activityLogs: [], calibrationLogs: [], validationRows: [], deviceStatuses: [],
-      });
+      if (readings.some((rows) => rows.length >= 500) || alerts.some((rows) => rows.length >= 1000) ||
+          activityLogs.length >= 1000 || calibrationLogs.length >= 1000 || validationRows.length >= 1000) {
+        throw new Error('The server data limit was reached; the report could be incomplete.');
+      }
+      return { readings: readings.flat(), alerts: alerts.flat(), thresholds, activityLogs, calibrationLogs, validationRows };
     },
   });
-  async function shareReport() {
+  const model = preview.data && validRange && selectedIds.length && user && selectedIds.every((id) => tanks.some((tank) => tank.id === id))
+    ? buildReport({ tankIds: selectedIds, from: start.toISOString(), to: end.toISOString(), sections, format, generatedBy: { name: user.name, role: user.role } }, {
+      tanks, ...preview.data, advisories: {}, deviceStatuses: [],
+    }) : null;
+  const datasetRows = model ? reportDatasetRows(model, dataset) : null;
+  const matched = datasetRows ? datasetRows.length - 1 : null;
+  async function shareReport(overrideFormat = format) {
     setSharing(true);
     try {
       if (!user || !can(user.role, 'exportReports')) throw new Error('You do not have permission to export reports.');
       if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
-      if (!validDates) throw new Error('Enter a valid start and end date in YYYY-MM-DD format.');
+      if (!validRange) throw new Error('Enter a valid start and end date in YYYY-MM-DD format.');
       if (!selectedIds.length || !sections.length) throw new Error('Select at least one tank and report section.');
-      const result = await reportQuery.refetch();
+      const result = await preview.refetch();
       if (result.error) throw result.error;
       if (!result.data) throw new Error('Could not prepare report data.');
-      const file = await createReportFile(result.data);
+      const report = buildReport({ tankIds: selectedIds, from: start.toISOString(), to: end.toISOString(), sections, format: overrideFormat, generatedBy: { name: user.name, role: user.role } }, {
+        tanks, ...result.data, advisories: {}, deviceStatuses: [],
+      });
+      const file = await createReportFile(report);
       const fileUri = `${FileSystem.documentDirectory}hydrosense-report-${Date.now()}.${file.extension}`;
       await FileSystem.writeAsStringAsync(fileUri, fromByteArray(file.bytes), { encoding: FileSystem.EncodingType.Base64 });
       await Sharing.shareAsync(fileUri, { mimeType: file.mimeType, dialogTitle: 'Share HydroSense report' });
@@ -827,8 +1003,50 @@ export function ReportsScreen() {
       setSharing(false);
     }
   }
+  async function shareCsv() {
+    setSharing(true);
+    try {
+      if (!user || !can(user.role, 'exportReports')) throw new Error('You do not have permission to export reports.');
+      if (!validRange) throw new Error('Enter a valid start and end date in YYYY-MM-DD format.');
+      if (!selectedIds.length) throw new Error('Select at least one tank.');
+      if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
+      const result = await preview.refetch();
+      if (result.error) throw result.error;
+      if (!result.data) throw new Error('Could not prepare report data.');
+      const report = buildReport({ tankIds: selectedIds, from: start.toISOString(), to: end.toISOString(), sections, format: 'csv', generatedBy: { name: user.name, role: user.role } }, {
+        tanks, ...result.data, advisories: {}, deviceStatuses: [],
+      });
+      const rows = reportDatasetRows(report, dataset);
+      if (rows.length === 1) throw new Error('There are no records in the selected dataset and date range.');
+      const fileUri = `${FileSystem.documentDirectory}hydrosense-${dataset}-${Date.now()}.csv`;
+      await FileSystem.writeAsStringAsync(fileUri, toCsv(rows), { encoding: FileSystem.EncodingType.UTF8 });
+      await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Share HydroSense dataset' });
+    } catch (error) {
+      Alert.alert('Export failed', error instanceof Error ? error.message : 'Could not share file.');
+    } finally {
+      setSharing(false);
+    }
+  }
   return <Page>
-    <Title icon={<FileText size={23} color={colors.teal} />} detail="Select tanks, dates, sections and format">Reports</Title>
+    <Title detail="Select tanks, dates, sections and format">Report builder</Title>
+    <Card title="Export settings">
+      <HatcheryPicker />
+      <Text style={{ color: colors.muted, fontSize: uiScale.type.caption, textTransform: 'uppercase' }}>CSV dataset</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>
+        <Chip label="Raw readings" selected={dataset === 'readings'} onPress={() => setDataset('readings')} />
+        <Chip label="Alerts" selected={dataset === 'alerts'} onPress={() => setDataset('alerts')} />
+        <Chip label="Activity logs" selected={dataset === 'activity'} onPress={() => setDataset('activity')} />
+        {canAccess(user?.role ?? null, 'canCalibrate') && <Chip label="Calibration log" selected={dataset === 'calibration'} onPress={() => setDataset('calibration')} />}
+        {canAccess(user?.role ?? null, 'validation') && <Chip label="Validation" selected={dataset === 'validation'} onPress={() => setDataset('validation')} />}
+      </View>
+      {dataset === 'validation' && <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>Validation comparisons have no date field and cannot be filtered by period.</Text>}
+    </Card>
+    <Card>
+      <Text style={{ color: colors.muted, fontSize: uiScale.type.caption, textTransform: 'uppercase' }}>Records matched</Text>
+      <Text style={{ color: colors.ink, fontSize: 36, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{matched ?? '—'}</Text>
+      <Text style={{ color: colors.muted }}>{dataset === 'readings' ? 'readings' : dataset === 'activity' ? 'activity logs' : dataset} · {from} → {to} · Asia/Manila</Text>
+      {user && can(user.role, 'exportReports') && <Button label="Download CSV" disabled={sharing || matched === null || matched === 0 || preview.isFetching} onPress={() => void shareCsv()} />}
+    </Card>
     <Card title="Tanks">
       {tanksLoading ? <StateMessage message="Loading tanks…" loading /> : tanksError ? <><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry tank list" secondary onPress={refetchTanks} /></> : tanks.length === 0 ? <StateMessage message="No tanks are available for this account." /> : null}
       {tanks.map((tank) => <ReportChoice key={tank.id} kind="checkbox" label={tank.name} selected={selectedIds.includes(tank.id)} onPress={() => setSelectedTanks((current) => {
@@ -837,28 +1055,25 @@ export function ReportsScreen() {
       })} />)}
     </Card>
     <Card title="Date range">
-      <View style={{ flexDirection: 'row', gap: uiScale.spacing[3] }}>
-        <CalendarFilterField label="From (YYYY-MM-DD)" value={from} onChangeText={setFrom} />
-        <CalendarFilterField label="To (YYYY-MM-DD)" value={to} onChangeText={setTo} />
-      </View>
+      <Field label="From (YYYY-MM-DD)" value={from} onChangeText={setFrom} />
+      <Field label="To (YYYY-MM-DD)" value={to} onChangeText={setTo} />
     </Card>
     <Card title="Sections">
       {([['summary', 'Summary'], ['statistics', 'Statistics'], ['alerts', 'Alerts'], ['raw-readings', 'Readings']] as const).map(([key, label]) => <ReportChoice key={key} kind="checkbox" label={label} selected={sections.includes(key)} onPress={() => setSections((current) => current.includes(key) ? current.filter((value) => value !== key) : [...current, key])} />)}
     </Card>
     {sections.includes('statistics') && <Card title="Readings in range">
       <Text style={{ color: colors.muted }}>Percentage of valid readings within configured thresholds</Text>
-      {!validDates || !selectedIds.length ? <StateMessage message="Select a tank and valid dates to view the analysis." /> : reportQuery.isLoading ? <StateMessage message="Preparing analysis…" loading /> : reportQuery.isError ? <><StateMessage message={`Could not prepare analysis: ${reportQuery.error.message}`} /><Button label="Retry" secondary onPress={() => void reportQuery.refetch()} /></> : reportQuery.data?.statistics.map((stat) => <View key={stat.parameter} style={{ gap: 5, marginTop: 10 }}>
+      {!validRange || !selectedIds.length ? <StateMessage message="Select a tank and valid dates to view the analysis." /> : preview.isLoading ? <StateMessage message="Preparing analysis…" loading /> : preview.isError ? <><StateMessage message={`Could not prepare analysis: ${preview.error.message}`} /><Button label="Retry" secondary onPress={() => void preview.refetch()} /></> : model?.statistics.map((stat) => <View key={stat.parameter} style={{ gap: 5, marginTop: 10 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: colors.ink }}>{stat.parameter === 'temperature' ? 'Temperature' : stat.parameter === 'do' ? 'DO' : 'pH'}</Text><Text style={{ color: colors.ink }}>{stat.percentInRange === null ? 'No data' : `${stat.percentInRange.toFixed(1)}%`}</Text></View>
         <View style={{ height: 16, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' }}><View style={{ height: '100%', width: `${stat.percentInRange ?? 0}%`, backgroundColor: '#087c78' }} /></View>
       </View>)}
     </Card>}
     <Card title="Format">
       <View accessibilityRole="radiogroup" accessibilityLabel="Report format" style={{ gap: uiScale.spacing[2] }}>
-        {(['pdf', 'csv', 'xlsx'] as const).map((value) => <ReportChoice key={value} kind="radio" label={value.toUpperCase()} icon={value === 'pdf' ? <FileText size={18} color={colors.teal} /> : <FileSpreadsheet size={18} color={colors.teal} />} selected={format === value} onPress={() => setFormat(value)} />)}
+        {(['pdf', 'csv', 'xlsx'] as const).map((value) => <ReportChoice key={value} kind="radio" label={value.toUpperCase()} selected={format === value} onPress={() => setFormat(value)} />)}
       </View>
-      <Button label={sharing ? 'Preparing report…' : 'Share report'} icon={<FileDown size={18} color={colors.teal} />} disabled={sharing} onPress={() => void shareReport()} soft />
+      <Button label={sharing ? 'Preparing report…' : 'Share report'} disabled={sharing} onPress={() => void shareReport()} soft />
     </Card>
-    <Text style={{ color: colors.muted, fontSize: 12 }}>Prepared by {user?.name ?? 'user'}.</Text>
   </Page>;
 }
 

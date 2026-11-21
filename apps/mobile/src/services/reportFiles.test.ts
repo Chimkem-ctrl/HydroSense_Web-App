@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Workbook } from 'exceljs';
 import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream } from 'pdf-lib';
-import { buildReport } from '@hydrosense/shared';
+import { buildReport, toCsv } from '@hydrosense/shared';
 import type { ReportData, ReportSpec } from '@hydrosense/shared';
-import { createReportFile, reportRows } from './reportFiles';
+import { createReportFile, reportDatasetRows, reportRows } from './reportFiles';
 
 const data: ReportData = {
   tanks: [{ id: 'a', name: 'Tank A', site: 'Hatchery', rearingStartDate: '2026-01-01', deviceId: 'device-a' }],
@@ -25,6 +25,19 @@ function pdfContent(pdf: PDFDocument, pageIndex: number) {
 }
 
 describe('mobile report files', () => {
+  it('exports the selected filtered dataset and escapes spreadsheet formulas', () => {
+    const report = buildReport(spec, {
+      ...data,
+      readings: [...data.readings, { ...data.readings[0], id: 'outside', timestamp: '2025-01-01T00:00:00Z' }],
+    });
+    const readings = reportDatasetRows(report, 'readings');
+    expect(readings).toHaveLength(2);
+    expect(readings[1]).toEqual(['2026-01-02T03:00:00Z', 'a', 28, 5, 7]);
+    const alerts = reportDatasetRows(report, 'alerts');
+    expect(alerts).toHaveLength(2);
+    expect(toCsv(alerts)).toContain("\"'=unsafe\"");
+    expect(reportDatasetRows(report, 'activity')).toHaveLength(1);
+  });
   it('only includes selected sections and their actual data', () => {
     const report = buildReport({ ...spec, sections: ['statistics'] }, data);
     const rows = reportRows(report);

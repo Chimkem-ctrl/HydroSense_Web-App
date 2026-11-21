@@ -196,7 +196,7 @@ export function UsersScreen() {
               <Text style={styles.detail}>Requested role: {account.requestedRole ? account.requestedRole[0].toUpperCase() + account.requestedRole.slice(1) : 'Not specified'}</Text>
               <Text style={styles.label}>Review Role</Text>
               <View accessibilityRole="radiogroup" style={styles.roleChoices}>
-                {(['operator', 'manager', 'admin'] as const).map((role) => {
+                {(['operator', 'manager'] as const).map((role) => {
                   const selected = (selectedRoles[account.id] ?? account.requestedRole) === role;
                   return <Pressable key={role} accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => setSelectedRoles((current) => ({ ...current, [account.id]: role }))} style={[styles.roleOption, selected && styles.roleSelected]}><Text style={[styles.roleText, selected && styles.roleTextSelected]}>{role[0].toUpperCase() + role.slice(1)}</Text></Pressable>;
                 })}

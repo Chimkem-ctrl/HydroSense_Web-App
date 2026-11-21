@@ -7,11 +7,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Dialog, Portal } from 'react-native-paper';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native';
-import { uiScale, useTheme } from '../theme';
+import { authColors, uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
+import oceanImage from '../../../web/public/assets/images/deep-blue-ocean.jpg';
 
 export const BlurTargetContext = createContext<RefObject<ComponentRef<typeof View> | null> | null>(null);
 export const TabBarVisibleContext = createContext(false);
+export const RedesignedContext = createContext(false);
 const CardContext = createContext(false);
 // Android's default tint is 44% of intensity; 9 / 0.45 preserves a 20px blur with about 4% tint.
 const androidBlurIntensity = 9;
@@ -21,16 +23,21 @@ const webCardBlur = {
   backdropFilter: 'blur(20px) saturate(120%)',
   WebkitBackdropFilter: 'blur(20px) saturate(120%)',
 };
+const webAuthBlur = {
+  backgroundColor: 'transparent',
+  backdropFilter: 'blur(8px) saturate(120%)',
+  WebkitBackdropFilter: 'blur(8px) saturate(120%)',
+};
 const needsSolidFallback = (reduceTransparency: boolean) => reduceTransparency || (Platform.OS === 'web' && (typeof CSS === 'undefined' || !(CSS.supports('backdrop-filter', 'blur(1px)') || CSS.supports('-webkit-backdrop-filter', 'blur(1px)'))));
 
-function glassBlur(blurTarget: RefObject<ComponentRef<typeof View> | null> | null, styles: ReturnType<typeof createStyles>) {
+function glassBlur(blurTarget: RefObject<ComponentRef<typeof View> | null> | null, styles: ReturnType<typeof createStyles>, auth = false) {
   return Platform.OS === 'web'
-    ? <View style={[StyleSheet.absoluteFill, styles.cardBlur, webCardBlur]} pointerEvents="none" />
-    : <BlurView blurTarget={blurTarget ?? undefined} blurMethod="dimezisBlurView" tint={Platform.OS === 'ios' ? 'systemUltraThinMaterial' : 'default'} intensity={Platform.OS === 'android' ? androidBlurIntensity : 25} blurReductionFactor={androidBlurReduction} style={[StyleSheet.absoluteFill, styles.cardBlur]} pointerEvents="none" />;
+    ? <View style={[StyleSheet.absoluteFill, styles.cardBlur, auth ? webAuthBlur : webCardBlur]} pointerEvents="none" />
+    : <BlurView blurTarget={blurTarget ?? undefined} blurMethod="dimezisBlurView" tint={auth ? 'dark' : Platform.OS === 'ios' ? 'systemUltraThinMaterial' : 'default'} intensity={auth ? 8 : Platform.OS === 'android' ? androidBlurIntensity : 25} blurReductionFactor={auth ? 1 : androidBlurReduction} style={[StyleSheet.absoluteFill, styles.cardBlur]} pointerEvents="none" />;
 }
 
-export function Page({ children, auth = false, bottomPadding, maxWidth }: PropsWithChildren<{ auth?: boolean; bottomPadding?: number; maxWidth?: number }>) {
-  const { width } = useWindowDimensions();
+export function Page({ children, auth = false, redesigned = false, bottomPadding, maxWidth }: PropsWithChildren<{ auth?: boolean; redesigned?: boolean; bottomPadding?: number; maxWidth?: number }>) {
+  const { width, height } = useWindowDimensions();
   const { colors } = useTheme();
   const tabBarVisible = useContext(TabBarVisibleContext);
   const authBlurTarget = useRef<ComponentRef<typeof View> | null>(null);
@@ -38,29 +45,29 @@ export function Page({ children, auth = false, bottomPadding, maxWidth }: PropsW
   const content = <KeyboardAvoidingView style={styles.background} behavior={auth && Platform.OS === 'ios' ? 'padding' : undefined}>
       <SafeAreaView style={styles.safe} edges={auth ? ['top', 'left', 'right', 'bottom'] : tabBarVisible ? ['left', 'right'] : ['left', 'right', 'bottom']}>
         <ScrollView style={styles.background} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, auth && styles.authScroll]}>
-          <View style={[styles.page, { paddingHorizontal: width >= 600 ? uiScale.spacing[6] : uiScale.spacing[4] }, bottomPadding !== undefined && { paddingBottom: bottomPadding }, auth && styles.authPage, maxWidth !== undefined && { maxWidth }]}>{children}</View>
+          <View style={[styles.page, redesigned && { gap: uiScale.spacing[4] }, { paddingHorizontal: width >= 600 ? uiScale.spacing[6] : uiScale.spacing[4] }, bottomPadding !== undefined && { paddingBottom: bottomPadding }, auth && styles.authPage, maxWidth !== undefined && { maxWidth }]}>{children}</View>
         </ScrollView>
       </SafeAreaView>
     </KeyboardAvoidingView>;
   return auth
-    ? <View style={styles.background}>
-      <BlurTargetView ref={authBlurTarget} style={StyleSheet.absoluteFill} pointerEvents="none">
-        <LinearGradient colors={[colors.canvas, colors.backgroundVia, colors.backgroundTo]} style={styles.background} />
+    ? <View style={[styles.background, styles.authBackground, { minHeight: height }]}>
+      <BlurTargetView ref={authBlurTarget} style={styles.authBackdrop} pointerEvents="none">
+        <Image source={oceanImage} resizeMode="cover" style={styles.authBackdropImage} accessible={false} />
+        <LinearGradient colors={[authColors.scrimTop, authColors.scrimBottom]} style={StyleSheet.absoluteFill} />
       </BlurTargetView>
       <BlurTargetContext.Provider value={authBlurTarget}>{content}</BlurTargetContext.Provider>
     </View>
-    : <View style={styles.background}>{content}</View>;
+    : <RedesignedContext.Provider value={redesigned}><View style={styles.background}>{content}</View></RedesignedContext.Provider>;
 }
 
-export function Brand({ compact = false, showCaption = !compact, onLogoPress, logoExpanded }: { compact?: boolean; showCaption?: boolean; onLogoPress?: () => void; logoExpanded?: boolean }) {
+export function Brand({ compact = false, showCaption = !compact, onLogoPress, logoExpanded, auth = false }: { compact?: boolean; showCaption?: boolean; onLogoPress?: () => void; logoExpanded?: boolean; auth?: boolean }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  const logo = <Image source={require('../../assets/hydrosense-logo.png')} resizeMode="contain" accessibilityLabel="HydroSense logo" style={compact ? styles.logoSmall : styles.logo} />;
-  return <View style={compact ? styles.brandCompact : styles.brand}>
-    {onLogoPress ? <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" accessibilityState={{ expanded: logoExpanded }} onPress={onLogoPress} style={styles.logoButton}>{logo}</Pressable> : logo}
-    <View style={compact ? styles.brandTextCompact : styles.brandText}>
-      <Text numberOfLines={compact ? 1 : undefined} style={compact ? styles.brandNameSmall : styles.brandName}>HydroSense</Text>
-      {showCaption && <Text style={[styles.brandCaption, compact && styles.brandCaptionCompact]}>WATER QUALITY MONITORING</Text>}
+  return <View style={compact || auth ? styles.brandCompact : styles.brand}>
+    <Image source={require('../../assets/hydrosense-logo.png')} resizeMode="contain" accessibilityLabel="HydroSense logo" style={auth ? styles.authLogo : compact ? styles.logoSmall : styles.logo} />
+    <View style={compact || auth ? styles.brandTextCompact : styles.brandText}>
+      <Text numberOfLines={compact || auth ? 1 : undefined} style={auth ? styles.authBrandName : compact ? styles.brandNameSmall : styles.brandName}>HydroSense</Text>
+      <Text numberOfLines={compact || auth ? 1 : undefined} style={[styles.brandCaption, auth && styles.authBrandCaption]}>WATER QUALITY MONITORING</Text>
     </View>
   </View>;
 }
@@ -71,15 +78,17 @@ export function Title({ children, detail, centered = false, icon }: { children: 
   return <View style={[styles.heading, centered && styles.centered]}><View style={styles.titleRow}>{icon}<Text style={[styles.title, centered && styles.centerText]}>{children}</Text></View>{detail ? <Text style={[styles.muted, centered && styles.centerText]}>{detail}</Text> : null}</View>;
 }
 
-export function Card({ children, title, action, toneColor }: { children: ReactNode; title?: string; action?: ReactNode; toneColor?: string }) {
+export function Card({ children, title, action, auth = false, toneColor }: { children: ReactNode; title?: string; action?: ReactNode; auth?: boolean; toneColor?: string }) {
   const { colors, reduceTransparency } = useTheme();
   const blurTarget = useContext(BlurTargetContext);
   const nested = useContext(CardContext);
+  const redesigned = useContext(RedesignedContext);
   const styles = createStyles(colors);
   const solidFallback = needsSolidFallback(reduceTransparency) || (Platform.OS === 'android' && !blurTarget && !nested);
   return <CardContext.Provider value>
-    <View style={[styles.card, nested && styles.nestedCard, solidFallback && !nested && { backgroundColor: colors.surface }, toneColor && { borderColor: toneColor }]}>
-      {!nested && !solidFallback && glassBlur(blurTarget, styles)}
+    <View style={[styles.card, redesigned && { borderColor: colors.border }, nested && styles.nestedCard, solidFallback && !nested && { backgroundColor: colors.surface }, auth && styles.authCard, auth && solidFallback && { backgroundColor: authColors.solidPanel }, toneColor && { borderColor: toneColor }]}>
+      {!nested && !solidFallback && glassBlur(blurTarget, styles, auth)}
+      {auth && !solidFallback && <LinearGradient colors={[authColors.panelTop, authColors.panel]} style={[StyleSheet.absoluteFill, styles.cardBlur]} pointerEvents="none" />}
       {toneColor && <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.cardBlur, { backgroundColor: `${toneColor}20` }]} />}
       {(title || action) && <View style={styles.cardHeading}>{title ? <Text style={styles.cardTitle}>{title}</Text> : <View />}{action}</View>}{children}
     </View>
@@ -108,9 +117,10 @@ function DialogBlur({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof 
 
 export function Button({ label, onPress, disabled, secondary, soft, style, icon }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean; soft?: boolean; style?: StyleProp<ViewStyle>; icon?: ReactNode }) {
   const { colors, reduceMotion } = useTheme();
+  const redesigned = useContext(RedesignedContext);
   const styles = createStyles(colors);
   const outlined = secondary || soft;
-  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, outlined && styles.secondaryButton, soft && styles.softActionButton, disabled && styles.disabled, pressed && !reduceMotion && styles.pressed, style]}>
+  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, outlined && styles.secondaryButton, soft && styles.softActionButton, redesigned && outlined && { backgroundColor: colors.glassControl }, disabled && styles.disabled, pressed && !reduceMotion && styles.pressed, style]}>
     {outlined ? <View style={styles.buttonContent}>{icon}<Text style={styles.secondaryText}>{label}</Text></View> :
       <LinearGradient colors={['#1d4ed8', '#0369a1']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.buttonGradient}><View style={styles.buttonContent}>{icon}<Text style={styles.buttonText}>{label}</Text></View></LinearGradient>}
   </Pressable>;
@@ -118,10 +128,11 @@ export function Button({ label, onPress, disabled, secondary, soft, style, icon 
 
 export function FilterField({ label, value, onChangeText, placeholder }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string }) {
   const { colors } = useTheme();
+  const redesigned = useContext(RedesignedContext);
   const styles = createStyles(colors);
   return <View style={styles.filterField}>
     <Text style={styles.filterLabel}>{label}</Text>
-    <TextInput accessibilityLabel={label} style={styles.filterInput} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} autoCapitalize="none" />
+    <TextInput accessibilityLabel={label} style={[styles.filterInput, redesigned && { backgroundColor: colors.glassControl }]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} autoCapitalize="none" />
   </View>;
 }
 
@@ -199,11 +210,12 @@ export function CalendarFilterField({ label, value, onChangeText, placeholder }:
 
 export function Chip({ label, selected, onPress }: { label: string; selected?: boolean; onPress?: () => void }) {
   const { colors } = useTheme();
+  const redesigned = useContext(RedesignedContext);
   const styles = createStyles(colors);
   const content = <Text style={[styles.chipText, selected && styles.chipSelectedText]}>{label}</Text>;
   return onPress
-    ? <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.chip, styles.selectableChip, selected && styles.chipSelected]}>{content}</Pressable>
-    : <View style={styles.chip}>{content}</View>;
+    ? <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.chip, redesigned && { backgroundColor: colors.glassControl }, styles.selectableChip, selected && styles.chipSelected]}>{content}</Pressable>
+    : <View style={[styles.chip, redesigned && { backgroundColor: colors.glassControl }]}>{content}</View>;
 }
 
 export const createRecordStyles = (colors: Palette) => StyleSheet.create({
@@ -237,6 +249,9 @@ export const createFormStyles = (colors: Palette) => StyleSheet.create({
 
 const createStyles = (colors: Palette) => StyleSheet.create({
   background: { flex: 1, backgroundColor: 'transparent' },
+  authBackground: { width: '100%', backgroundColor: authColors.background },
+  authBackdrop: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
+  authBackdropImage: { width: '100%', height: '100%' },
   safe: { flex: 1, backgroundColor: 'transparent' },
   scroll: { flexGrow: 1, backgroundColor: 'transparent' },
   authScroll: { justifyContent: 'center' },
@@ -248,6 +263,9 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   brandText: { alignItems: 'center', gap: uiScale.spacing[1] },
   logo: { width: 52, height: 74 },
   logoSmall: { width: 26, height: 37, flexShrink: 0 },
+  authLogo: { width: 36, height: 36, flexShrink: 0 },
+  authBrandName: { color: authColors.ink, fontWeight: '700', fontSize: 20, lineHeight: 22 },
+  authBrandCaption: { color: authColors.caption, fontSize: 10, letterSpacing: 1.6, marginTop: 2 },
   logoButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   brandName: { color: colors.ink, fontWeight: '800', fontSize: 24, letterSpacing: -0.5 },
   brandNameSmall: { color: colors.ink, fontWeight: '800', fontSize: 17 },
@@ -260,6 +278,7 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   title: { color: colors.ink, fontSize: uiScale.type.title, lineHeight: 34, fontWeight: '700', letterSpacing: -0.4, flexShrink: 1 },
   muted: { color: colors.muted, fontSize: uiScale.type.body, lineHeight: 24 },
   card: { backgroundColor: Platform.OS === 'android' ? 'transparent' : 'rgba(255,255,255,0.04)', borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: uiScale.spacing[4], gap: uiScale.spacing[3], boxShadow: '0px 8px 32px rgba(0,0,0,0.25)' },
+  authCard: { backgroundColor: 'transparent', borderColor: authColors.border, padding: uiScale.spacing[5], gap: uiScale.spacing[5] },
   dialog: { backgroundColor: Platform.OS === 'android' ? 'transparent' : 'rgba(255,255,255,0.04)', borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', elevation: 0, boxShadow: '0px 8px 32px rgba(0,0,0,0.25)' },
   cardBlur: { borderRadius: uiScale.radius.card, overflow: 'hidden' },
   nestedCard: { backgroundColor: 'transparent', boxShadow: 'none' },
