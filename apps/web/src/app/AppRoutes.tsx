@@ -21,6 +21,7 @@ import {
 import { AdminLogsPage, AdminUsersPage } from '../pages/AdminPages';
 import SignInPage from '../pages/auth/SignInPage';
 import SignUpPage from '../pages/auth/SignUpPage';
+import VerifyEmailPage from '../pages/auth/VerifyEmailPage';
 import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
 import PendingApprovalPage from '../pages/auth/PendingApprovalPage';
 import SplashScreen from '../pages/auth/SplashScreen';
@@ -66,6 +67,7 @@ export default function AppRoutes() {
       <Route path="/splash" element={<SplashRoute onSeen={markSplashSeen} />} />
       <Route path="/signin" element={!splashSeen && !user?.role ? <Navigate to="/splash" replace /> : <PublicOnly><SignInPage /></PublicOnly>} />
       <Route path="/signup" element={<PublicOnly><SignUpPage /></PublicOnly>} />
+      <Route path="/verify-email" element={<PublicOnly><VerifyEmailPage /></PublicOnly>} />
       <Route path="/forgot-password" element={<PublicOnly><ForgotPasswordPage /></PublicOnly>} />
       <Route path="/pending-approval" element={<PendingApprovalPage />} />
       <Route element={<ProtectedAppShell splashSeen={splashSeen} />}>

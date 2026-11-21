@@ -94,7 +94,7 @@ describe('users and roles', () => {
     expect(within(requests).getByText('Other Applicant')).toBeInTheDocument();
     const approvalRole = within(requests).getByRole('combobox', { name: 'Review role for Local Applicant' });
     fireEvent.click(approvalRole);
-    expect(screen.getByRole('option', { name: 'Admin' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Admin' })).not.toBeInTheDocument();
     fireEvent.click(approvalRole);
     expect(within(requests).getAllByText('Pending')).toHaveLength(2);
     expect(within(requests).getByRole('button', { name: 'Approve Local Applicant' })).toBeInTheDocument();

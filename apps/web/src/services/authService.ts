@@ -10,10 +10,16 @@ import type {
   StoredAccount,
 } from '../types/auth.types';
 
-export interface AuthResult {
-  status: 'approved' | 'pending';
-  user?: AuthUser;
-  redirectPath: '/' | '/pending-approval';
+export type AuthResult =
+  | { status: 'approved'; user: AuthUser; redirectPath: '/' }
+  | { status: 'pending'; redirectPath: '/pending-approval' }
+  | { status: 'verify-email'; email: string; redirectPath: '/verify-email' };
+
+export class EmailNotVerifiedError extends Error {
+  constructor() {
+    super('Please verify your email first.');
+    this.name = 'EmailNotVerifiedError';
+  }
 }
 
 export const SUBSCRIBED_HATCHERIES = [
@@ -482,6 +488,9 @@ export const authService = {
       });
       const authResult = await authResponse.json();
       if (!authResponse.ok) {
+        if (authResult.code === 'email_not_confirmed') {
+          throw new EmailNotVerifiedError();
+        }
         throw new Error(authResult.error_description ?? authResult.error ?? 'Email or password is incorrect.');
       }
 
@@ -588,7 +597,14 @@ export const authService = {
         }
         throw new Error(result.error ?? result.msg ?? 'Unable to create account.');
       }
-      return { status: 'pending', redirectPath: '/pending-approval' };
+      if (result.status !== 'verify-email') {
+        throw new Error('Unable to start email verification.');
+      }
+      return {
+        status: 'verify-email',
+        email: typeof result.email === 'string' ? result.email : values.email.trim().toLowerCase(),
+        redirectPath: '/verify-email',
+      };
     }
     const normalizedEmail = values.email.trim().toLowerCase();
     const accounts = readAccounts();
@@ -627,6 +643,28 @@ export const authService = {
     });
     writeAccounts(accounts);
     return { status: 'pending', redirectPath: '/pending-approval' };
+  },
+
+  async resendVerification(email: string): Promise<void> {
+    if (!email.trim()) throw new Error('Enter the email address for your account.');
+    if (DATA_MODE !== 'api') throw new Error('Email verification is unavailable in demo mode.');
+    if (!API_KEY) throw new Error('Supabase publishable key is not configured.');
+
+    const response = await fetch(`${SUPABASE_URL}/auth/v1/resend`, {
+      method: 'POST',
+      headers: {
+        apikey: API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'signup', email: email.trim().toLowerCase() }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (response.status === 429) {
+        throw new Error('Please wait before requesting another email.');
+      }
+      throw new Error(result.msg ?? result.message ?? result.error_description ?? result.error ?? 'Unable to resend verification email.');
+    }
   },
 
   async listPendingRequests(): Promise<PendingRequest[]> {

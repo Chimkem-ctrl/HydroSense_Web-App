@@ -10,6 +10,7 @@ export interface AuthenticatedUser {
 export interface SignUpValues {
   firstName: string;
   lastName: string;
+  employeeId: string;
   phone: string;
   email: string;
   hatcheryId: string;
@@ -45,6 +46,7 @@ export function validateSignUp(values: SignUpValues): string | null {
   const phone = /^[+()\d\s.-]{7,20}$/;
   if (!values.firstName.trim()) return 'First name is required.';
   if (!values.lastName.trim()) return 'Last name is required.';
+  if (!values.employeeId.trim()) return 'Employee / staff ID is required.';
   if (!values.phone.trim()) return 'Contact number is required.';
   if (!phone.test(values.phone.trim())) return 'Enter a valid contact number.';
   if (!values.email.trim()) return 'Email is required.';
@@ -103,7 +105,7 @@ export async function authenticate(baseUrl: string, apiKey: string | undefined, 
   return { user: { id: user.id, name, role: user.role }, accessToken: result.accessToken };
 }
 
-export async function requestAccount(baseUrl: string, apiKey: string | undefined, values: SignUpValues): Promise<void> {
+export async function requestAccount(baseUrl: string, apiKey: string | undefined, values: SignUpValues): Promise<{ status: 'pending' } | { status: 'verify-email'; email: string }> {
   const validationError = validateSignUp(values);
   if (validationError) throw new Error(validationError);
   const result = await postAuth(baseUrl, apiKey, 'signup', {
@@ -111,6 +113,7 @@ export async function requestAccount(baseUrl: string, apiKey: string | undefined
     password: values.password,
     firstName: values.firstName.trim(),
     lastName: values.lastName.trim(),
+    employeeId: values.employeeId.trim(),
     phone: values.phone.trim(),
     address: values.address,
     emergencyContactName: values.emergencyContactName.trim(),
@@ -118,8 +121,34 @@ export async function requestAccount(baseUrl: string, apiKey: string | undefined
     hatcheryId: values.hatcheryId,
     requestedRole: values.requestedRole,
   });
-  if (typeof result !== 'object' || result === null || !('status' in result) || result.status !== 'pending') {
-    throw new Error('The server did not confirm a pending account request.');
+  if (typeof result === 'object' && result !== null && 'status' in result) {
+    if (result.status === 'pending') return { status: 'pending' };
+    if (result.status === 'verify-email' && 'email' in result && typeof result.email === 'string' && result.email.trim()) {
+      return { status: 'verify-email', email: result.email.trim() };
+    }
+  }
+  throw new Error('The server did not confirm the account request.');
+}
+
+export async function resendVerification(baseUrl: string, apiKey: string | undefined, email: string): Promise<void> {
+  const issue = validateEmail(email);
+  if (issue) throw new Error(issue);
+  if (!apiKey?.trim()) throw new Error('Supabase publishable key is not configured.');
+  const match = baseUrl.match(/^(https?:\/\/[^/]+)\/functions\/v1\/api\/?$/);
+  if (!match) throw new Error('Email verification requires a Supabase Edge Function API URL.');
+  const response = await fetch(`${match[1]}/auth/v1/resend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: apiKey },
+    body: JSON.stringify({ type: 'signup', email: email.trim().toLowerCase() }),
+  });
+  if (response.status === 429) throw new Error('Please wait before requesting another email.');
+  if (!response.ok) {
+    let result: unknown;
+    try { result = await response.json(); } catch { throw new Error(`Unable to resend verification email (HTTP ${response.status}).`); }
+    const message = typeof result === 'object' && result !== null && 'msg' in result && typeof result.msg === 'string'
+      ? result.msg : typeof result === 'object' && result !== null && 'message' in result && typeof result.message === 'string'
+        ? result.message : 'Unable to resend verification email.';
+    throw new Error(message);
   }
 }
 

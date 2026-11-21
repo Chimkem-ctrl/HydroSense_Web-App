@@ -1,39 +1,35 @@
+:root {
+  --public-page-background-position: center 40%;
+  --public-page-background-overlays:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0) 65%),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.45));
+}
+
 .auth-background {
   position: relative;
   display: flex;
-  min-height: 100vh;
+  min-height: 100dvh;
   width: 100%;
   justify-content: center;
   align-items: center;
   overflow: hidden auto;
   padding: 28px 18px;
   isolation: isolate;
-  --auth-background-image: url("/assets/images/signin.png");
-  --overlay-opacity: 0.25;
+  --auth-background-image: url("/assets/images/deep-blue-ocean.jpg");
+  background-color: #0b1118;
+  background-image: var(--public-page-background-overlays), var(--auth-background-image);
+  background-size: cover;
+  background-position: var(--public-page-background-position);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
-.auth-background::before,
 .auth-background::after {
   position: absolute;
   z-index: 0;
   inset: 0;
   pointer-events: none;
   content: "";
-}
-
-.auth-background::before {
-  inset: -8px;
-  background-image:
-    linear-gradient(
-      rgba(0, 15, 30, var(--overlay-opacity)),
-      rgba(0, 15, 30, var(--overlay-opacity))
-    ),
-    var(--auth-background-image);
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  filter: blur(1px);
-  transform: scale(1.01);
 }
 
 .auth-background::after {

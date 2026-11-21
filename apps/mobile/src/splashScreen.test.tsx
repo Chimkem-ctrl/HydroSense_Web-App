@@ -32,6 +32,7 @@ vi.mock('react-native', () => ({
 }));
 
 vi.mock('expo-linear-gradient', () => ({ LinearGradient: 'LinearGradient' }));
+vi.mock('./theme', () => ({ useTheme: () => ({ reduceMotion: false }) }));
 vi.mock('expo-status-bar', () => ({ StatusBar: 'StatusBar' }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }));
 vi.mock('react-native-svg', () => ({
@@ -41,16 +42,6 @@ vi.mock('react-native-svg', () => ({
   Rect: 'Rect',
   Stop: 'Stop',
 }));
-vi.mock('expo-status-bar', () => ({ StatusBar: 'StatusBar' }));
-vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }));
-vi.mock('react-native-svg', () => ({
-  default: 'Svg',
-  Defs: 'Defs',
-  RadialGradient: 'RadialGradient',
-  Rect: 'Rect',
-  Stop: 'Stop',
-}));
-
 import SplashScreen, { SplashGate } from './splashScreen';
 
 beforeEach(() => {

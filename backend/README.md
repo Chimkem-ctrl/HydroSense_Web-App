@@ -333,6 +333,20 @@ npm run db:migrate --workspace @hydrosense/backend
 
 This applies SQL files in `backend/supabase/migrations` to the configured hosted database. Never set `RESET_PUBLIC_SCHEMA=true` on the shared or production database; that option drops and recreates the public schema.
 
+Before applying `20261121000000_api_alert_integrity.sql`, check for active duplicates:
+
+```sql
+select tank_id, parameter, count(*)
+from public.alerts
+where status in ('open', 'acknowledged')
+group by tank_id, parameter
+having count(*) > 1;
+```
+
+Review and resolve duplicates through the normal alert workflow before applying the migration; the unique index intentionally fails rather than changing alert history. Apply this migration before deploying the matching API: it also creates the latest-reading RPC and activity-log compatibility view. The view requires PostgreSQL 15 or later.
+
+Critical alert margins are measured beyond the violated configured limit: temperature below minimum is immediately critical, temperature above maximum is critical at 2°C, dissolved oxygen at 1 mg/L, and pH at 0.5. Approval and role-update routes cannot assign the admin role.
+
 ### 5. Deploy the API (authorized maintainers only)
 
 The API is a Supabase Edge Function in `backend/supabase/functions/api/index.ts`. Deploying updates the hosted project, so only do this when authorized and after reviewing the changes:
