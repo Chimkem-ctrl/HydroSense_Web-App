@@ -720,7 +720,7 @@ export default function OperatorDashboardPage() {
               <div className="operator-history-legend"><span><i className="legend-dot legend-dot--do" /> Dissolved Oxygen (mg/L)</span><span><i className="legend-dot legend-dot--temp" /> Temperature (°C)</span><span><i className="legend-dot legend-dot--ph" /> pH</span></div>
               <div className="operator-table-wrap">
                 <table className="operator-table">
-                  <thead><tr><th>Sample interval</th><th>Dissolved oxygen</th><th>Temperature</th><th>pH</th><th>Salinity</th><th>Sensor status</th></tr></thead>
+                  <thead><tr><th>Reading time</th><th>Dissolved oxygen</th><th>Temperature</th><th>pH</th><th>Salinity</th><th>Sensor status</th></tr></thead>
                   <tbody>
                     {readings.slice().reverse().map((reading, index) => (
                       <tr key={`${reading.timestamp}-${index}`} className={index === 0 && reading.dissolvedOxygen < DO_DEMO_THRESHOLD ? 'operator-row-critical' : ''}>

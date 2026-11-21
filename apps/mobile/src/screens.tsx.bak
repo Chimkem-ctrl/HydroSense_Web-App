@@ -89,7 +89,6 @@ function ReadingCard({ parameter, reading, threshold }: { parameter: MeasuredPar
       </LinearGradient>
       <Text style={{ color: colors.muted, fontSize: 12 }}>Display scale {scaleMin}–{scaleMax} {unit}{scaleMin !== undefined && scaleMax !== undefined && (value < scaleMin || value > scaleMax) ? ' · marker at scale edge' : ''}</Text>
     </View>}
-    <Text style={{ color: colors.muted, fontSize: 12 }}>Updated {formatManilaDateTime(reading.timestamp)} PHT</Text>
   </Card>;
 }
 
@@ -119,7 +118,7 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
         <Text style={{ color: colors.muted, lineHeight: 20 }}>Salinity and ammonia are not measured by the sensors. These rule-based advisories are not readings.</Text>
         {advisories.isLoading ? <StateMessage message="Loading advisories…" loading /> : advisories.isError ? <StateMessage message="Could not load advisories." /> : (advisories.data ?? []).length === 0 ? <StateMessage message="No advisories are available for this tank." /> : advisories.data?.map((item) => <DataRow key={item.kind} label={`${item.kind === 'salinity' ? 'Salinity' : 'Ammonia'} risk`} value={item.level.toUpperCase()} />)}
       </Card>
-      <Card title="Last update"><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text><Text style={{ color: colors.muted }}>Readings are sampled every 3 hours.</Text></Card>
+      <Card title="Last update"><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text></Card>
       <Card title="Device connection">
         {devices.isLoading ? <StateMessage message="Loading device status…" loading /> : devices.isError ? <StateMessage message="Could not load device status." /> : !device ? <StateMessage message="No device is registered for this tank." /> : <>
           <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} />
@@ -217,7 +216,7 @@ export function TrendsScreen() {
   const readings = useQuery({ queryKey: ['mobile-trends', tankId], queryFn: () => api.listReadings({ tankId, from }), enabled: Boolean(tankId) });
   const data = [...(readings.data ?? [])].sort((a, b) => a.timestamp.localeCompare(b.timestamp)).map((row, index) => ({ value: row.doMgL, label: index % 2 === 0 ? new Date(row.timestamp).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false }) : '' }));
   return <Page>
-    <Title detail="24 hours · 3-hour intervals">Trends</Title>
+    <Title detail="Sensor readings">Trends</Title>
     <TankPicker />
     {readings.isLoading ? <StateMessage message="Loading trend data…" loading /> : readings.isError ? <StateMessage message="Could not load trends." /> : data.length < 2 ? <StateMessage message="Not enough readings to draw a trend." /> : <Card title="Dissolved oxygen · mg/L">
       <LineChart data={data} width={Math.min(width - 64, 640)} height={240} spacing={Math.min(50, (width - 100) / Math.max(data.length - 1, 1))} color={colors.teal} thickness={3} dataPointsColor={colors.teal} yAxisTextStyle={{ color: colors.muted, fontSize: 12 }} xAxisLabelTextStyle={{ color: colors.muted, fontSize: 12 }} />
