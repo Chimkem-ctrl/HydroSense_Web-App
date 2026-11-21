@@ -38,9 +38,15 @@ describe('ReadingCard', () => {
     const { container } = render(<ReadingCard parameter="temperature" reading={reading} threshold={{ parameter: 'temperature', min: 30, max: 32 }} showRangeMeter />);
     expect(parseFloat((container.querySelector('.reading-scale-track > span') as HTMLElement).style.left)).toBeCloseTo(20, 5);
     cleanup();
-    render(<ReadingCard parameter="do" reading={reading} showRangeMeter />);
+    const { container: doCard } = render(<ReadingCard parameter="do" reading={reading} showRangeMeter />);
     expect(screen.getByRole('img', { name: /Safe ≥4 mg\/L/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Display scale 0–8 mg/L' })).toBeInTheDocument();
+    expect(doCard.querySelector('.reading-scale-track')).toHaveClass('reading-scale-track-minimum-only');
+  });
+
+  it('aligns a threshold label at the edge of the scale', () => {
+    render(<ReadingCard parameter="do" reading={reading} threshold={{ parameter: 'do', min: 0 }} showRangeMeter />);
+    expect(screen.getByText('0')).toHaveClass('reading-scale-label-start');
   });
 
   it('shows stale readings neutrally and invalid values as probe issues', () => {
