@@ -78,6 +78,9 @@ warning; production terms and a backend record of consent are not implemented.
 Forgot password uses the same Supabase recovery endpoint as the web app and
 requires an API root ending in `/functions/v1/api`; reset links follow the
 Supabase project's configured redirect settings.
+Change password in My profile verifies the current password and updates it
+through Supabase Auth. It requires the Supabase project URL and publishable key;
+custom API deployments without Supabase Auth cannot use this action.
 
 The access token is stored in Expo SecureStore; user metadata and the offline
 query cache are stored in AsyncStorage and cleared on sign-out or account

@@ -6,6 +6,7 @@ export class HttpApiClient implements HydroSenseApi {
     private readonly baseUrl: string,
     private readonly getAccessToken?: () => string | null | Promise<string | null>,
     private readonly apiKey?: string,
+    private readonly onUnauthorized?: (accessToken: string) => void,
   ) {}
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -21,13 +22,22 @@ export class HttpApiClient implements HydroSenseApi {
     });
     if (!response.ok) {
       const body = await response.text();
-      throw new Error(`HydroSense API ${response.status} ${response.statusText}: ${body || path}`);
+      const requestPath = path.split('?')[0];
+      if (response.status === 401 && token) this.onUnauthorized?.(token);
+      throw new Error(`HydroSense API ${response.status}${response.statusText ? ` ${response.statusText}` : ''} (${requestPath}): ${body || 'Request failed.'}`);
     }
     if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
   }
 
-  listTanks() { return this.request<Tank[]>('/v1/tanks'); }
+  private async requestList<T>(path: string): Promise<T[]> {
+    const result = await this.request<unknown>(path);
+    if (result === null || result === undefined) return [];
+    if (!Array.isArray(result)) throw new Error(`HydroSense API returned an invalid list for ${path}.`);
+    return result as T[];
+  }
+
+  listTanks() { return this.requestList<Tank>('/v1/tanks'); }
   createTank(tank: Omit<Tank, 'id'>, changedBy: string) {
     return this.request<Tank>('/v1/tanks', { method: 'POST', body: JSON.stringify({ ...tank, changedBy }) });
   }
@@ -37,27 +47,27 @@ export class HttpApiClient implements HydroSenseApi {
   }
   listReadings(query: ReadingQuery = {}) {
     const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
-    return this.request<Reading[]>(`/v1/readings${params.size ? `?${params}` : ''}`);
+    return this.requestList<Reading>(`/v1/readings${params.size ? `?${params}` : ''}`);
   }
   getLatestReading(tankId: string) { return this.request<Reading | null>(`/v1/tanks/${encodeURIComponent(tankId)}/readings/latest`); }
-  listDeviceStatuses() { return this.request<import('../types').DeviceStatus[]>('/v1/devices/status'); }
-  listAlerts(tankId?: string) { return this.request<AlertItem[]>(`/v1/alerts${tankId ? `?tank_id=${encodeURIComponent(tankId)}` : ''}`); }
-  listAlertResponses(alertId: string) { return this.request<import('../types').AlertResponse[]>(`/v1/alerts/${encodeURIComponent(alertId)}/responses`); }
+  listDeviceStatuses() { return this.requestList<import('../types').DeviceStatus>('/v1/devices/status'); }
+  listAlerts(tankId?: string) { return this.requestList<AlertItem>(`/v1/alerts${tankId ? `?tank_id=${encodeURIComponent(tankId)}` : ''}`); }
+  listAlertResponses(alertId: string) { return this.requestList<import('../types').AlertResponse>(`/v1/alerts/${encodeURIComponent(alertId)}/responses`); }
   acknowledgeAlert(alertId: string, input: AcknowledgeAlertInput) {
     return this.request<AlertItem>(`/v1/alerts/${encodeURIComponent(alertId)}/acknowledge`, { method: 'POST', body: JSON.stringify(input) });
   }
   resolveAlert(alertId: string, input: AcknowledgeAlertInput) {
     return this.request<AlertItem>(`/v1/alerts/${encodeURIComponent(alertId)}/resolve`, { method: 'POST', body: JSON.stringify(input) });
   }
-  listManualEntries(tankId?: string) { return this.request<ManualEntry[]>(`/v1/manual-entries${tankId ? `?tank_id=${encodeURIComponent(tankId)}` : ''}`); }
+  listManualEntries(tankId?: string) { return this.requestList<ManualEntry>(`/v1/manual-entries${tankId ? `?tank_id=${encodeURIComponent(tankId)}` : ''}`); }
   createManualEntry(entry: Omit<ManualEntry, 'id' | 'timestamp'>) {
     return this.request<ManualEntry>('/v1/manual-entries', { method: 'POST', body: JSON.stringify(entry) });
   }
-  listActivityLogs(tankId?: string) { return this.request<ActivityLog[]>(`/v1/activity-logs${tankId ? `?tank_id=${encodeURIComponent(tankId)}` : ''}`); }
+  listActivityLogs(tankId?: string) { return this.requestList<ActivityLog>(`/v1/activity-logs${tankId ? `?tank_id=${encodeURIComponent(tankId)}` : ''}`); }
   createActivityLog(entry: Omit<ActivityLog, 'id' | 'occurredAt'>) {
     return this.request<ActivityLog>('/v1/activity-logs', { method: 'POST', body: JSON.stringify(entry) });
   }
-  listThresholds() { return this.request<Threshold[]>('/v1/settings/thresholds'); }
+  listThresholds() { return this.requestList<Threshold>('/v1/settings/thresholds'); }
   updateThresholds(thresholds: Threshold[], changedBy: string) {
     return this.request<Threshold[]>('/v1/settings/thresholds', { method: 'PUT', body: JSON.stringify({ thresholds, changedBy }) });
   }
@@ -65,19 +75,19 @@ export class HttpApiClient implements HydroSenseApi {
   updateAdvisorySettings(settings: AdvisoryRuleSettings, changedBy: string) {
     return this.request<AdvisoryRuleSettings>('/v1/settings/advisory-rules', { method: 'PUT', body: JSON.stringify({ settings, changedBy }) });
   }
-  listAdvisories(tankId: string) { return this.request<import('../types').AdvisoryState[]>(`/v1/tanks/${encodeURIComponent(tankId)}/advisories`); }
-  listCalibrationLogs(tankId?: string) { return this.request<CalibrationLog[]>(`/v1/calibrations${tankId ? `?tank_id=${encodeURIComponent(tankId)}` : ''}`); }
+  listAdvisories(tankId: string) { return this.requestList<import('../types').AdvisoryState>(`/v1/tanks/${encodeURIComponent(tankId)}/advisories`); }
+  listCalibrationLogs(tankId?: string) { return this.requestList<CalibrationLog>(`/v1/calibrations${tankId ? `?tank_id=${encodeURIComponent(tankId)}` : ''}`); }
   createCalibrationLog(log: Omit<CalibrationLog, 'id'>) {
     return this.request<CalibrationLog>('/v1/calibrations', { method: 'POST', body: JSON.stringify(log) });
   }
-  listValidationRows(tankId?: string) { return this.request<ValidationRow[]>(`/v1/validation${tankId ? `?tank_id=${encodeURIComponent(tankId)}` : ''}`); }
+  listValidationRows(tankId?: string) { return this.requestList<ValidationRow>(`/v1/validation${tankId ? `?tank_id=${encodeURIComponent(tankId)}` : ''}`); }
   getValidationTolerances() { return this.request<ValidationTolerance>('/v1/validation/tolerances'); }
   updateValidationTolerances(tolerances: ValidationTolerance, changedBy: string) {
     return this.request<ValidationTolerance>('/v1/validation/tolerances', { method: 'PUT', body: JSON.stringify({ tolerances, changedBy }) });
   }
-  listUsers() { return this.request<DashboardUser[]>('/v1/admin/users'); }
+  listUsers() { return this.requestList<DashboardUser>('/v1/admin/users'); }
   updateUserRole(userId: string, role: Exclude<DashboardUser['role'], 'admin'>, changedBy: string) {
     return this.request<DashboardUser>(`/v1/admin/users/${encodeURIComponent(userId)}/role`, { method: 'PUT', body: JSON.stringify({ role, changedBy }) });
   }
-  listAuditLogs() { return this.request<import('../types').AuditLog[]>('/v1/admin/logs'); }
+  listAuditLogs() { return this.requestList<import('../types').AuditLog>('/v1/admin/logs'); }
 }

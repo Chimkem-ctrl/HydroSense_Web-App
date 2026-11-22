@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { Camera, LoaderCircle } from 'lucide-react';
-import { formatManilaDateTime } from '@hydrosense/shared';
+import { formatManilaDateTime, validatePasswordChange } from '@hydrosense/shared';
 import { useAuth, useRole } from '../app/auth/RoleContext';
 import { ROLE_LABELS } from '../app/config';
 import { useProfileSite, useTanks } from '../app/data/hooks';
@@ -25,6 +25,12 @@ export default function ProfilePage() {
   const [maintenanceTankId, setMaintenanceTankId] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string>();
   const [avatarLoadError, setAvatarLoadError] = useState<Error | null>(null);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
   const avatarInput = useRef<HTMLInputElement>(null);
   const maintenanceTanks = scopedTanks;
   const saveAvatar = useMutation({
@@ -34,6 +40,27 @@ export default function ProfilePage() {
       setAvatarLoadError(null);
     },
   });
+  const changePassword = useMutation({
+    mutationFn: () => authService.changePassword(currentPassword, newPassword, confirmPassword),
+    onSuccess: () => {
+      setPasswordOpen(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordError('');
+      setPasswordSuccess(true);
+    },
+    onError: (error) => setPasswordError(error instanceof Error ? error.message : 'Could not change your password. Please try again.'),
+  });
+
+  function closePasswordDialog() {
+    if (changePassword.isPending) return;
+    setPasswordOpen(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+  }
 
   useEffect(() => {
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView?.();
@@ -103,7 +130,7 @@ export default function ProfilePage() {
                   <div><dt>Position</dt><dd>{user.position || 'N/A'}</dd></div>
                   <div><dt>Email</dt><dd>{user.email || 'N/A'}</dd></div>
                   <div><dt>Address</dt><dd>{user.address || 'N/A'}</dd></div>
-                  <div id="security" className="profile-security"><dt>Change Password</dt><dd><button className="button button-danger" type="button" disabled>Change password</button></dd></div>
+                  <div id="security" className="profile-security"><dt>Change Password</dt><dd><button className="button" type="button" onClick={() => { setPasswordSuccess(false); setPasswordOpen(true); }}>Change password</button>{passwordSuccess && <p role="status">Password changed successfully.</p>}</dd></div>
                   <div><dt>Phone</dt><dd>{user.phone || 'N/A'}</dd></div>
                 </dl>
               </section>
@@ -155,6 +182,29 @@ export default function ProfilePage() {
               <button className="button" type="button" disabled>Request reboot</button>
             </> : <button className="button" type="button" disabled>Reboot device</button>}
           </div>
+          {passwordOpen && <div className="dialog-backdrop profile-password-backdrop">
+            <section className="dialog card stack profile-password-dialog" role="dialog" aria-modal="true" aria-labelledby="change-password-title" onKeyDown={(event) => { if (event.key === 'Escape') closePasswordDialog(); }}>
+              <h2 id="change-password-title">Change password</h2>
+              <p>Are you sure you want to change your password? Enter your current password and choose a new one.</p>
+              <form className="stack" noValidate onSubmit={(event) => {
+                event.preventDefault();
+                const issue = validatePasswordChange(currentPassword, newPassword, confirmPassword);
+                if (issue) { setPasswordError(issue); return; }
+                setPasswordError('');
+                changePassword.mutate();
+              }}>
+                <label className="field">Current password<input autoFocus type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
+                <label className="field">New password<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
+                <label className="field">Confirm new password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => { setConfirmPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
+                <p className="small muted">Use at least 8 characters.</p>
+                {passwordError && <p className="profile-password-error" role="alert">{passwordError}</p>}
+                <div className="profile-password-actions">
+                  <button className="button" type="button" disabled={changePassword.isPending} onClick={closePasswordDialog}>Cancel</button>
+                  <button className="button profile-password-submit" type="submit" disabled={changePassword.isPending}>{changePassword.isPending ? 'Changing...' : 'Confirm change'}</button>
+                </div>
+              </form>
+            </section>
+          </div>}
           </div>
         </section>
       </div>

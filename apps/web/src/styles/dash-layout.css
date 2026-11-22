@@ -39,15 +39,17 @@
 .glass-screen .dash-grid .table-wrap { min-width: 0; max-width: 100%; overflow-x: auto; }
 
 .glass-screen .dash-calibration {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-areas:
-    "heading"
-    "top"
-    "lower";
+    "heading heading"
+    "top top"
+    "checklist status"
+    "checklist thresholds";
   align-items: start;
   gap: var(--space-5);
 }
 .glass-screen .dash-calibration-readonly {
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     "heading"
     "thresholds";
@@ -56,25 +58,12 @@
   display: grid;
   min-width: 0;
   grid-area: top;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
   align-items: stretch;
-  gap: var(--space-5);
-}
-.glass-screen .dash-calibration-lower {
-  display: grid;
-  min-width: 0;
-  grid-area: lower;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-  align-items: stretch;
-  gap: var(--space-5);
-}
-.glass-screen .dash-calibration-side {
-  display: grid;
-  min-width: 0;
-  align-content: start;
   gap: var(--space-5);
 }
 .glass-screen .dash-calibration-summary {
+  grid-area: status;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -82,19 +71,13 @@
   gap: var(--space-3);
   text-align: left;
 }
+.glass-screen .dash-calibration-summary .dash-card-header { flex: 1; }
 .glass-screen .dash-calibration-form { min-width: 0; }
-.glass-screen .dash-calibration-due {
-  min-width: 0;
-  align-self: stretch;
-  gap: var(--space-2);
-  padding: var(--space-4);
-}
-.glass-screen .dash-calibration-due .dash-card-header { gap: 2px; }
-.glass-screen .dash-calibration-due .dash-subtitle { font-size: var(--font-caption); line-height: 1.3; }
-.glass-screen .dash-calibration-readonly .dash-after-grid { grid-area: thresholds; }
-.glass-screen .dash-after-grid { min-width: 0; }
+.glass-screen .dash-calibration-due { min-width: 0; align-content: start; }
+.glass-screen .dash-after-grid { grid-area: thresholds; min-width: 0; }
+.glass-screen .dash-calibration-checklist { grid-area: checklist; }
 .glass-screen .dash-calibration-fields {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: end;
 }
 .glass-screen .dash-calibration-field-wide { grid-column: span 2; }
@@ -102,8 +85,9 @@
 .glass-screen .dash-calibration-form .dash-calibration-fields .field select { width: 100%; min-width: 0; }
 .glass-screen .dash-calibration-status-content {
   display: flex;
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
+  margin-left: auto;
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
@@ -118,14 +102,26 @@
 .glass-screen .dash-after-grid { align-self: stretch; }
 .glass-screen .dash-calibration-checklist { display: flex; flex-direction: column; }
 .glass-screen .dash-calibration-checklist .dash-checklist-progress { margin-top: auto; }
-.glass-screen .dash-calibration-table { width: 100%; min-width: 0; table-layout: fixed; font-size: var(--font-caption); }
+.glass-screen .dash-calibration-table { width: 100%; min-width: 900px; table-layout: fixed; font-size: var(--font-caption); }
 .glass-screen .dash-calibration-table th,
-.glass-screen .dash-calibration-table td { padding: var(--space-1) 6px; vertical-align: top; overflow-wrap: anywhere; }
-.glass-screen .dash-calibration-table th:nth-child(1) { width: 31%; }
-.glass-screen .dash-calibration-table th:nth-child(2) { width: 21%; }
-.glass-screen .dash-calibration-table th:nth-child(3) { width: 21%; }
-.glass-screen .dash-calibration-table th:nth-child(4) { width: 27%; }
-.glass-screen .dash-calibration-table td small { display: block; margin-top: 2px; color: var(--text-secondary); font-size: var(--font-caption); line-height: 1.35; }
+.glass-screen .dash-calibration-table td { padding: var(--space-2) var(--space-3); vertical-align: middle; overflow-wrap: anywhere; }
+.glass-screen .dash-calibration-table th:nth-child(1) { width: 12%; }
+.glass-screen .dash-calibration-table th:nth-child(2) { width: 16%; }
+.glass-screen .dash-calibration-table th:nth-child(3),
+.glass-screen .dash-calibration-table th:nth-child(4) { width: 11%; }
+.glass-screen .dash-calibration-table th:nth-child(5) { width: 17%; }
+.glass-screen .dash-calibration-table th:nth-child(6) { width: 18%; }
+.glass-screen .dash-calibration-table th:nth-child(7) { width: 15%; }
+.glass-screen .dash-calibration-table th:nth-child(5),
+.glass-screen .dash-calibration-table th:nth-child(6),
+.glass-screen .dash-calibration-table td:nth-child(5),
+.glass-screen .dash-calibration-table td:nth-child(6) { text-align: center; white-space: nowrap; }
+.glass-screen .dash-calibration-due .dash-calibration-table th:nth-child(3),
+.glass-screen .dash-calibration-due .dash-calibration-table th:nth-child(4),
+.glass-screen .dash-calibration-due .dash-calibration-table td:nth-child(3),
+.glass-screen .dash-calibration-due .dash-calibration-table td:nth-child(4) { text-align: center; }
+.glass-screen .dash-calibration-table td:nth-child(2) { white-space: normal; overflow-wrap: anywhere; }
+.glass-screen .dash-calibration-table td:nth-child(7) { white-space: nowrap; overflow-wrap: normal; }
 .glass-screen .dash-calibration-fields .dash-save-button {
   grid-column: 1 / -1;
   width: auto;
@@ -137,6 +133,14 @@
 .glass-screen .dash-checklist-meter { height: var(--space-2); overflow: hidden; border-radius: var(--radius-control); background: var(--control-border); }
 .glass-screen .dash-checklist-meter > span { display: block; height: 100%; border-radius: inherit; background: var(--meter); }
 .glass-screen .dash-calibration-due-content { min-width: 0; }
+.glass-screen .dash-calibration-due .dash-calibration-table { width: 100%; min-width: 900px; table-layout: fixed; }
+.glass-screen .dash-calibration-due th,
+.glass-screen .dash-calibration-due td { white-space: nowrap; overflow-wrap: normal; vertical-align: middle; }
+.glass-screen .dash-calibration-due .dash-calibration-table th:nth-child(3),
+.glass-screen .dash-calibration-due .dash-calibration-table th:nth-child(4),
+.glass-screen .dash-calibration-due .dash-calibration-table td:nth-child(3),
+.glass-screen .dash-calibration-due .dash-calibration-table td:nth-child(4) { text-align: center; }
+.glass-screen .dash-calibration-due .dash-calibration-table td:nth-child(2) { white-space: normal; overflow-wrap: anywhere; }
 .glass-screen .dash-calibration-empty {
   margin: 0;
   color: var(--text-secondary);
@@ -579,10 +583,14 @@
 }
 .glass-screen .threshold-grid-readonly .threshold-grid-header,
 .glass-screen .threshold-grid-readonly .threshold-grid-row {
-  grid-template-columns: minmax(180px, 1.5fr) repeat(2, minmax(85px, 1fr));
+  grid-template-columns: minmax(120px, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
 }
 .glass-screen .threshold-grid-readonly { min-width: 390px; }
 .glass-screen .threshold-grid-header { color: var(--text-secondary); font-size: var(--font-caption); font-weight: 700; }
+.glass-screen .dash-calibration .threshold-grid-header > :nth-child(2),
+.glass-screen .dash-calibration .threshold-grid-header > :nth-child(3),
+.glass-screen .dash-calibration .threshold-grid-readonly .threshold-grid-row > [role='cell']:nth-child(2),
+.glass-screen .dash-calibration .threshold-grid-readonly .threshold-grid-row > [role='cell']:nth-child(3) { text-align: center; }
 .glass-screen .threshold-grid-row > [role='cell'] { min-width: 0; }
 .glass-screen .threshold-grid-readonly .threshold-grid-row > [role='cell'] { text-align: left; }
 .glass-screen .threshold-grid-readonly .threshold-grid-row:not(:last-child) { border-bottom: 1px solid var(--glass-border); padding-bottom: var(--space-2); }
@@ -602,6 +610,18 @@
 .glass-screen .dash-stat-unit { color: var(--text-secondary); font-size: var(--font-button); }
 .glass-screen .dash-stat-caption { margin: 0; }
 
+@media (max-width: 900px) {
+  .glass-screen .dash-calibration:not(.dash-calibration-readonly) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "heading"
+      "top"
+      "status"
+      "thresholds"
+      "checklist";
+  }
+}
+
 @media (max-width: 1100px) {
   .glass-screen .dash-calibration-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .glass-screen .dash-calibration-field-wide { grid-column: span 1; }
@@ -613,7 +633,6 @@
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
   }
-  .glass-screen .dash-calibration-lower { grid-template-columns: minmax(0, 1fr); }
   .glass-screen .history-top-grid { grid-template-columns: minmax(0, 1fr); }
 }
 

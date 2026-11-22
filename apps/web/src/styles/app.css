@@ -94,10 +94,10 @@ a { color: inherit; }
 .table-wrap { min-width: 0; max-width: 100%; overflow: auto; overscroll-behavior: contain; }
 table { width: 100%; min-width: 680px; table-layout: fixed; border-collapse: collapse; text-align: left; }
 tbody tr { height: 52px; }
-th, td { min-width: 0; border-bottom: 1px solid var(--border); padding: 12px; vertical-align: top; overflow-wrap: anywhere; }
+th, td { min-width: 0; border-bottom: 1px solid var(--border); padding: 12px; vertical-align: middle; overflow-wrap: anywhere; }
 th { color: var(--muted); font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
 td { font-variant-numeric: tabular-nums; }
-td.table-numeric { text-align: right; font-variant-numeric: tabular-nums; }
+th.table-numeric, td.table-numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
 .tab { min-height: 44px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); padding: 0 15px; }
 .tab[aria-selected='true'] { border-color: var(--brand); color: var(--brand-strong); font-weight: 700; }

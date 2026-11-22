@@ -59,6 +59,18 @@ describe('authService', () => {
     expect(JSON.parse(window.localStorage.getItem(SESSION_KEY) ?? '{}')).toEqual({ userId: 'demo-admin' });
   });
 
+  it.each([
+    ['admin', DEMO_ADMIN_CREDENTIALS.email, DEMO_ADMIN_CREDENTIALS.password],
+    ['operator', DEMO_ROLE_CREDENTIALS[0].email, DEMO_ROLE_CREDENTIALS[0].password],
+  ])('persists a changed demo password for %s', async (_role, email, password) => {
+    await authService.signIn(email, password);
+    await expect(authService.changePassword('incorrect', 'NewPassword123', 'NewPassword123')).rejects.toThrow('Current password is incorrect.');
+    await authService.changePassword(password, 'NewPassword123', 'NewPassword123');
+    signOut();
+    await expect(authService.signIn(email, password)).rejects.toThrow('Email or password is incorrect.');
+    await expect(authService.signIn(email, 'NewPassword123')).resolves.toMatchObject({ status: 'approved' });
+  });
+
   it.each(DEMO_ROLE_CREDENTIALS)('signs in the $role demo account and restores its session', async ({ role, email, password }) => {
     await expect(authService.signIn(email, 'wrong-password')).rejects.toThrow('Email or password is incorrect.');
     await expect(authService.signIn(email, password)).resolves.toMatchObject({ status: 'approved', user: { role, email } });

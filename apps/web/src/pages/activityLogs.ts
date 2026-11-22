@@ -2,6 +2,8 @@ import type { ActivityLog, Tank } from '@hydrosense/shared';
 import { activityHatcheryName, toCsv } from '@hydrosense/shared';
 
 function manilaTimestamp(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Unavailable';
   return new Intl.DateTimeFormat('en-PH', {
     timeZone: 'Asia/Manila',
     year: 'numeric',
@@ -10,7 +12,7 @@ function manilaTimestamp(value: string) {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
-  }).format(new Date(value));
+  }).format(date);
 }
 
 function manualReadingsText(log: ActivityLog) {
@@ -50,10 +52,12 @@ export function activityLogCsv(logs: ActivityLog[], tanks: Tank[]) {
 }
 
 export function manilaDate(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Manila',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date(value));
+  }).format(date);
 }

@@ -11,4 +11,42 @@ describe('HTTP API authorization errors', () => {
     const api = new HttpApiClient('https://example.test');
     await expect(api.listValidationRows()).rejects.toThrow(`HydroSense API ${status}`);
   });
+
+  it('notifies the caller only when an authenticated request receives 401', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 401 }))
+      .mockResolvedValueOnce(new Response('', { status: 403 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onUnauthorized = vi.fn();
+    const api = new HttpApiClient('https://example.test', () => 'current-token', undefined, onUnauthorized);
+    await expect(api.listTanks()).rejects.toThrow('401');
+    await expect(api.listTanks()).rejects.toThrow('403');
+    expect(onUnauthorized).toHaveBeenCalledOnce();
+    expect(onUnauthorized).toHaveBeenCalledWith('current-token');
+  });
+
+  it('identifies the failing endpoint without exposing query parameters', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":"Internal server error."}', { status: 500 })));
+    const api = new HttpApiClient('https://example.test');
+    await expect(api.listAlerts('tank-1')).rejects.toThrow('HydroSense API 500 (/v1/alerts): {"error":"Internal server error."}');
+  });
+});
+
+describe('HTTP API list responses', () => {
+  it('treats null and empty list payloads as empty collections', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('null', { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response('[]', { status: 200 })));
+    const api = new HttpApiClient('https://example.test');
+    await expect(api.listTanks()).resolves.toEqual([]);
+    await expect(api.listActivityLogs()).resolves.toEqual([]);
+    await expect(api.listThresholds()).resolves.toEqual([]);
+  });
+
+  it('surfaces a non-list response instead of hiding a malformed payload', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })));
+    const api = new HttpApiClient('https://example.test');
+    await expect(api.listDeviceStatuses()).rejects.toThrow('invalid list for /v1/devices/status');
+  });
 });

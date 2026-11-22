@@ -622,6 +622,7 @@ describe('themed dashboard routes', () => {
       id: 'invalid', tankId: 'tank-a', timestamp: new Date(Date.now() - 7 * 3_600_000).toISOString(),
       temperature: 126, doMgL: 2, ph: 7,
     });
+
     window.history.replaceState({}, '', '/');
     render(<App />);
     expect(await screen.findByText(/Offline, last reading 7 h ago/)).toBeInTheDocument();
@@ -629,6 +630,30 @@ describe('themed dashboard routes', () => {
     expect(within(readings).getByText('Check probe')).toBeInTheDocument();
     expect(within(readings).queryByText('Critical')).not.toBeInTheDocument();
     expect(screen.getByText('Reading status unavailable while offline')).toBeInTheDocument();
+  });
+
+  it('validates password changes and displays errors and success', async () => {
+    signInAs('operator');
+    const change = vi.spyOn(authService, 'changePassword')
+      .mockRejectedValueOnce(new Error('Current password is incorrect.'))
+      .mockResolvedValueOnce();
+    window.history.replaceState({}, '', '/profile');
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Change password' }));
+    const dialog = screen.getByRole('dialog', { name: 'Change password' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm change' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Enter your current password.');
+    expect(change).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByLabelText('Current password'), { target: { value: 'old-password' } });
+    fireEvent.change(within(dialog).getByLabelText('New password'), { target: { value: 'new-password' } });
+    fireEvent.change(within(dialog).getByLabelText('Confirm new password'), { target: { value: 'new-password' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm change' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Current password is incorrect.');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm change' }));
+    expect(await screen.findByText('Password changed successfully.')).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('dialog', { name: 'Change password' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(screen.getByLabelText('Current password')).toHaveValue('');
   });
 
   it.each(['operator', 'manager', 'admin'] as const)('shows profile sections and unavailable actions for %s', async (role) => {
@@ -650,7 +675,7 @@ describe('themed dashboard routes', () => {
     expect(screen.queryByText(/valid for sms/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Phone on file:/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Email on file:/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Change password' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Change password' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Change password' }).closest('.profile-group')).toHaveAttribute('aria-labelledby', 'profile-details-title');
     expect(screen.queryByText('Select a hatchery to view its Tank 01 device.')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign out other devices' })).not.toBeInTheDocument();
@@ -773,6 +798,20 @@ describe('themed dashboard routes', () => {
     rendered.unmount();
     queryClient.clear();
     signInAs('manager');
+    vi.spyOn(api, 'listTanks').mockResolvedValue([
+      { id: 'calibration-tank', name: 'Sagay tank', site: 'Sagay Hatchery', rearingStartDate: '2026-01-01', deviceId: 'device-1' },
+    ]);
+    const listCalibrationLogs = vi.spyOn(api, 'listCalibrationLogs').mockResolvedValue([{
+      id: 'calibration-1',
+      tankId: 'calibration-tank',
+      parameter: 'ph',
+      standard: 'pH 7.00 buffer',
+      before: 6.8,
+      after: 7,
+      date: '2026-11-20T08:00:00.000Z',
+      nextDue: '2030-11-20T08:00:00.000Z',
+      user: 'Test technician',
+    }]);
     window.history.replaceState({}, '', '/calibration');
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Calibration & Maintenance', level: 1 })).toBeInTheDocument();
@@ -780,9 +819,18 @@ describe('themed dashboard routes', () => {
     const form = screen.getByRole('heading', { name: 'Log calibration' }).closest('form');
     const dueDates = screen.getByRole('heading', { name: 'Calibration due dates' }).closest('section');
     const status = screen.getByRole('heading', { name: 'Calibration status' }).closest('section');
-    expect(form?.parentElement).toBe(dueDates?.parentElement);
-    expect(status).toHaveClass('dash-calibration-summary');
+    expect(await screen.findByRole('cell', { name: 'Test technician' })).toBeInTheDocument();
+    expect(listCalibrationLogs).toHaveBeenCalledWith('calibration-tank');
+    const table = dueDates?.querySelector('table');
+    expect(table).not.toBeNull();
+    for (const header of ['Parameter', 'Standard', 'Before', 'After', 'Date (PHT)', 'Next due', 'Technician']) {
+      expect(within(table!).getByRole('columnheader', { name: header })).toBeInTheDocument();
+    }
+    expect(form?.parentElement).toHaveClass('dash-calibration-top');
+    expect(dueDates?.parentElement).toBe(form?.parentElement);
+    expect(status?.parentElement).toHaveClass('dash-calibration');
     expect(status?.parentElement).not.toBe(form?.parentElement);
+    expect(status).toHaveClass('dash-calibration-summary');
   });
 
   it('guards the legacy thresholds route from operators', async () => {

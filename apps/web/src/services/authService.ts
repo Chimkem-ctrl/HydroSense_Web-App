@@ -1,4 +1,4 @@
-import { formatSignupAddress } from '@hydrosense/shared';
+import { changeSupabasePassword, formatSignupAddress, validatePasswordChange } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
 import { DATA_MODE } from '../app/config';
 import type {
@@ -59,6 +59,7 @@ const ADMIN_AVATAR_KEY = 'hydrosense.auth.admin-avatar.v1';
 const DEMO_ROLES_SEEDED_KEY = 'hydrosense.auth.demo-roles-seeded.v1';
 const ADMIN_ID = 'demo-admin';
 const ADMIN_SALT = 'hydrosense-demo-admin-v2';
+const ADMIN_PASSWORD_KEY = 'hydrosense.auth.admin-password.v1';
 const DUMMY_SALT = 'hydrosense-auth-invalid-account-v2';
 const AUTH_CHANGE_EVENT = 'hydrosense:auth-change';
 const PROFILE_AVATAR_MAX_BYTES = 2 * 1024 * 1024;
@@ -66,6 +67,10 @@ const PROFILE_AVATAR_INPUT_MAX_BYTES = 10 * 1024 * 1024;
 const PROFILE_AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 type ReviewRole = Exclude<Role, 'admin'>;
+
+export function getApiAccessToken(): string | null {
+  return window.localStorage.getItem('hydrosense.auth.access-token');
+}
 
 const adminUser: AuthUser & { role: 'admin'; status: 'approved' } = {
   id: ADMIN_ID,
@@ -393,6 +398,43 @@ export function signOut() {
 }
 
 export const authService = {
+  async changePassword(current: string, next: string, confirmation: string): Promise<void> {
+    const issue = validatePasswordChange(current, next, confirmation);
+    if (issue) throw new Error(issue);
+    const user = getCurrentUser();
+    if (!user) throw new Error('Your session has expired. Sign in again.');
+    if (DATA_MODE === 'api') {
+      const token = getApiAccessToken();
+      if (!token) throw new Error('Your session has expired. Sign in again.');
+      await changeSupabasePassword({
+        url: SUPABASE_URL, apiKey: API_KEY, token, userId: user.id, email: user.email, current, next,
+        isCurrentSession: () => getApiAccessToken() === token,
+      });
+      return;
+    }
+    const accounts = readAccounts();
+    const index = accounts.findIndex((account) => account.user.id === user.id);
+    const account = index >= 0 ? accounts[index] : null;
+    const salt = user.id === ADMIN_ID ? ADMIN_SALT : account?.passwordSalt;
+    const expected = user.id === ADMIN_ID
+      ? window.localStorage.getItem(ADMIN_PASSWORD_KEY) ?? await hashPassword(DEMO_ADMIN_CREDENTIALS.password, ADMIN_SALT)
+      : account?.passwordHash;
+    if (!salt || !expected) throw new Error('Your demo account could not be found.');
+    if (!secureEquals(await hashPassword(current, salt), expected)) throw new Error('Current password is incorrect.');
+    const passwordHash = await hashPassword(next, salt);
+    if (getCurrentUser()?.id !== user.id) throw new Error('Your session changed. Sign in again before changing your password.');
+    if (user.id === ADMIN_ID) {
+      try { window.localStorage.setItem(ADMIN_PASSWORD_KEY, passwordHash); }
+      catch (error) { throw new Error(`Could not save your demo password: ${String(error)}`); }
+    } else {
+      const latest = readAccounts();
+      const latestIndex = latest.findIndex((item) => item.user.id === user.id && item.passwordHash === expected);
+      if (latestIndex < 0) throw new Error('Your account changed. Please try again.');
+      latest[latestIndex] = { ...latest[latestIndex], passwordHash };
+      writeAccounts(latest);
+    }
+  },
+
   async getProfileAvatarUrl(): Promise<string | undefined> {
     const user = getCurrentUser();
     if (!user) throw new Error('Sign in to view your profile picture.');
@@ -542,7 +584,7 @@ export const authService = {
       ? {
         user: adminUser,
         passwordSalt: ADMIN_SALT,
-        passwordHash: await hashPassword(DEMO_ADMIN_CREDENTIALS.password, ADMIN_SALT),
+        passwordHash: window.localStorage.getItem(ADMIN_PASSWORD_KEY) ?? await hashPassword(DEMO_ADMIN_CREDENTIALS.password, ADMIN_SALT),
       }
       : accounts.find((item) => item.user.email.toLowerCase() === normalizedEmail);
 

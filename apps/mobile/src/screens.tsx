@@ -160,14 +160,14 @@ export function HomeScreen() {
     <View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700', letterSpacing: 1 }}>WATER QUALITY MONITORING</Text><Text style={{ color: colors.ink, fontSize: uiScale.type.title, fontWeight: '500' }}>Welcome, {user?.name}.</Text></View>
     <Title icon={<Activity size={23} color={colors.teal} />} detail={tank ? `${tank.name} · ${tank.site} · rearing day ${getRaisingDay(tank.rearingStartDate)}/21` : 'Live water-quality status'}>Live monitor</Title>
     <TankPicker />
-    {tanksLoading || (Boolean(tankId) && isLoading) || thresholds.isLoading ? <StateMessage message="Loading latest readings and thresholds…" loading /> : tanksError ? null : isError || thresholds.isError ? <Card><StateMessage message={`Could not load readings or thresholds: ${(readingError ?? thresholds.error)?.message ?? 'Check your connection.'}`} /><Button label="Retry" onPress={() => { void refetch(); void thresholds.refetch(); }} secondary /></Card> : reading && statuses && thresholds.data ? <>
+    {tanksLoading || (Boolean(tankId) && isLoading) || (Boolean(tankId) && thresholds.isLoading) ? <StateMessage message="Loading latest readings and thresholds…" loading /> : tanksError ? null : !tankId ? null : isError || thresholds.isError ? <Card><StateMessage message={`Could not load readings or thresholds: ${(readingError ?? thresholds.error)?.message ?? 'Check your connection.'}`} /><Button label="Retry" onPress={() => { void refetch(); void thresholds.refetch(); }} secondary /></Card> : reading && statuses && thresholds.data ? <>
       {freshness?.stale && <View accessibilityLiveRegion="polite" style={{ backgroundColor: mode === 'dark' ? '#3d354d' : '#fff7e6', borderColor: mode === 'dark' ? '#b5a68f' : '#d4bd94', borderWidth: 1, borderRadius: uiScale.radius.control, paddingVertical: uiScale.spacing[3], paddingHorizontal: uiScale.spacing[4] }}>
         <Text style={{ color: colors.ink, lineHeight: 20 }}><Text style={{ color: colors.warning, fontWeight: '700' }}>Offline, last reading {readingAge(freshness.ageMs)}.</Text>{' '}Showing the latest available values.</Text>
       </View>}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>
         {(['temperature', 'do', 'ph'] as const).map((parameter) => <View key={parameter} style={{ width: width >= 950 ? '32%' : width >= 600 ? '48%' : '100%' }}><ReadingCard parameter={parameter} reading={reading} threshold={getConfiguredThreshold(thresholds.data, parameter)} stale={freshness?.stale ?? false} /></View>)}
       </View>
-      <Card title="Last update"><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text></Card>
+      <Card title="Last update"><View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text><Text style={{ color: colors.muted }}>Times shown in Asia/Manila.</Text></View></Card>
       <Card title="Device connection">
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: deviceExpanded }} onPress={() => setDeviceExpanded((current) => !current)} hitSlop={{ top: 8, bottom: 8 }} style={{ paddingVertical: uiScale.spacing[1] }}><Text style={{ color: colors.teal }}>{deviceExpanded ? 'Hide device details' : 'Show device details'}</Text></Pressable>
         {deviceExpanded && (devices.isLoading ? <StateMessage message="Loading device status…" loading /> : devices.isError ? <StateMessage message={`Could not load device status: ${devices.error.message}`} /> : !device ? <StateMessage message="No device is registered for this tank." /> : <>
@@ -582,10 +582,12 @@ export function ActivityLogsScreen() {
     .filter((log) => activityInHatchery(log, allTanks, hatchery))
     .filter((log) => kindFilter === 'all' || log.kind === kindFilter)
     .filter((log) => {
-      const date = getManilaDateString(new Date(log.occurredAt));
+      const timestamp = Date.parse(log.occurredAt ?? '');
+      if (!Number.isFinite(timestamp)) return !dateFrom && !dateTo;
+      const date = getManilaDateString(new Date(timestamp));
       return (!dateFrom || date >= dateFrom) && (!dateTo || date <= dateTo);
     })
-    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+    .sort((a, b) => String(b.occurredAt ?? '').localeCompare(String(a.occurredAt ?? '')));
   const tankNames = new Map((tanks.tanks ?? []).map((tank) => [tank.id, tank.name]));
   async function shareLogs() {
     setExportingLogs(true);
@@ -593,7 +595,7 @@ export function ActivityLogsScreen() {
       if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
       const csv = toCsv([
         ['Hatchery', 'Time (PHT)', 'Kind', 'Type', 'Tank / scope', 'Details', 'Operator', 'Water change (%)', 'Water source', 'Impact', 'DO (mg/L)', 'Temperature (°C)', 'pH', 'Salinity (ppt)', 'Ammonia (mg/L)', 'Method'],
-        ...filteredLogs.map((log) => [activityHatcheryName(log, allTanks), formatManilaDateTime(log.occurredAt), log.kind, log.type, log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId, log.notes, log.operator, log.waterChangePercent, log.waterSource, log.impact, log.manualReadings?.dissolvedOxygen, log.manualReadings?.temperature, log.manualReadings?.ph, log.manualReadings?.salinity, log.manualReadings?.ammonia, log.manualReadings?.method]),
+        ...filteredLogs.map((log) => [activityHatcheryName(log, allTanks), log.occurredAt && Number.isFinite(Date.parse(log.occurredAt)) ? formatManilaDateTime(log.occurredAt) : 'Unavailable', log.kind ?? '', log.type ?? '', log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId ?? '', log.notes ?? '', log.operator ?? '', log.waterChangePercent, log.waterSource, log.impact, log.manualReadings?.dissolvedOxygen, log.manualReadings?.temperature, log.manualReadings?.ph, log.manualReadings?.salinity, log.manualReadings?.ammonia, log.manualReadings?.method]),
       ]);
       const encoded = encodeURIComponent(csv).replace(/%([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
       const fileUri = `${FileSystem.documentDirectory}hydrosense-activity-logs-${Date.now()}.csv`;
@@ -663,14 +665,14 @@ export function ActivityLogsScreen() {
         </View>
       </Card>
       <Card title="Activity records" action={user?.role === 'admin' ? <Pressable accessibilityRole="button" accessibilityLabel={exportingLogs ? 'Preparing CSV' : 'Share CSV'} accessibilityState={{ disabled: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 }} disabled={exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0} onPress={() => void shareLogs()} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface, opacity: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 ? 0.5 : 1 }}><FileDown size={18} color={colors.teal} /></Pressable> : undefined}>
-        {logs.isLoading || tanks.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message="Could not load activity logs." /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : tanks.error ? <StateMessage message={`Could not load tanks: ${tanks.error.message}`} /> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." spacious /> : <View>{filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={record.row}>
+        {logs.isLoading || tanks.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message={`Could not load activity logs: ${logs.error.message}`} /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : tanks.error ? <StateMessage message={`Could not load tanks: ${tanks.error.message}`} /> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." spacious /> : <View>{filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={record.row}>
           <View style={record.top}>
-            <Text style={record.caption}>{formatManilaDateTime(log.occurredAt)} PHT</Text>
-            <Chip label={log.kind.charAt(0).toUpperCase() + log.kind.slice(1).toLowerCase()} />
+            <Text style={record.caption}>{log.occurredAt && Number.isFinite(Date.parse(log.occurredAt)) ? `${formatManilaDateTime(log.occurredAt)} PHT` : 'Unavailable'}</Text>
+              <Chip label={String(log.kind ?? 'Activity').charAt(0).toUpperCase() + String(log.kind ?? 'Activity').slice(1).toLowerCase()} />
           </View>
-          <Text style={record.title}>{log.type}</Text>
-          <Text style={record.caption}>{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId} · {log.operator}</Text>
-          <Text style={record.body} numberOfLines={3}>{log.notes}</Text>
+            <Text style={record.title}>{log.type ?? '—'}</Text>
+            <Text style={record.caption}>{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId ?? '—'} · {log.operator ?? '—'}</Text>
+            <Text style={record.body} numberOfLines={3}>{log.notes ?? '—'}</Text>
         </View>)}</View>}
       </Card>
     </View>
@@ -937,6 +939,8 @@ export function HistoryScreen() {
 export function ReportsScreen() {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
+  const caption = { color: colors.muted, fontSize: uiScale.type.caption, textTransform: 'uppercase' as const };
+  const numeric = { color: colors.ink, fontVariant: ['tabular-nums'] as const, textAlign: 'right' as const };
   const { tankId, tanks, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const { user } = useSession();
   const [selectedTanks, setSelectedTanks] = useState<string[] | null>(null);
@@ -1062,7 +1066,7 @@ export function ReportsScreen() {
     </Card>
     {sections.includes('statistics') && <Card title="Readings in range">
       <Text style={{ color: colors.muted }}>Percentage of valid readings within configured thresholds</Text>
-      {!validRange || !selectedIds.length ? <StateMessage message="Select a tank and valid dates to view the analysis." /> : preview.isLoading ? <StateMessage message="Preparing analysis…" loading /> : preview.isError ? <><StateMessage message={`Could not prepare analysis: ${preview.error.message}`} /><Button label="Retry" secondary onPress={() => void preview.refetch()} /></> : model?.statistics.map((stat) => <View key={stat.parameter} style={{ gap: 5, marginTop: 10 }}>
+      {!tanks.length ? <StateMessage message="No tanks are available for this hatchery." /> : !validRange || !selectedIds.length ? <StateMessage message="Select a tank and valid dates to view the analysis." /> : preview.isLoading ? <StateMessage message="Preparing analysis…" loading /> : preview.isError ? <><StateMessage message={`Could not prepare analysis: ${preview.error.message}`} /><Button label="Retry" secondary onPress={() => void preview.refetch()} /></> : model?.statistics.map((stat) => <View key={stat.parameter} style={{ gap: 5, marginTop: 10 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: colors.ink }}>{stat.parameter === 'temperature' ? 'Temperature' : stat.parameter === 'do' ? 'DO' : 'pH'}</Text><Text style={{ color: colors.ink }}>{stat.percentInRange === null ? 'No data' : `${stat.percentInRange.toFixed(1)}%`}</Text></View>
         <View style={{ height: 16, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' }}><View style={{ height: '100%', width: `${stat.percentInRange ?? 0}%`, backgroundColor: '#087c78' }} /></View>
       </View>)}
@@ -1072,6 +1076,45 @@ export function ReportsScreen() {
         {(['pdf', 'csv', 'xlsx'] as const).map((value) => <ReportChoice key={value} kind="radio" label={value.toUpperCase()} selected={format === value} onPress={() => setFormat(value)} />)}
       </View>
       <Button label={sharing ? 'Preparing report…' : 'Share report'} disabled={sharing} onPress={() => void shareReport()} soft />
+    </Card>
+    <Card title="Report preview">
+      {user && can(user.role, 'exportReports') && <Button label="Print / Save PDF" disabled={sharing || !model || preview.isFetching} onPress={() => void shareReport('pdf')} />}
+      {!validRange ? <StateMessage message="Enter a valid start and end date." /> : !tanks.length ? <StateMessage message="No tanks are available for this hatchery." /> : !selectedIds.length ? <StateMessage message="Select a tank to generate the report." /> : preview.isLoading ? <StateMessage message="Preparing report…" loading /> : preview.isError ? <><StateMessage message={preview.error instanceof Error ? preview.error.message : 'Could not prepare report.'} /><Button label="Retry" secondary onPress={() => void preview.refetch()} /></> : model && <>
+        <View style={{ gap: uiScale.spacing[2] }}>
+          <Text style={caption}>Report ID</Text><Text numberOfLines={1} ellipsizeMode="tail" style={{ color: colors.ink }}>{model.id}</Text>
+          <DataRow label="Prepared by" value={`${model.generatedBy.name} (${model.generatedBy.role})`} />
+          <DataRow label="Tanks / period" value={`${model.tanks.map((tank) => tank.name).join(', ')} · ${from} to ${to} PHT`} />
+          <DataRow label="Generated" value={`${formatManilaDateTime(model.generatedAt)} PHT`} />
+        </View>
+        {sections.includes('summary') && <View style={{ borderLeftWidth: 3, borderLeftColor: colors.teal, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={{ color: colors.ink }}>{model.summary}</Text></View>}
+        {sections.includes('statistics') && <ScrollView horizontal accessibilityLabel="Report statistics table">
+          <View>
+            <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderColor: colors.border, paddingVertical: uiScale.spacing[2] }}>
+              {['Parameter', 'Min', 'Max', 'Mean', 'Std dev', 'In range', 'Excursions', 'Longest (h)'].map((value, index) => <Text key={value} style={[caption, { width: index === 0 ? 110 : 92, textAlign: index ? 'right' : 'left' }]}>{value}</Text>)}
+            </View>
+            {model.statistics.map((row) => <View key={row.parameter} style={{ flexDirection: 'row', borderBottomWidth: 1, borderColor: colors.border, paddingVertical: uiScale.spacing[3] }}>
+              <Text style={{ color: colors.ink, width: 110 }}>{row.parameter === 'do' ? 'DO' : row.parameter === 'ph' ? 'pH' : 'Temperature'}</Text>
+              {[row.min?.toFixed(2) ?? '—', row.max?.toFixed(2) ?? '—', row.mean?.toFixed(2) ?? '—', row.standardDeviation?.toFixed(2) ?? '—', row.percentInRange == null ? '—' : `${row.percentInRange.toFixed(1)}%`, String(row.excursions), row.longestExcursionHours.toFixed(1)].map((value, index) => <Text key={index} style={[numeric, { width: 92 }]}>{value}</Text>)}
+            </View>)}
+          </View>
+        </ScrollView>}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>
+          {sections.includes('alerts') && <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Alerts</Text><Text style={{ color: colors.ink }}>{model.alertCounts.critical} critical · {model.alertCounts.warning} warning · {model.alertCounts.open} open · {model.alertCounts.acknowledged} acknowledged · {model.alertCounts.resolved} resolved</Text></View>}
+          <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Thresholds used</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[1] }}>{model.thresholds.map((threshold) => <Chip key={threshold.parameter} label={`${threshold.parameter} ${threshold.min ?? '—'}–${threshold.max ?? '—'}`} />)}</View></View>
+          <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Expected readings</Text><Text style={{ color: colors.ink }}>Expected {model.dataQuality.expectedReadings} · Received {model.dataQuality.receivedReadings} ({model.dataQuality.receivedPercent.toFixed(1)}%)</Text></View>
+          <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Activity logs</Text><Text style={numeric}>{model.activityLogs.length}</Text></View>
+          {canAccess(user?.role ?? null, 'canCalibrate') && <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Calibration</Text><Text style={numeric}>{model.calibrationLogs.length}</Text></View>}
+          {canAccess(user?.role ?? null, 'validation') && <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Validation</Text><Text style={numeric}>{model.validationRows.length}</Text></View>}
+        </View>
+        {sections.includes('raw-readings') && <View>
+          <Text style={caption}>Showing first {Math.min(10, model.rawReadings.length)} of {model.rawReadings.length} readings</Text>
+          {model.rawReadings.slice(0, 10).map((row) => <View key={row.id} style={{ paddingVertical: uiScale.spacing[3], borderBottomWidth: 1, borderColor: colors.border, gap: uiScale.spacing[1] }}>
+            <Text style={{ color: colors.ink }}>{formatManilaDateTime(row.timestamp)} · {model.tanks.find((tank) => tank.id === row.tankId)?.name ?? 'Unknown tank'}</Text>
+            <Text style={numeric}>Temp {row.temperature.toFixed(2)} · DO {row.doMgL.toFixed(2)} · pH {row.ph.toFixed(2)}</Text>
+          </View>)}
+        </View>}
+        {user && !can(user.role, 'exportReports') && <Text style={{ color: colors.muted }}>Operators may view reports; export is available to managers and administrators.</Text>}
+      </>}
     </Card>
   </Page>;
 }

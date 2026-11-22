@@ -6,8 +6,9 @@ import { api } from '../app/api';
 import { tierConfig } from '../app/config';
 import ReportsPage from './ReportsPage';
 
+const selectedTankContext = vi.hoisted(() => ({ hatchery: 'all' }));
 vi.mock('../app/auth/RoleContext', () => ({ useRole: () => ({ role: 'admin', userName: 'Test Admin' }) }));
-vi.mock('../app/tank/TankContext', () => ({ useSelectedTank: () => ({ tankId: 'tank-1', hatchery: 'all', setHatchery: vi.fn(), locations: [{ id: 'camiguin-sagay', name: 'Sagay' }, { id: 'camiguin-benoni', name: 'Benoni' }] }) }));
+vi.mock('../app/tank/TankContext', () => ({ useSelectedTank: () => ({ tankId: 'tank-1', hatchery: selectedTankContext.hatchery, setHatchery: vi.fn(), locations: [{ id: 'camiguin-sagay', name: 'Sagay' }, { id: 'camiguin-benoni', name: 'Benoni' }] }) }));
 
 afterEach(() => {
   cleanup();
@@ -16,6 +17,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  selectedTankContext.hatchery = 'all';
   vi.spyOn(api, 'listTanks').mockResolvedValue([{ id: 'tank-1', name: 'Tank 01', site: 'Test site', rearingStartDate: '2025-01-01', deviceId: 'device-1' }]);
   vi.spyOn(api, 'listReadings').mockResolvedValue([{
     id: 'reading-1', tankId: 'tank-1', timestamp: new Date().toISOString(), temperature: 28, doMgL: 5, ph: 7.4,
@@ -34,6 +36,22 @@ function renderReportsPage() {
 }
 
 describe('ReportsPage filters dropdown', () => {
+  it('shows a clean empty state when Benoni has no tanks', async () => {
+    selectedTankContext.hatchery = 'camiguin-benoni';
+    vi.mocked(api.listTanks).mockResolvedValue([]);
+    vi.mocked(api.listThresholds).mockRejectedValue(new Error('Thresholds should not be requested without tanks.'));
+    renderReportsPage();
+    expect(await screen.findByText('No tanks are available for the selected hatchery.')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(api.listThresholds).not.toHaveBeenCalled();
+  });
+
+  it('prepares reports without requesting unused device status', async () => {
+    renderReportsPage();
+    expect(await screen.findByText('Water Quality Report')).toBeInTheDocument();
+    expect(api.listDeviceStatuses).not.toHaveBeenCalled();
+  });
+
   it('sets the current print-header time and restores the previous value after printing', () => {
     const root = document.documentElement;
     const property = '--report-print-header-time';

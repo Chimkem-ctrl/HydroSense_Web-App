@@ -9,6 +9,7 @@ export * from './rules/status';
 export * from './rules/reading';
 export * from './rules/advisory';
 export * from './validation';
+export * from './password';
 export * from './format';
 export * from './mock/data';
 export * from './api/types';

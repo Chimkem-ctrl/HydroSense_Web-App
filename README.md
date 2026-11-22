@@ -91,7 +91,11 @@ In mock mode, account records and a session containing only the user ID are stor
 
 These accounts exist only in the current browser and do not authenticate with the API. They are for testing only; never use their passwords for real accounts. New signup requests remain pending until an administrator assigns a role and approves them. API mode uses the configured backend; identity, approval and authorization must be enforced there.
 
-On the web, a signed-out visit to sign-in or a protected page starts at the splash screen. Get Started opens sign-in, and an approved sign-in opens the dashboard (Live Monitor). Existing signed-in sessions can open protected links directly; signup and password recovery remain public.
+My Profile lets signed-in users change their password after verifying the current
+password. API mode uses the configured Supabase Auth service; demo-mode changes
+apply only to the current browser and persist in local storage.
+
+On the web, a signed-out visit to sign-in or a protected page starts at the splash screen. Get Started opens sign-in, and an approved sign-in opens the dashboard (Live Monitor). Signed-in users can open protected links during a running session; web sessions are cleared on each app launch, including a page reload, and API sessions expire with their access token. Signup and password recovery remain public.
 
 The web header provides admins with one hatchery selector across tabs; managers and operators use their assigned hatchery. The selector includes Sagay, Benoni, and API tank locations, even when a location has no tanks. Reports and activity exports use the selected hatchery; legacy hatchery-wide activity is assigned to Sagay. Audit and system records lack hatchery identifiers, so they are available only with All hatcheries selected. Apply the activity hatchery migration before deploying the updated API function.
 Report statistics chart the percentage of valid readings within configured thresholds; the chart is included in PDF exports. Web report PDFs use A4 print layouts.

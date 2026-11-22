@@ -1,6 +1,8 @@
 import {
   HttpApiClient,
   WebSocketLiveClient,
+  changeSupabasePassword,
+  validatePasswordChange,
 } from '@hydrosense/shared';
 import type { LiveClient } from '@hydrosense/shared';
 import type { MeasuredParameter, Role, Threshold } from '@hydrosense/shared';
@@ -19,6 +21,19 @@ const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim().replace(/\/$/, 
 let accessToken: string | null = null;
 export function setMobileAccessToken(token: string | null) {
   accessToken = token;
+}
+
+export async function changePassword(userId: string, email: string, current: string, next: string, confirmation: string): Promise<void> {
+  const issue = validatePasswordChange(current, next, confirmation);
+  if (issue) throw new Error(issue);
+  const token = accessToken;
+  if (!token) throw new Error('Your session has expired. Sign in again.');
+  if (!supabaseUrl) throw new Error('Password changes require a configured Supabase URL.');
+  if (!API_KEY) throw new Error('Supabase publishable key is not configured.');
+  await changeSupabasePassword({
+    url: supabaseUrl, apiKey: API_KEY, token, userId, email, current, next,
+    isCurrentSession: () => accessToken === token,
+  });
 }
 
 export interface PendingAccount {

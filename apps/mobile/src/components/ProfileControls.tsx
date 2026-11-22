@@ -22,13 +22,6 @@ export function AlertPreferenceControls() {
   </>;
 }
 
-export function SecurityControls() {
-  const { colors } = useTheme();
-  return <>
-    <Button label="Change password" secondary disabled onPress={() => {}} />
-  </>;
-}
-
 export function DeviceMaintenanceControls({ role }: { role: Role }) {
   const { colors } = useTheme();
   return <>

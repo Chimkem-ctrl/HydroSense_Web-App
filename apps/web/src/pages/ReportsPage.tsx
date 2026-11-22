@@ -158,13 +158,15 @@ export default function ReportsPage() {
     queryKey: ['report-data', role, hatchery, from, to],
     queryFn: async (): Promise<ReportData> => {
       const tanks = (await api.listTanks()).filter((tank) => tankInHatchery(tank, hatchery));
-      const [readingGroups, alertGroups, thresholds, activityLogs, calibrationLogs, deviceStatuses, validationGroups] = await Promise.all([
+      if (!tanks.length) {
+        return { tanks, readings: [], alerts: [], thresholds: [], advisories: {}, activityLogs: [], calibrationLogs: [], validationRows: [], deviceStatuses: [] };
+      }
+      const [readingGroups, alertGroups, thresholds, activityLogs, calibrationLogs, validationGroups] = await Promise.all([
         Promise.all(tanks.map((tank) => loadReportReadings(tank.id, Date.parse(manilaStart(from)), Date.parse(manilaEnd(to))))),
         Promise.all(tanks.map((tank) => api.listAlerts(tank.id))),
         api.listThresholds(),
         api.listActivityLogs(),
         canViewCalibration ? api.listCalibrationLogs() : Promise.resolve([]),
-        api.listDeviceStatuses(),
         canViewValidation ? Promise.all(tanks.map((tank) => api.listValidationRows(tank.id))) : Promise.resolve([]),
       ]);
       return {
@@ -176,7 +178,7 @@ export default function ReportsPage() {
         activityLogs,
         calibrationLogs,
         validationRows: validationGroups.flat(),
-        deviceStatuses,
+        deviceStatuses: [],
       };
     },
   });
@@ -396,7 +398,7 @@ export default function ReportsPage() {
                     <table className="dash-report-raw-table">
                       <thead><tr><th scope="col">Time</th><th scope="col">Tank</th><th className="table-numeric" scope="col">Temp (°C)</th><th className="table-numeric" scope="col">DO (mg/L)</th><th className="table-numeric" scope="col">pH</th></tr></thead>
                       <tbody>
-                        {rawReadingsPreview.map((row) => <tr key={row.id}><td>{formatManilaDateTime(row.timestamp, { year: '2-digit', month: 'numeric', day: 'numeric' })}</td><td>{model.tanks.find((tank) => tank.id === row.tankId)?.name ?? row.tankId}</td><td className="table-numeric">{row.temperature.toFixed(2)}</td><td className="table-numeric">{row.doMgL.toFixed(2)}</td><td className="table-numeric">{row.ph.toFixed(2)}</td></tr>)}
+                        {rawReadingsPreview.map((row) => <tr key={row.id}><td>{formatManilaDateTime(row.timestamp, { year: '2-digit', month: 'numeric', day: 'numeric' })}</td><td>{model.tanks.find((tank) => tank.id === row.tankId)?.name ?? row.tankId}</td><td className="table-numeric">{Number.isFinite(row.temperature) ? row.temperature.toFixed(2) : '—'}</td><td className="table-numeric">{Number.isFinite(row.doMgL) ? row.doMgL.toFixed(2) : '—'}</td><td className="table-numeric">{Number.isFinite(row.ph) ? row.ph.toFixed(2) : '—'}</td></tr>)}
                       </tbody>
                     </table>
                   </div>

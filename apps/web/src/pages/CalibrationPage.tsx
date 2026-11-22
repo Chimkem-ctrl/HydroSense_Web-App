@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Save } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getManilaDateString } from '@hydrosense/shared';
+import { formatManilaDateTime, getManilaDateString } from '@hydrosense/shared';
 import type { CalibrationLog } from '@hydrosense/shared';
 import { api } from '../app/api';
 import { useRole } from '../app/auth/RoleContext';
@@ -111,14 +111,17 @@ export default function CalibrationPage() {
               </header>
               <div className="dash-calibration-due-content">
                 {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data?.length ? <p className="dash-calibration-empty" role="status">No calibration records are available.</p> : (
-                  <div className="table-wrap"><table className="dash-calibration-table"><thead><tr><th>Parameter / standard</th><th>Before → after</th><th>Calibrated</th><th>Next due</th></tr></thead><tbody>
+                  <div className="table-wrap"><table className="dash-calibration-table"><thead><tr><th scope="col">Parameter</th><th scope="col">Standard</th><th className="table-numeric" scope="col">Before</th><th className="table-numeric" scope="col">After</th><th scope="col">Date (PHT)</th><th scope="col">Next due</th><th scope="col">Technician</th></tr></thead><tbody>
                     {query.data.map((log) => {
                       const overdue = new Date(log.nextDue).getTime() < now;
                       return <tr key={log.id}>
-                        <td><strong>{log.parameter.toUpperCase()}</strong><small>{log.standard}</small></td>
-                        <td className="table-numeric">{log.before} → {log.after}</td>
-                        <td>{getManilaDateString(new Date(log.date))}</td>
-                        <td className={overdue ? 'row-overdue' : ''}>{getManilaDateString(new Date(log.nextDue))}{overdue ? ' · OVERDUE' : ''}<small>By {log.user}</small></td>
+                        <td>{log.parameter.toUpperCase()}</td>
+                        <td>{log.standard}</td>
+                        <td className="table-numeric">{log.before}</td>
+                        <td className="table-numeric">{log.after}</td>
+                        <td>{formatManilaDateTime(log.date)}</td>
+                        <td className={overdue ? 'row-overdue' : ''}>{formatManilaDateTime(log.nextDue)}{overdue ? ' · OVERDUE' : ''}</td>
+                        <td>{log.user}</td>
                       </tr>;
                     })}
                   </tbody></table></div>
@@ -126,44 +129,40 @@ export default function CalibrationPage() {
               </div>
             </section>
           </div>
-          <div className="dash-calibration-lower">
-            <section className="card stack dash-card dash-calibration-checklist">
-              <header className="dash-card-header">
-                <h2 className="card-title">Maintenance checklist</h2>
-                <p className="small muted dash-subtitle">Complete these informational maintenance steps.</p>
-              </header>
-              <div className="dash-list">
-                {maintenanceItems.map((item) => <label key={item} className="check-row"><input type="checkbox" checked={checked.includes(item)} onChange={(event) => setChecked((current) => event.target.checked ? [...current, item] : current.filter((value) => value !== item))} /><span>{item}</span></label>)}
+          <section className="card dash-card dash-stat dash-calibration-summary">
+            <header className="dash-card-header">
+              <h2 className="card-title">Calibration status</h2>
+              <p className="small muted dash-subtitle">Time until the soonest calibration is due.</p>
+              <StaleQueryState updatedAt={query.dataUpdatedAt} />
+            </header>
+            <div className="dash-calibration-status-content">
+              <div className="dash-stat-main">
+                <strong className="dash-stat-value">
+                  {!soonestDue ? '—' : hasOverdueCalibration ? 'Overdue' : daysUntilDue}
+                </strong>
+                {soonestDue && !hasOverdueCalibration && <span className="dash-stat-unit">days</span>}
               </div>
-              <div className="dash-checklist-progress">
-                <strong>{checked.length} / {maintenanceItems.length} complete</strong>
-                <div className="dash-checklist-meter" role="progressbar" aria-label="Checklist progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={checklistProgress}>
-                  <span style={{ width: `${checklistProgress}%` }} />
-                </div>
-              </div>
-            </section>
-            <div className="dash-calibration-side">
-              <section className="card dash-card dash-stat dash-calibration-summary">
-                <header className="dash-card-header">
-                  <h2 className="card-title">Calibration status</h2>
-                  <p className="small muted dash-subtitle">Time until the soonest calibration is due.</p>
-                  <StaleQueryState updatedAt={query.dataUpdatedAt} />
-                </header>
-                <div className="dash-calibration-status-content">
-                  <div className="dash-stat-main">
-                    <strong className="dash-stat-value">
-                      {!soonestDue ? '—' : hasOverdueCalibration ? 'Overdue' : daysUntilDue}
-                    </strong>
-                    {soonestDue && !hasOverdueCalibration && <span className="dash-stat-unit">days</span>}
-                  </div>
-                  <p className="small muted dash-stat-caption">{soonestDueDate ? `Next due ${soonestDueDate}` : 'No calibration logged yet'}</p>
-                </div>
-              </section>
-              <div className="dash-after-grid stack">
-                <ThresholdsPanel readOnly />
+              <p className="small muted dash-stat-caption">{soonestDueDate ? `Next due ${soonestDueDate}` : 'No calibration logged yet'}</p>
+            </div>
+          </section>
+          <div className="dash-after-grid stack">
+            <ThresholdsPanel readOnly />
+          </div>
+          <section className="card stack dash-card dash-calibration-checklist">
+            <header className="dash-card-header">
+              <h2 className="card-title">Maintenance checklist</h2>
+              <p className="small muted dash-subtitle">Complete these informational maintenance steps.</p>
+            </header>
+            <div className="dash-list">
+              {maintenanceItems.map((item) => <label key={item} className="check-row"><input type="checkbox" checked={checked.includes(item)} onChange={(event) => setChecked((current) => event.target.checked ? [...current, item] : current.filter((value) => value !== item))} /><span>{item}</span></label>)}
+            </div>
+            <div className="dash-checklist-progress">
+              <strong>{checked.length} / {maintenanceItems.length} complete</strong>
+              <div className="dash-checklist-meter" role="progressbar" aria-label="Checklist progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={checklistProgress}>
+                <span style={{ width: `${checklistProgress}%` }} />
               </div>
             </div>
-          </div>
+          </section>
         </>
       )}
       {isOperator && <div className="dash-after-grid stack"><ThresholdsPanel readOnly /></div>}

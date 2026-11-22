@@ -78,10 +78,10 @@ export default function ActivityLogsPage() {
     .filter((log) => activityInHatchery(log, tanks.data ?? [], hatchery))
     .filter((log) => kindFilter === 'all' || log.kind === kindFilter)
     .filter((log) => {
-      const date = manilaDate(log.occurredAt);
+      const date = typeof log.occurredAt === 'string' ? manilaDate(log.occurredAt) : '';
       return (!dateFrom || date >= dateFrom) && (!dateTo || date <= dateTo);
     })
-    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+    .sort((left, right) => String(right.occurredAt ?? '').localeCompare(String(left.occurredAt ?? '')));
   const tankNames = new Map((tanks.data ?? []).map((tank) => [tank.id, tank.name]));
 
   function openLog(kind: FormKind) {
@@ -167,12 +167,12 @@ export default function ActivityLogsPage() {
           <div className="table-wrap activity-log-table-wrap"><table className="activity-log-table"><thead><tr><th>Time (PHT)</th><th>Kind</th><th>Type</th><th>Tank/scope</th><th>Details</th><th>Operator</th></tr></thead><tbody>
             {filteredLogs.map((log) => (
               <tr key={log.id}>
-                <td data-label="Time (PHT)">{formatManilaDateTime(log.occurredAt)} PHT</td>
-                <td data-label="Kind">{log.kind}</td>
-                <td data-label="Type">{log.type}</td>
-                <td data-label="Tank/scope">{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId}</td>
-                <td data-label="Details">{log.notes}{log.waterChangePercent !== undefined ? ` · ${log.waterChangePercent}% exchanged` : ''}{log.impact ? ` · Impact: ${log.impact}` : ''}</td>
-                <td data-label="Operator">{log.operator}</td>
+                <td data-label="Time (PHT)">{log.occurredAt && Number.isFinite(Date.parse(log.occurredAt)) ? `${formatManilaDateTime(log.occurredAt)} PHT` : 'Unavailable'}</td>
+                <td data-label="Kind">{log.kind ?? '—'}</td>
+                <td data-label="Type">{log.type ?? '—'}</td>
+                <td data-label="Tank/scope">{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId ?? '—'}</td>
+                <td data-label="Details">{log.notes ?? '—'}{log.waterChangePercent !== undefined ? ` · ${log.waterChangePercent}% exchanged` : ''}{log.impact ? ` · Impact: ${log.impact}` : ''}</td>
+                <td data-label="Operator">{log.operator ?? '—'}</td>
               </tr>
             ))}
           </tbody></table></div>

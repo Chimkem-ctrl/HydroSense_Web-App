@@ -7,6 +7,23 @@ afterEach(() => {
 });
 
 describe('mobile pending account review', () => {
+  it('changes the signed-in user password through configured Supabase Auth', async () => {
+    vi.stubEnv('EXPO_PUBLIC_API_URL', 'https://example.test/functions/v1/api');
+    vi.stubEnv('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'public-key');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: 'verified' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: '1' })));
+    vi.stubGlobal('fetch', fetchMock);
+    const { changePassword, setMobileAccessToken } = await import('./client');
+    setMobileAccessToken('token');
+    await expect(changePassword('1', 'user@example.test', 'old-password', 'new-password', 'wrong')).rejects.toThrow('do not match');
+    expect(fetchMock).not.toHaveBeenCalled();
+    await changePassword('1', 'user@example.test', 'old-password', 'new-password', 'new-password');
+    expect(fetchMock).toHaveBeenLastCalledWith('https://example.test/auth/v1/user', expect.objectContaining({
+      method: 'PUT', headers: expect.objectContaining({ Authorization: 'Bearer token' }),
+    }));
+  });
+
   it('loads the signed-in profile and rejects invalid hatchery data', async () => {
     vi.stubEnv('EXPO_PUBLIC_DATA_MODE', 'api');
     vi.stubEnv('EXPO_PUBLIC_API_URL', 'https://example.test/api');

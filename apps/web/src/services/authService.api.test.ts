@@ -12,7 +12,36 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+async function establishSession(id: string, role: 'operator' | 'manager') {
+  window.localStorage.setItem('hydrosense.auth.access-token', 'current-token');
+  window.localStorage.setItem('hydrosense.auth.user', JSON.stringify({
+    id,
+    firstName: 'Jane',
+    lastName: 'Smith',
+    email: 'jane@example.test',
+    role,
+    requestedRole: null,
+    status: 'approved',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  }));
+  return import('./authService');
+}
+
 describe('API account review', () => {
+  it('changes the authenticated account password without replacing its session', async () => {
+    const { authService, getApiAccessToken } = await establishSession('1', 'operator');
+    const token = getApiAccessToken();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: 'verification-token' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: '1' })));
+    vi.stubGlobal('fetch', fetchMock);
+    await authService.changePassword('old-password', 'new-password', 'new-password');
+    expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('/auth/v1/user'), expect.objectContaining({
+      method: 'PUT', headers: expect.objectContaining({ Authorization: `Bearer ${token}` }),
+    }));
+    expect(getApiAccessToken()).toBe(token);
+  });
+
   it('returns the verification route and email after API signup', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       status: 'verify-email',

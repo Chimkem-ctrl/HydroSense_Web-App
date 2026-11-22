@@ -44,4 +44,11 @@ describe('activity log CSV export', () => {
     const csv = activityLogCsv([{ id: 'b', tankId: 'hatchery', hatcheryId: 'camiguin-benoni', kind: 'ENVIRONMENT', type: 'Rainfall', occurredAt: '2025-01-01T00:00:00Z', operator: 'A', notes: '' }], []);
     expect(csv).toContain('"Benoni"');
   });
+
+  it('exports records with unavailable timestamps without throwing', () => {
+    const csv = activityLogCsv([{
+      id: 'missing-time', tankId: 'hatchery', kind: 'ENVIRONMENT', type: 'Weather', occurredAt: undefined as unknown as string, operator: 'A', notes: '',
+    }], []);
+    expect(csv).toContain('"Unavailable"');
+  });
 });

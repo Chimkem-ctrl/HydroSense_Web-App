@@ -15,7 +15,8 @@ export function ReadingCard({ parameter, reading, threshold, showRangeMeter = fa
   const configuredThreshold = threshold ?? DEFAULT_THRESHOLDS.find((item) => item.parameter === parameter);
   const status = getParameterStatus(parameter, value, configuredThreshold);
   const unit = config[parameter].unit;
-  const formattedValue = formatParameter(parameter, value);
+  const valid = isValidMeasurement(parameter, value);
+  const formattedValue = valid ? formatParameter(parameter, value) : '';
   const numericValue = formattedValue.slice(0, -unit.length).trimEnd();
   const min = configuredThreshold?.min;
   const max = configuredThreshold?.max;
@@ -24,7 +25,6 @@ export function ReadingCard({ parameter, reading, threshold, showRangeMeter = fa
     : min !== undefined
       ? `Safe ≥${min} ${unit}`
       : `Safe ≤${max ?? '—'} ${unit}`;
-  const valid = isValidMeasurement(parameter, value);
   const gauge = showRangeMeter && valid && configuredThreshold ? safeRangeGauge(value, configuredThreshold) : null;
   const scaleNote = gauge ? `Display scale ${gauge.scaleMin}–${gauge.scaleMax} ${unit}${value < gauge.scaleMin || value > gauge.scaleMax ? ' · marker at scale edge' : ''}` : '';
   const distance = status.distance.replace('minimum', 'min').replace('maximum', 'max');

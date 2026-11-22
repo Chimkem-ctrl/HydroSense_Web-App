@@ -7,7 +7,7 @@ vi.mock('lucide-react-native', () => ({ RotateCcw: 'RotateCcw' }));
 vi.mock('../theme', () => ({ useTheme: () => ({ colors: { ink: '#000', muted: '#777', border: '#c4d2e8' } }) }));
 vi.mock('./ui', () => ({ Button: 'Button' }));
 
-import { AlertPreferenceControls, DeviceMaintenanceControls, SecurityControls } from './ProfileControls';
+import { AlertPreferenceControls, DeviceMaintenanceControls } from './ProfileControls';
 
 function elements(node: ReactNode, type: string): ReactElement<Record<string, unknown>>[] {
   if (!isValidElement<Record<string, unknown>>(node)) return [];
@@ -30,12 +30,6 @@ describe('profile placeholder controls', () => {
     expect(wrappers).toHaveLength(0);
     expect(elements(controls, 'Text').map((item) => item.props.children)).not.toContain('Phone on file:');
     expect(elements(controls, 'Text').map((item) => item.props.children)).not.toContain('Email on file:');
-  });
-
-  it('shows disabled security buttons', () => {
-    const buttons = elements(SecurityControls(), 'Button');
-    expect(buttons.map((item) => item.props.label)).toEqual(['Change password']);
-    expect(buttons.every((item) => item.props.disabled === true)).toBe(true);
   });
 
   it.each([

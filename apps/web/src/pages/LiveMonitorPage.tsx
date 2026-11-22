@@ -27,11 +27,15 @@ export default function LiveMonitorPage() {
   const devices = useDeviceStatuses();
   const thresholds = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
   const device = devices.data?.find((item) => item.deviceId === tank?.deviceId);
-  const deviceOnline = Boolean(device?.online);
+  const deviceOnline = device?.online === true;
+  const connectionStatus = typeof device?.online === 'boolean' ? deviceOnline ? 'Online' : 'Offline' : 'Unavailable';
+  const wifiSignal = device?.reportedFields?.includes('wifiRssi') && Number.isFinite(device.wifiRssi) ? `${device.wifiRssi} dBm` : 'Unavailable';
+  const lastReport = device?.lastSeen && Number.isFinite(Date.parse(device.lastSeen)) ? `${formatManilaDateTime(device.lastSeen)} PHT` : 'Unavailable';
+  const pendingSync = device?.reportedFields?.includes('pendingSyncCount') && Number.isFinite(device.pendingSyncCount) ? `${device.pendingSyncCount}` : 'Unavailable';
   const freshness = reading.data ? readingFreshness(reading.data.timestamp, device?.online, now) : null;
   const invalidReading = reading.data && (['temperature', 'do', 'ph'] as const).some((parameter) =>
     !isValidMeasurement(parameter, parameter === 'do' ? reading.data!.doMgL : reading.data![parameter]));
-  const recentAlerts = [...(alerts.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 4);
+  const recentAlerts = [...(alerts.data ?? [])].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''))).slice(0, 4);
   const readingStatuses = reading.data && thresholds.data ? Object.values(getReadingStatuses(reading.data, thresholds.data)) : [];
   const overallLevel = readingStatuses.some((status) => status.level === 'critical') ? 'critical'
     : readingStatuses.some((status) => status.level === 'warning') ? 'warning' : 'normal';
@@ -47,11 +51,13 @@ export default function LiveMonitorPage() {
       {visibleTanks.length > 0 && <div className="live-tank-switcher" role="group" aria-label="Select tank">
         {visibleTanks.map((item) => <button key={item.id} type="button" className="button live-tank-button" aria-pressed={tankId === item.id} onClick={() => setTankId(item.id)}>{item.name}</button>)}
       </div>}
-      {tanks.isLoading || reading.isLoading || thresholds.isLoading ? <LoadingState /> :
+      {tanks.isLoading ? <LoadingState /> :
       tanks.isError ? <ErrorState error={tanks.error} onRetry={() => void tanks.refetch()} /> :
+      !tank ? <EmptyState>No tank or reading is available. Check the tank selector and device status.</EmptyState> :
+      reading.isLoading || thresholds.isLoading ? <LoadingState /> :
       reading.isError ? <ErrorState error={reading.error} onRetry={() => void reading.refetch()} /> :
       thresholds.isError ? <ErrorState error={thresholds.error} onRetry={() => void thresholds.refetch()} /> :
-      !tank || !reading.data ? <EmptyState>No tank or reading is available. Check the tank selector and device status.</EmptyState> : <>
+      !reading.data ? <EmptyState>No reading is available for this tank.</EmptyState> : <>
       {reading.dataUpdatedAt && Date.now() - reading.dataUpdatedAt > 3 * 3_600_000 && <StaleState updatedAt={reading.dataUpdatedAt} />}
       <section className={`card live-status-banner live-status-${freshness?.stale ? 'offline' : invalidReading ? 'warning' : overallLevel}`} aria-label="Current reading status">
         <div className="live-status-copy">
@@ -76,13 +82,13 @@ export default function LiveMonitorPage() {
       </section>
       <div className="live-overview-grid">
       <section className="card live-panel" aria-labelledby="live-device-title">
-        <div className="live-section-heading"><div><h2 id="live-device-title">Device connection</h2><p>{tank.deviceId}</p></div></div>
+        <div className="live-section-heading"><div><h2 id="live-device-title">Device connection</h2><p>{tank.deviceId || 'Device ID unavailable'}</p></div></div>
         {devices.isLoading ? <LoadingState label="Loading device status" /> : devices.isError ? <ErrorState error={devices.error} onRetry={() => void devices.refetch()} /> : device ? (
           <div className="live-device-metrics">
-            <div><span>Connection</span><strong className={deviceOnline ? 'status-online' : 'status-offline'}>{deviceOnline ? <Wifi size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}{deviceOnline ? 'Online' : 'Offline'}</strong></div>
-            <div><span>Wi-Fi</span><strong>{device.wifiRssi} dBm</strong></div>
-            <div><span>Last report</span><strong className="live-device-time">{formatManilaDateTime(device.lastSeen)} PHT</strong></div>
-            <div><span>Pending sync</span><strong>{device.pendingSyncCount}</strong></div>
+            <div><span>Connection</span><strong className={connectionStatus === 'Unavailable' ? undefined : deviceOnline ? 'status-online' : 'status-offline'}>{connectionStatus === 'Unavailable' ? null : deviceOnline ? <Wifi size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}{connectionStatus}</strong></div>
+            <div><span>Wi-Fi</span><strong>{wifiSignal}</strong></div>
+            <div><span>Last report</span><strong className="live-device-time">{lastReport}</strong></div>
+            <div><span>Pending sync</span><strong>{pendingSync}</strong></div>
           </div>
         ) : <EmptyState>No device is assigned to this tank.</EmptyState>}
       </section>
@@ -94,9 +100,9 @@ export default function LiveMonitorPage() {
         {alerts.isLoading ? <LoadingState label="Loading recent alerts" /> : alerts.isError ? <ErrorState error={alerts.error} onRetry={() => void alerts.refetch()} /> : recentAlerts.length ? (
           <div className="live-alert-list">{recentAlerts.map((alert) => (
             <article className="live-alert-row" key={alert.id}>
-              <StatusBadge level={alert.severity === 'critical' ? 'critical' : 'warning'} label={alert.severity} />
-              <span className="live-alert-summary">{alert.parameter} · {alert.value} · {alert.threshold}</span>
-              <time className="small muted" dateTime={alert.createdAt}>{formatManilaDateTime(alert.createdAt)} PHT</time>
+              <StatusBadge level={alert.severity === 'critical' ? 'critical' : 'warning'} label={alert.severity ?? 'Unknown'} />
+              <span className="live-alert-summary">{alert.parameter ?? 'Unknown parameter'} · {alert.value ?? '—'} · {alert.threshold ?? '—'}</span>
+              <time className="small muted" dateTime={typeof alert.createdAt === 'string' ? alert.createdAt : undefined}>{alert.createdAt && Number.isFinite(Date.parse(alert.createdAt)) ? `${formatManilaDateTime(alert.createdAt)} PHT` : 'Unavailable time'}</time>
             </article>
           ))}</div>
         ) : <EmptyState>No alerts are recorded for this tank.</EmptyState>}

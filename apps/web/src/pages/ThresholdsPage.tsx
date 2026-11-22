@@ -115,7 +115,6 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
             <span role="columnheader">Minimum</span>
             <span role="columnheader">Maximum</span>
           </div>
-          </div>
           {parameters.map((parameter) => {
             const item = thresholds.find((threshold) => threshold.parameter === parameter);
             return (
@@ -126,6 +125,7 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
               </div>
             );
           })}
+        </div>
         </div>
       </section>
       {!readOnly && <section className="card stack dash-threshold-advisories">

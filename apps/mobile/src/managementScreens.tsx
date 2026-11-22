@@ -1,16 +1,16 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Dialog } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatManilaDateTime } from '@hydrosense/shared';
+import { formatManilaDateTime, validatePasswordChange } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
-import { Check, ClipboardList, LockKeyhole, MapPin, Search, UserRound, Users, X } from 'lucide-react-native';
+import { Check, ClipboardList, MapPin, Search, UserRound, Users, X } from 'lucide-react-native';
 import { canAccess } from './access';
 import { Button, Card, GlassDialog, Page, StateMessage, Title } from './components/ui';
 import { AlertPreferenceControls, DeviceMaintenanceControls } from './components/ProfileControls';
 import { AppearanceOptions } from './components/AppearanceOptions';
 import { groupByHatchery, hatcheryLabel } from './management';
-import { api, getAccountProfile, listPendingAccounts, removeAccount, reviewPendingAccount } from './services/client';
+import { api, changePassword, getAccountProfile, listPendingAccounts, removeAccount, reviewPendingAccount } from './services/client';
 import { useSession, useTankSelection } from './state';
 import { uiScale, useTheme } from './theme';
 import type { Palette } from './theme';
@@ -39,13 +39,56 @@ function sameHatchery(left: string, right: string) {
   return hatcheryLabel(left).trim().toLowerCase() === hatcheryLabel(right).trim().toLowerCase();
 }
 
-function ChangePasswordRow() {
+function ChangePasswordRow({ userId, email }: { userId: string; email: string }) {
   const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const mutation = useMutation({
+    mutationFn: () => changePassword(userId, email, current, next, confirmation),
+    onSuccess: () => { setOpen(false); setCurrent(''); setNext(''); setConfirmation(''); setError(''); setSuccess(true); },
+    onError: (cause) => setError(cause instanceof Error ? cause.message : 'Could not change your password. Please try again.'),
+  });
+  const close = () => {
+    if (mutation.isPending) return;
+    setOpen(false); setCurrent(''); setNext(''); setConfirmation(''); setError('');
+  };
+  const submit = () => {
+    const issue = validatePasswordChange(current, next, confirmation);
+    if (issue) { setError(issue); return; }
+    setError('');
+    mutation.mutate();
+  };
+  const inputStyle = { borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, minHeight: 44, color: colors.ink, backgroundColor: colors.surface };
   return <View style={{ paddingVertical: 6, gap: 3 }}>
     <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18, fontWeight: '600' }}>Change Password</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel="Change password, unavailable" accessibilityState={{ disabled: true }} disabled style={{ minHeight: 48, alignSelf: 'stretch', flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: colors.critical, backgroundColor: `${colors.critical}12` }}>
-      <LockKeyhole size={18} color={colors.critical} /><Text style={{ color: colors.critical, fontSize: 14, fontWeight: '700' }}>Change password</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="Change password" onPress={() => { setSuccess(false); setOpen(true); }} style={{ minHeight: 40, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: '#c84d55', backgroundColor: 'rgba(200, 77, 85, 0.12)' }}>
+      <Text style={{ color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: '600' }}>Change password</Text>
     </Pressable>
+    {success && <Text accessibilityLiveRegion="polite" style={{ color: colors.ink }}>Password changed successfully.</Text>}
+    <GlassDialog solid visible={open} onDismiss={close}>
+      <Dialog.Title style={{ color: colors.ink }}>Change password</Dialog.Title>
+      <Dialog.Content>
+        <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 400 }} contentContainerStyle={{ gap: 10 }}>
+          <Text style={{ color: colors.ink }}>Are you sure you want to change your password? Enter your current password and choose a new one.</Text>
+          <Text style={{ color: colors.ink }}>Current password</Text>
+          <TextInput accessibilityLabel="Current password" value={current} onChangeText={(text) => { setCurrent(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" editable={!mutation.isPending} style={inputStyle} />
+          <Text style={{ color: colors.ink }}>New password</Text>
+          <TextInput accessibilityLabel="New password" value={next} onChangeText={(text) => { setNext(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="new-password" editable={!mutation.isPending} style={inputStyle} />
+          <Text style={{ color: colors.ink }}>Confirm new password</Text>
+          <TextInput accessibilityLabel="Confirm new password" value={confirmation} onChangeText={(text) => { setConfirmation(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="new-password" editable={!mutation.isPending} style={inputStyle} />
+          <Text style={{ color: colors.muted }}>Use at least 8 characters.</Text>
+          {error ? <Text accessibilityRole="alert" style={{ color: colors.critical }}>{error}</Text> : null}
+        </ScrollView>
+      </Dialog.Content>
+      <Dialog.Actions>
+        <Button label="Cancel" secondary disabled={mutation.isPending} onPress={close} />
+        <Button label={mutation.isPending ? 'Changing...' : 'Confirm change'} disabled={mutation.isPending} onPress={submit} />
+      </Dialog.Actions>
+    </GlassDialog>
   </View>;
 }
 
@@ -91,7 +134,7 @@ export function ProfileScreen() {
             <View style={styles.profileColumn}><ProfileRow label="Phone" text={value(profile.data?.phone)} /></View>
           </View>
           <ProfileRow label="Address" text={value(profile.data?.address)} />
-          <ChangePasswordRow />
+          {user && profile.data && <ChangePasswordRow userId={user.id} email={profile.data.email} />}
         </Card>
         <Card title="Emergency contact">
           <ProfileRow label="Name" text={value(profile.data?.emergencyContactName)} />

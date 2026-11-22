@@ -58,4 +58,11 @@ describe('ReadingCard', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(screen.queryByText('Critical')).not.toBeInTheDocument();
   });
+
+  it('shows unavailable measurements without formatting missing values', () => {
+    render(<ReadingCard parameter="temperature" reading={{ ...reading, temperature: undefined as unknown as number }} showRangeMeter />);
+    expect(screen.getByText('Check probe')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
 });
