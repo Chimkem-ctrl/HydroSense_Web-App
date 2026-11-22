@@ -109,23 +109,23 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
           {readOnly && <p className="small muted dash-subtitle">Reference values only. Calibration is logged above.</p>}
         </header>
         <div className={readOnly ? 'threshold-table-wrap' : undefined}>
-        <div className={`threshold-grid${readOnly ? ' threshold-grid-readonly' : ''}`} role="table" aria-label="Measured parameter thresholds">
-          <div className="threshold-grid-header" role="row">
-            <span role="columnheader">Parameter</span>
-            <span role="columnheader">Minimum</span>
-            <span role="columnheader">Maximum</span>
+          <div className={`threshold-grid${readOnly ? ' threshold-grid-readonly' : ''}`} role="table" aria-label="Measured parameter thresholds">
+            <div className="threshold-grid-header" role="row">
+              <span role="columnheader">Parameter</span>
+              <span role="columnheader">Minimum</span>
+              <span role="columnheader">Maximum</span>
+            </div>
+            {parameters.map((parameter) => {
+              const item = thresholds.find((threshold) => threshold.parameter === parameter);
+              return (
+                <div className="threshold-grid-row" role="row" key={parameter}>
+                  <strong role="rowheader">{parameterNames[parameter]}</strong>
+                  <div role="cell" data-label={readOnly ? 'Minimum' : undefined}>{readOnly ? item?.min === undefined ? <span className="muted">Not set</span> : `${item.min} ${parameterUnits[parameter]}` : <label className="field threshold-grid-field"><span className="sr-only">Minimum</span><input type="number" step="0.1" value={item?.min ?? ''} onChange={(event) => updateThreshold(parameter, 'min', event.target.value)} /></label>}</div>
+                  <div role="cell" data-label={readOnly ? 'Maximum' : undefined}>{readOnly ? item?.max === undefined ? <span className="muted">Not set</span> : `${item.max} ${parameterUnits[parameter]}` : <label className="field threshold-grid-field"><span className="sr-only">Maximum</span><input type="number" step="0.1" value={item?.max ?? ''} onChange={(event) => updateThreshold(parameter, 'max', event.target.value)} /></label>}</div>
+                </div>
+              );
+            })}
           </div>
-          </div>
-          {parameters.map((parameter) => {
-            const item = thresholds.find((threshold) => threshold.parameter === parameter);
-            return (
-              <div className="threshold-grid-row" role="row" key={parameter}>
-                <strong role="rowheader">{parameterNames[parameter]}</strong>
-                <div role="cell" data-label={readOnly ? 'Minimum' : undefined}>{readOnly ? item?.min === undefined ? <span className="muted">Not set</span> : `${item.min} ${parameterUnits[parameter]}` : <label className="field threshold-grid-field"><span className="sr-only">Minimum</span><input type="number" step="0.1" value={item?.min ?? ''} onChange={(event) => updateThreshold(parameter, 'min', event.target.value)} /></label>}</div>
-                <div role="cell" data-label={readOnly ? 'Maximum' : undefined}>{readOnly ? item?.max === undefined ? <span className="muted">Not set</span> : `${item.max} ${parameterUnits[parameter]}` : <label className="field threshold-grid-field"><span className="sr-only">Maximum</span><input type="number" step="0.1" value={item?.max ?? ''} onChange={(event) => updateThreshold(parameter, 'max', event.target.value)} /></label>}</div>
-              </div>
-            );
-          })}
         </div>
       </section>
       {!readOnly && <section className="card stack dash-threshold-advisories">

@@ -118,13 +118,18 @@
 .glass-screen .dash-after-grid { align-self: stretch; }
 .glass-screen .dash-calibration-checklist { display: flex; flex-direction: column; }
 .glass-screen .dash-calibration-checklist .dash-checklist-progress { margin-top: auto; }
-.glass-screen .dash-calibration-table { width: 100%; min-width: 0; table-layout: fixed; font-size: var(--font-caption); }
+.glass-screen .dash-calibration-table { width: 100%; min-width: 500px; table-layout: fixed; font-size: var(--font-caption); }
 .glass-screen .dash-calibration-table th,
-.glass-screen .dash-calibration-table td { padding: var(--space-1) 6px; vertical-align: top; overflow-wrap: anywhere; }
-.glass-screen .dash-calibration-table th:nth-child(1) { width: 31%; }
-.glass-screen .dash-calibration-table th:nth-child(2) { width: 21%; }
-.glass-screen .dash-calibration-table th:nth-child(3) { width: 21%; }
-.glass-screen .dash-calibration-table th:nth-child(4) { width: 27%; }
+.glass-screen .dash-calibration-table td { padding: var(--space-2) 10px; vertical-align: middle; overflow-wrap: anywhere; }
+.glass-screen .dash-calibration-table th { line-height: 1.35; }
+.glass-screen .dash-calibration-table th:nth-child(1) { width: 27%; }
+.glass-screen .dash-calibration-table th:nth-child(2) { width: 29%; }
+.glass-screen .dash-calibration-table th:nth-child(3) { width: 19%; }
+.glass-screen .dash-calibration-table th:nth-child(4) { width: 25%; }
+.glass-screen .dash-calibration-table th:nth-child(2),
+.glass-screen .dash-calibration-table td:nth-child(2) { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.glass-screen .dash-calibration-table .calibration-date { display: block; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.glass-screen .dash-calibration-table .calibration-overdue { display: block; margin-top: 2px; font-size: 10px; }
 .glass-screen .dash-calibration-table td small { display: block; margin-top: 2px; color: var(--text-secondary); font-size: var(--font-caption); line-height: 1.35; }
 .glass-screen .dash-calibration-fields .dash-save-button {
   grid-column: 1 / -1;
@@ -568,7 +573,7 @@
 }
 
 .glass-screen .threshold-grid { display: grid; gap: var(--space-4); }
-.glass-screen .threshold-grid-readonly { gap: var(--space-2); }
+.glass-screen .threshold-grid-readonly { gap: 0; }
 .glass-screen .threshold-table-wrap { min-width: 0; overflow-x: auto; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: color-mix(in srgb, var(--glass-bg-strong) 45%, transparent); padding: var(--space-3); }
 .glass-screen .threshold-grid-header,
 .glass-screen .threshold-grid-row {
@@ -581,11 +586,14 @@
 .glass-screen .threshold-grid-readonly .threshold-grid-row {
   grid-template-columns: minmax(180px, 1.5fr) repeat(2, minmax(85px, 1fr));
 }
+.glass-screen .threshold-grid-readonly .threshold-grid-header > :not(:first-child) { text-align: right; }
 .glass-screen .threshold-grid-readonly { min-width: 390px; }
 .glass-screen .threshold-grid-header { color: var(--text-secondary); font-size: var(--font-caption); font-weight: 700; }
+.glass-screen .threshold-grid-readonly .threshold-grid-header { border-bottom: 1px solid var(--glass-border); padding-bottom: var(--space-2); }
 .glass-screen .threshold-grid-row > [role='cell'] { min-width: 0; }
-.glass-screen .threshold-grid-readonly .threshold-grid-row > [role='cell'] { text-align: left; }
-.glass-screen .threshold-grid-readonly .threshold-grid-row:not(:last-child) { border-bottom: 1px solid var(--glass-border); padding-bottom: var(--space-2); }
+.glass-screen .threshold-grid-readonly .threshold-grid-row > [role='cell'] { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.glass-screen .threshold-grid-readonly .threshold-grid-row { border-bottom: 1px solid var(--glass-border); padding: var(--space-3) 0; }
+.glass-screen .threshold-grid-readonly .threshold-grid-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .glass-screen .dash-calibration .dash-threshold-card { align-content: start; gap: var(--space-3); }
 .glass-screen .threshold-grid-field { min-width: 0; }
 .glass-screen .threshold-grid-field input { width: 100%; }
@@ -655,6 +663,7 @@
     font-size: var(--font-caption);
     font-weight: 700;
     content: attr(data-label);
+    text-align: left;
   }
   .glass-screen .threshold-grid-field > .sr-only {
     position: static;

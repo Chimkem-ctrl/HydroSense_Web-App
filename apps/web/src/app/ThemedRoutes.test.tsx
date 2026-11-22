@@ -72,24 +72,34 @@ describe('themed dashboard routes', () => {
     expect(screen.getByRole('heading', { name: 'Live Monitor' })).toBeInTheDocument();
   });
 
-  it('labels the chart download icons by format and chart', async () => {
+  it('offers chart downloads in a dismissible menu', async () => {
     vi.stubGlobal('ResizeObserver', class {
       observe() {}
       unobserve() {}
       disconnect() {}
     });
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL() { return 'blob:chart'; }
+      static revokeObjectURL() {}
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     signInAs('admin');
     window.history.replaceState({}, '', '/trends');
     render(<App />);
-    const png = await screen.findByRole('button', { name: 'Download Temperature PNG' });
-    const csv = screen.getByRole('button', { name: 'Download Temperature CSV' });
-    expect(png).toHaveAttribute('title', 'Download Temperature PNG');
-    expect(csv).toHaveAttribute('title', 'Download Temperature CSV');
-    expect(png.querySelector('svg')).not.toBeNull();
-    expect(png.textContent).toBe('');
-    expect(csv.textContent).toBe('');
-    expect(csv.querySelector('svg')).not.toBeNull();
-    expect(png.parentElement).toBe(csv.parentElement);
+    const download = await screen.findByRole('button', { name: 'Download Temperature' });
+    expect(download).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(download);
+    const menu = screen.getByRole('group', { name: 'Temperature download formats' });
+    expect(within(menu).getByRole('button', { name: 'Image (PNG)' })).toBeInTheDocument();
+    expect(download).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('group', { name: 'Temperature download formats' })).not.toBeInTheDocument();
+    expect(download).toHaveFocus();
+    fireEvent.click(download);
+    fireEvent.click(within(screen.getByRole('group', { name: 'Temperature download formats' })).getByRole('button', { name: 'CSV' }));
+    expect(click).toHaveBeenCalledOnce();
+    expect(screen.getByRole('status')).toHaveTextContent('Temperature CSV downloaded.');
+    expect(download).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('labels the chart zoom icons by action and chart', async () => {
@@ -98,10 +108,14 @@ describe('themed dashboard routes', () => {
       unobserve() {}
       disconnect() {}
     });
+
     signInAs('admin');
     window.history.replaceState({}, '', '/trends');
     render(<App />);
     const zoomIn = await screen.findByRole('button', { name: 'Zoom in Temperature' });
+    const download = screen.getByRole('button', { name: 'Download Temperature' });
+    expect(download.parentElement?.parentElement).toBe(zoomIn.parentElement);
+    expect(zoomIn.closest('header')).not.toBeNull();
     for (const [name, title] of [
       ['Zoom in Temperature', 'Zoom in'],
       ['Zoom out Temperature', 'Zoom out'],
@@ -113,6 +127,72 @@ describe('themed dashboard routes', () => {
       expect(button.textContent).toBe('');
       expect(button.parentElement).toBe(zoomIn.parentElement);
     }
+  });
+
+  it('provides chart guidance through an accessible guide icon', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    signInAs('admin');
+    window.history.replaceState({}, '', '/trends');
+    render(<App />);
+    const guide = await screen.findByRole('button', { name: 'Temperature chart guide' });
+    const tooltip = document.getElementById(guide.getAttribute('aria-describedby')!);
+    expect(tooltip).toHaveAttribute('role', 'tooltip');
+    expect(tooltip).toHaveTextContent('Statistics use all valid readings in the selected range.');
+    guide.focus();
+    expect(guide).toHaveFocus();
+    fireEvent.keyDown(guide, { key: 'Escape' });
+    expect(guide).not.toHaveFocus();
+  });
+
+  it('keeps chart statistics and day/night comparisons consistent with valid sensor readings', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    const readings = [
+      { id: 'day', tankId: 'tank-a', timestamp: '2026-11-22T06:00:00+08:00', temperature: 28, doMgL: 5, ph: 7 },
+      { id: 'night', tankId: 'tank-a', timestamp: '2026-11-22T22:00:00+08:00', temperature: 33, doMgL: 0, ph: 13.39 },
+      JSON.parse('{"id":"missing","tankId":"tank-a","timestamp":"2026-11-22T22:01:00+08:00","temperature":null,"doMgL":null,"ph":null}'),
+      { id: 'invalid', tankId: 'tank-a', timestamp: '2026-11-22T22:02:00+08:00', temperature: 30, doMgL: 6, ph: 15 },
+    ];
+    vi.spyOn(api, 'listReadings').mockResolvedValue(readings);
+    vi.spyOn(api, 'listAlerts').mockResolvedValue([]);
+    signInAs('admin');
+    window.history.replaceState({}, '', '/trends');
+    render(<App />);
+    const oxygen = await screen.findByLabelText('Dissolved oxygen chart statistics');
+    expect(oxygen).toHaveTextContent('Latest6.00 mg/L');
+    expect(oxygen).toHaveTextContent('Min / max0.00 / 6.00');
+    expect(oxygen).toHaveTextContent('Mean3.67');
+    expect(oxygen).toHaveTextContent('In range66.7%');
+    expect(screen.getByLabelText('pH chart statistics')).toHaveTextContent('Latest13.39 pH');
+    const table = screen.getByRole('heading', { name: 'Overnight vs daytime' }).parentElement!;
+    const row = within(table).getByRole('row', { name: /Dissolved oxygen/ });
+    expect(within(row).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['5.00', '5.00', '3.00', '0.00', '-2.00']);
+  });
+
+  it('keeps alerts in the frequency chart without adding extra reading markers', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 600, 300));
+    const timestamp = new Date(Date.now() - 3_600_000).toISOString();
+    vi.spyOn(api, 'listReadings').mockResolvedValue([{ id: 'reading', tankId: 'tank-a', timestamp, temperature: 28, doMgL: 5, ph: 7 }]);
+    vi.spyOn(api, 'listAlerts').mockResolvedValue([{ id: 'alert', tankId: 'tank-a', parameter: 'do', value: 5, threshold: '5', severity: 'warning', status: 'open', createdAt: timestamp }]);
+    signInAs('admin');
+    window.history.replaceState({}, '', '/trends');
+    render(<App />);
+    const chart = await screen.findByRole('img', { name: /Dissolved oxygen trend chart/ });
+    await waitFor(() => expect(chart.querySelectorAll('.recharts-line-dots circle')).toHaveLength(1));
+    expect(chart.querySelector('.recharts-reference-dot')).toBeNull();
+    expect(screen.getByRole('img', { name: 'Daily warning and critical alert frequency chart' })).toBeInTheDocument();
   });
 
   it('navigates historical readings with labelled arrow buttons', async () => {

@@ -181,4 +181,7 @@ The live client reconnects after disconnect. Do not send hardware control comman
 - Default measured-parameter ranges: temperature (26–30 °C), dissolved oxygen (≥4 mg/L), and pH (6–8). Configured thresholds take precedence.
 - Salinity target (28–33 ppt) and ammonia are not measured. They appear only as advisory chips with inputs and the fired rule in a popover.
 - Asia/Manila timestamps, 24-hour time, 3-hour mock reading cadence, and overnight chart shading (22:00–06:00).
+- Trend charts plot the latest valid reading for each parameter in each three-hour interval aligned to midnight PHT, at its actual timestamp. Missing or invalid values remain gaps, and valid zero readings are retained. Chart statistics use all valid readings in the selected date range, not just plotted points, even when zoomed; in-range percentages count valid readings, not elapsed time. The comparison uses day 06:00–22:00 and night 22:00–06:00 PHT, with change calculated as night mean minus day mean.
+- Trends request up to the API's 2,000 most recent readings per selected range and show a warning when that limit is reached.
+- Rearing progress uses the tank's Manila calendar start date; it shows the actual day after the 21-day cycle rather than treating an older cycle as day 21.
 - Operator, manager and admin navigation is role-gated. Managers and admins can add/remove tanks and associate monitoring hardware.

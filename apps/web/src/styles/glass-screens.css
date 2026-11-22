@@ -92,7 +92,7 @@
 .trends-screen .page-heading { align-items: flex-start; }
 .trends-heading-actions, .trends-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .trends-toolbar { justify-content: flex-start; }
-.trends-export-button, .trends-chart-export, .trends-csv-button { width: auto; white-space: nowrap; }
+.trends-export-button, .trends-chart-export { width: auto; white-space: nowrap; }
 .trends-custom-range { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .trends-custom-range .field { min-width: 180px; }
 .trends-context { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--text-secondary); font-size: 10px; }
@@ -127,35 +127,42 @@
 .trends-section-heading p { color: var(--text-secondary); font-size: 12px; }
 .trends-inline-actions { display: flex; gap: var(--space-2); }
 .trends-statistics-card .card-title { margin-bottom: var(--space-3); }
-.trend-chart-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
+.trend-chart-card, .trends-overnight-panel { min-width: 0; }
+.trend-chart-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
 .trend-chart-heading .card-title { margin-bottom: 4px; }
+.trend-download { position: relative; }
+.trend-download-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: grid; min-width: 150px; padding: 6px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--shadow); }
+.trend-download-menu button { display: flex; align-items: center; gap: 8px; min-height: 40px; border: 0; border-radius: var(--radius-md); padding: 0 10px; color: var(--text-primary); background: transparent; text-align: left; white-space: nowrap; }
+.trend-download-menu button:hover, .trend-download-menu button:focus-visible { background: var(--accent-soft); }
+.trend-chart-unit { color: var(--text-secondary); font-size: 0.85em; font-weight: 500; }
 .trend-chart-heading p { margin: 0 0 12px; }
-.trend-chart-frame { width: 100%; height: 280px; }
-.trend-chart-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+.trend-chart-frame { width: 100%; height: 300px; }
+.trend-chart-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-left: auto; }
 .trends-chart-zoom-control:disabled, .trends-chart-zoom-reset:disabled { opacity: 0.55; cursor: default; }
-.trend-chart-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); border-top: 1px solid var(--control-border); padding-top: var(--space-3); }
+.trend-chart-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; gap: var(--space-3); border-top: 1px solid var(--control-border); padding-top: var(--space-3); }
 .trend-chart-stats > div { display: grid; gap: var(--space-1); min-width: 0; }
 .trend-chart-stats span { color: var(--text-secondary); font-size: 12px; }
 .trend-chart-stats strong { font-size: 16px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.trend-chart-caption { margin: var(--space-2) 0 0; color: var(--text-secondary); font-size: 12px; }
-.trend-card-legend { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-top: var(--space-2); color: var(--text-secondary); font-size: 10px; }
+.trend-chart-footer { position: relative; display: flex; align-items: flex-start; gap: var(--space-3); margin-top: var(--space-3); }
+.trend-card-legend { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-width: 0; color: var(--text-secondary); font-size: 12px; }
 .trend-card-legend > span { display: inline-flex; align-items: center; gap: 5px; }
 .trend-card-legend i { display: inline-block; width: 10px; height: 8px; border-radius: 2px; }
+.trend-chart-guide { flex: none; }
+.trend-chart-guide button { display: grid; width: 24px; height: 24px; place-items: center; border: 0; border-radius: var(--radius-control); padding: 0; color: var(--text-secondary); background: transparent; cursor: help; }
+.trend-chart-guide button:hover, .trend-chart-guide button:focus-visible { color: var(--text-primary); background: var(--accent-soft); }
+.trend-chart-guide-tooltip { position: absolute; right: 0; bottom: 100%; z-index: 20; width: min(280px, 100%); padding: 10px 12px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--shadow); color: var(--text-primary); font-size: 12px; line-height: 1.5; visibility: hidden; }
+.trend-chart-guide:hover .trend-chart-guide-tooltip, .trend-chart-guide:focus-within .trend-chart-guide-tooltip { visibility: visible; }
 .trend-line-key { height: 2px !important; border-radius: 0 !important; }
 .trend-warning-key, .trend-critical-key { background: var(--warn-text); }
 .trend-critical-key { background: var(--critical-text); }
-.trends-csv-button { margin-top: var(--space-2); }
-.trends-download-actions { margin-top: var(--space-2); }
-.trends-download-actions .trends-csv-button { margin-top: 0; }
 .trends-statistics-table { min-width: 1120px; table-layout: auto; }
 .trends-statistics-table th, .trends-statistics-table td { white-space: nowrap; vertical-align: middle; }
 .glass-screen .trends-statistics-table th, .glass-screen .trends-statistics-table td,
 .glass-screen .trends-overnight-table th, .glass-screen .trends-overnight-table td,
 .glass-screen .trends-alert-table th, .glass-screen .trends-alert-table td { text-align: center; }
-.trends-overnight-table { min-width: 680px; table-layout: fixed; }
+.trends-overnight-table { min-width: 720px; table-layout: auto; }
 .trends-overnight-table th, .trends-overnight-table td { vertical-align: middle; white-space: nowrap; }
-.trends-overnight-table th:first-child, .trends-overnight-table td:first-child { width: 28%; }
-.trends-overnight-table th:not(:first-child), .trends-overnight-table td:not(:first-child) { width: 18%; }
+.trends-overnight-table th, .trends-overnight-table td { padding: 10px 12px; }
 .trends-secondary-grid { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: var(--space-4); }
 .trends-secondary-grid > .card { min-width: 0; }
 .trends-secondary-grid .trends-alert-log { grid-column: 1 / -1; }
@@ -163,10 +170,11 @@
 .trends-rearing { display: grid; gap: var(--space-2); margin-top: var(--space-4); border-top: 1px solid var(--control-border); padding-top: var(--space-3); }
 .trends-rearing-heading, .trends-rearing-labels { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .trends-rearing-heading h3 { margin: 0; font-size: 14px; }
-.trends-rearing-heading > span, .trends-rearing-labels, .trends-rearing > p { color: var(--text-secondary); font-size: 10px; }
-.trends-rearing-track { display: grid; grid-template-columns: repeat(21, minmax(0, 1fr)); gap: 3px; }
-.trends-rearing-track i { height: 7px; border-radius: 2px; background: var(--control-border); }
+.trends-rearing-heading > span, .trends-rearing-labels, .trends-rearing > p { color: var(--text-secondary); font-size: 12px; }
+.trends-rearing-track { display: grid; grid-template-columns: repeat(22, minmax(0, 1fr)); gap: 3px; }
+.trends-rearing-track i { height: 9px; border-radius: 2px; background: var(--control-border); }
 .trends-rearing-track i.is-complete { background: var(--accent); }
+.trends-rearing-track i.is-current { background: var(--text-primary); outline: 2px solid var(--accent); }
 .trends-rearing-labels { font-variant-numeric: tabular-nums; }
 .trends-rearing > p { margin: 0; }
 .trends-timeline { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
@@ -399,7 +407,7 @@
   .trends-timeline li { grid-template-columns: 1fr; }
 }
 @media print {
-  .trends-heading-actions, .trends-chart-export, .trends-csv-button, .trends-export-message { display: none !important; }
+  .trends-heading-actions, .trends-chart-export, .trend-download, .trend-chart-guide, .trends-export-message { display: none !important; }
   .trends-screen, .trend-charts, .trends-secondary-grid { break-inside: auto; }
   .trends-screen { padding: 0; background: #fff; color: #111; }
   .trends-screen .card { box-shadow: none; break-inside: avoid; }

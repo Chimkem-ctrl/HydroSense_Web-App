@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
-import { FileDown, FileImage, FileSpreadsheet, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
-import { Brush, CartesianGrid, Line, LineChart, ReferenceArea, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { can, DEFAULT_THRESHOLDS, formatManilaDateTime, getManilaDateString, getRaisingDay, isValidMeasurement, toCsv } from '@hydrosense/shared';
-import type { AlertItem, MeasuredParameter, Reading, Tank } from '@hydrosense/shared';
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
+import { CircleHelp, Download, FileDown, FileImage, FileSpreadsheet, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Brush, CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { can, DEFAULT_THRESHOLDS, formatManilaDateTime, getManilaDateString, isValidMeasurement, toCsv } from '@hydrosense/shared';
+import type { MeasuredParameter, Reading, Tank } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
 import { tierConfig } from '../app/config';
 import { api } from '../app/api';
@@ -10,7 +11,7 @@ import { useRole } from '../app/auth/RoleContext';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { PageHeading } from '../components/common/PageHeading';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
-import { calculateTrendStatistics, dailyTicks, gapRanges, nightRanges, parameterValue, prepareParameterRows, prepareTrendRows, threeHourTicks, trendYAxisDomain } from './trendData';
+import { calculateTrendStatistics, chartTimeDomain, comparisonStatistics, dailyTicks, gapRanges, nightRanges, parameterValue, prepareParameterRows, prepareTrendRows, rearingDay, sampleParameterReadings, threeHourTicks, trendYAxisDomain } from './trendData';
 import type { TrendParameter } from './trendData';
 
 type Range = '24h' | '7d' | 'cycle' | 'custom';
@@ -24,27 +25,35 @@ interface ChartZoomSelection {
   endIndex: number;
 }
 
+interface ChartZoomState {
+  key: string;
+  ranges: Partial<Record<MeasuredParameter, ChartZoomSelection>>;
+}
+
 const defaultParameters: ChartParameter[] = [
   { key: 'temperature', title: 'Temperature', unit: '°C', color: 'var(--accent)', safeMin: 26, safeMax: 30 },
   { key: 'do', title: 'Dissolved oxygen', unit: 'mg/L', color: 'var(--chart-do)', safeMin: 4 },
   { key: 'ph', title: 'pH', unit: 'pH', color: 'var(--chart-ph)', safeMin: 6, safeMax: 8 },
 ] as const;
+const TREND_READING_LIMIT = 2000;
+const EMPTY_READINGS: Reading[] = [];
+const tickFormatters = [
+  new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' }),
+  new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }),
+  new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+];
 
 function isInRange(value: number, parameter: ChartParameter) {
-  return value >= parameter.safeMin && (parameter.safeMax === undefined || value <= parameter.safeMax);
+  return (parameter.safeMin === undefined || value >= parameter.safeMin) && (parameter.safeMax === undefined || value <= parameter.safeMax);
+}
+
+function safeRangeLabel(parameter: ChartParameter) {
+  if (parameter.safeMin === undefined) return parameter.safeMax === undefined ? 'Not configured' : `≤${parameter.safeMax} ${parameter.unit}`;
+  return parameter.safeMax === undefined ? `≥${parameter.safeMin} ${parameter.unit}` : `${parameter.safeMin}–${parameter.safeMax} ${parameter.unit}`;
 }
 
 function metricValue(reading: Reading, parameter: MeasuredParameter) {
   return parameterValue(reading, parameter);
-}
-
-function inOvernightWindow(timestamp: string) {
-  const hour = Number(new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', hour12: false }).format(new Date(timestamp)));
-  return hour >= 22 || hour < 6;
-}
-
-function average(values: number[]) {
-  return values.length ? values.reduce((total, value) => total + value, 0) / values.length : null;
 }
 
 function downloadBlob(name: string, blob: Blob) {
@@ -77,11 +86,119 @@ function adjustChartZoom(selection: ChartZoomSelection | undefined, rowCount: nu
 
   const nextSpan = direction === 'in'
     ? Math.max(2, Math.floor(currentSpan / 2))
-    : Math.min(lastIndex, currentSpan * 2);
+    : Math.min(lastIndex, Math.max(1, currentSpan * 2));
   const center = (current.startIndex + current.endIndex) / 2;
   const startIndex = Math.max(0, Math.min(lastIndex - nextSpan, Math.round(center - nextSpan / 2)));
   return { startIndex, endIndex: startIndex + nextSpan };
 }
+
+function ChartDownloadMenu({ title, disabled, onCsv, onImage }: { title: string; disabled: boolean; onCsv: () => void; onImage: () => void }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+  useEffect(() => {
+    if (!open) return;
+    function dismiss(event: MouseEvent) {
+      if (event.target instanceof Node && !menuRef.current?.contains(event.target)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpen(false);
+        buttonRef.current?.focus();
+      }
+    }
+    document.addEventListener('mousedown', dismiss);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', dismiss);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  function download(action: () => void) {
+    setOpen(false);
+    buttonRef.current?.focus();
+    action();
+  }
+
+  return <div className="trend-download" ref={menuRef} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
+    <button ref={buttonRef} type="button" className="icon-button trends-chart-export" aria-label={`Download ${title}`} title={`Download ${title}`} aria-expanded={open && !disabled} aria-controls={open && !disabled ? menuId : undefined} disabled={disabled} onClick={() => setOpen((value) => !value)}>
+      <Download size={18} aria-hidden="true" />
+    </button>
+    {open && !disabled && <div id={menuId} className="trend-download-menu" role="group" aria-label={`${title} download formats`}>
+      <button type="button" onClick={() => download(onCsv)}><FileSpreadsheet size={16} aria-hidden="true" /> CSV</button>
+      <button type="button" onClick={() => download(onImage)}><FileImage size={16} aria-hidden="true" /> Image (PNG)</button>
+    </div>}
+  </div>;
+}
+
+function ChartGuide({ title }: { title: string }) {
+  const guideId = useId();
+  return <div className="trend-chart-guide">
+    <button type="button" aria-label={`${title} chart guide`} aria-describedby={guideId} onKeyDown={(event) => {
+      if (event.key === 'Escape') event.currentTarget.blur();
+    }}><CircleHelp size={18} aria-hidden="true" /></button>
+    <div id={guideId} className="trend-chart-guide-tooltip" role="tooltip">
+      Points show the latest valid reading per three-hour PHT interval at its actual time. Statistics use all valid readings in the selected range. Zoom or drag the handles to inspect; missing readings are gaps.
+    </div>
+  </div>;
+}
+
+const TrendChartPlot = memo(function TrendChartPlot({ parameter, plottedRows, nightWindows, gaps, zoomFrom, zoomTo, yMin, yMax, startIndex, endIndex, zoomKey, setChartZoom }: {
+  parameter: ChartParameter;
+  plottedRows: ReturnType<typeof prepareParameterRows>;
+  nightWindows: ReturnType<typeof nightRanges>;
+  gaps: ReturnType<typeof gapRanges>;
+  zoomFrom: number;
+  zoomTo: number;
+  yMin: number;
+  yMax: number;
+  startIndex: number;
+  endIndex: number;
+  zoomKey: string;
+  setChartZoom: Dispatch<SetStateAction<ChartZoomState>>;
+}) {
+  const ticks = zoomTo - zoomFrom <= 2 * 86_400_000 ? threeHourTicks(zoomFrom, zoomTo) : dailyTicks(zoomFrom, zoomTo);
+  return <div className="trend-chart-frame" id={`trend-chart-${parameter.key}`} role="img" aria-label={`${parameter.title} trend chart. Configured safe range ${safeRangeLabel(parameter)}; overnight windows and sensor gaps highlighted.`}>
+    {plottedRows.length === 0 ? <EmptyState>No readings are available for this range.</EmptyState> : <ResponsiveContainer>
+      <LineChart data={plottedRows} margin={{ top: 10, right: 12, bottom: 10, left: 0 }}>
+        <defs><pattern id={`gap-pattern-${parameter.key}`} width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="var(--glass-bg-strong)" fillOpacity="0.16" /><line x1="0" y1="0" x2="0" y2="7" stroke="var(--text-secondary)" strokeOpacity="0.65" strokeWidth="2" /></pattern></defs>
+        <CartesianGrid stroke="var(--control-border)" strokeDasharray="4 4" />
+        {nightWindows.filter((item) => item.x2 >= zoomFrom && item.x1 <= zoomTo).map((item) => <ReferenceArea key={`night-${item.x1}`} x1={item.x1} x2={item.x2} fill="var(--chart-night)" fillOpacity={0.12} ifOverflow="hidden" />)}
+        <ReferenceArea y1={parameter.safeMin ?? yMin} y2={parameter.safeMax ?? yMax} ifOverflow="hidden" fill="var(--ok)" fillOpacity={0.14} />
+        {gaps.filter((gap) => gap.x2 >= zoomFrom && gap.x1 <= zoomTo).map((gap) => <ReferenceArea key={`gap-${gap.x1}`} x1={gap.x1} x2={gap.x2} fill={`url(#gap-pattern-${parameter.key})`} ifOverflow="hidden" />)}
+        <XAxis dataKey="timestamp" type="number" scale="time" domain={[zoomFrom, zoomTo]} ticks={ticks.length > 1 ? ticks : undefined} tickCount={5} minTickGap={24} allowDataOverflow
+          stroke="var(--text-secondary)" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }}
+          tickFormatter={(value: number) => tickFormatters[zoomTo - zoomFrom <= 3_600_000 ? 2 : zoomTo - zoomFrom <= 2 * 86_400_000 ? 1 : 0].format(value)} />
+        <YAxis domain={[yMin, yMax]} allowDataOverflow width={48} stroke="var(--text-secondary)" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
+        <Tooltip contentStyle={{ background: 'var(--glass-bg-strong)', border: '1px solid var(--control-border)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }} labelStyle={{ color: 'var(--text-primary)' }} labelFormatter={(value) => `${formatManilaDateTime(new Date(Number(value)), { second: '2-digit' })} PHT`} formatter={(value) => [typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(2)} ${parameter.unit}` : '—', parameter.title]} />
+        <Line dataKey={parameter.key === 'do' ? 'doMgL' : parameter.key} name={parameter.title} stroke={parameter.color} strokeWidth={2}
+          dot={(props: { cx?: number; cy?: number; value?: number; index?: number }) => {
+            if (props.cx === undefined || props.cy === undefined || typeof props.value !== 'number') return <g key={props.index} />;
+            return <circle key={props.index} cx={props.cx} cy={props.cy} r={4} fill={isInRange(props.value, parameter) ? parameter.color : 'var(--critical-text)'} stroke="var(--glass-bg-strong)" strokeWidth={1.5} />;
+          }} connectNulls={false} isAnimationActive={false} />
+        <Brush dataKey="timestamp" height={20} startIndex={startIndex} endIndex={endIndex}
+          ariaLabel={`${parameter.title} date range: ${formatManilaDateTime(new Date(plottedRows[startIndex].timestamp), { second: '2-digit' })} to ${formatManilaDateTime(new Date(plottedRows[endIndex].timestamp), { second: '2-digit' })} PHT`}
+          tickFormatter={(value: number) => formatManilaDateTime(new Date(value), { second: '2-digit' })}
+          stroke="var(--accent)" fill="var(--glass-bg-strong)" travellerWidth={8}
+          onChange={(selection) => {
+            if (selection?.startIndex === undefined || selection.endIndex === undefined) return;
+            const { startIndex: start, endIndex: end } = selection;
+            setChartZoom((current) => {
+              const previous = current.key === zoomKey ? current.ranges[parameter.key] : undefined;
+              if (previous?.startIndex === start && previous.endIndex === end) return current;
+              return { key: zoomKey, ranges: { ...(current.key === zoomKey ? current.ranges : {}), [parameter.key]: { startIndex: start, endIndex: end } } };
+            });
+          }} />
+      </LineChart>
+    </ResponsiveContainer>}
+  </div>;
+});
 
 export default function TrendsPage() {
   const { tankId } = useSelectedTank();
@@ -91,10 +208,7 @@ export default function TrendsPage() {
   const [customFrom, setCustomFrom] = useState(() => getManilaDateString(new Date(Date.now() - 6 * 86_400_000)));
   const [customTo, setCustomTo] = useState(() => getManilaDateString());
   const [exportMessage, setExportMessage] = useState('');
-  const [chartZoom, setChartZoom] = useState<{
-    key: string;
-    ranges: Partial<Record<MeasuredParameter, ChartZoomSelection>>;
-  }>({ key: '', ranges: {} });
+  const [chartZoom, setChartZoom] = useState<ChartZoomState>({ key: '', ranges: {} });
   const dates = useMemo(() => {
     const to = new Date();
     if (range === 'custom') {
@@ -109,49 +223,68 @@ export default function TrendsPage() {
   const queryDates = useMemo(() => ({ from: dates.from.toISOString(), to: dates.to.toISOString() }), [dates]);
   const readingsQuery = useQuery({
     queryKey: ['trend-readings', tankId, queryDates.from, queryDates.to],
-    queryFn: () => api.listReadings({ tankId, ...queryDates }),
+    queryFn: () => api.listReadings({ tankId, ...queryDates, limit: TREND_READING_LIMIT }),
     enabled: Boolean(tankId) && tierConfig.analytics,
   });
   const alertsQuery = useQuery({ queryKey: ['trend-alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) && tierConfig.analytics });
   const tanksQuery = useQuery({ queryKey: ['tanks'], queryFn: () => api.listTanks(), enabled: Boolean(tankId) && tierConfig.analytics });
   const manualEntriesQuery = useQuery({ queryKey: ['trend-manual-entries', tankId], queryFn: () => api.listManualEntries(tankId), enabled: Boolean(tankId) && tierConfig.analytics });
   const thresholdsQuery = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
-  const parameters = defaultParameters.map((parameter) => {
+  const parameters = useMemo(() => defaultParameters.map((parameter) => {
     const threshold = thresholdsQuery.data?.find((item) => item.parameter === parameter.key)
       ?? DEFAULT_THRESHOLDS.find((item) => item.parameter === parameter.key);
-    return { ...parameter, safeMin: threshold?.min ?? parameter.safeMin, safeMax: threshold?.max };
-  });
+    return { ...parameter, safeMin: threshold?.min, safeMax: threshold?.max };
+  }), [thresholdsQuery.data]);
 
-  const readings = readingsQuery.data ?? [];
+  const readings = readingsQuery.data ?? EMPTY_READINGS;
   const { rows } = useMemo(() => prepareTrendRows(readings), [readings]);
-  const alerts = (alertsQuery.data ?? []).filter((alert) => {
+  const sampledData = useMemo(() => ({
+    temperature: sampleParameterReadings(rows, 'temperature'),
+    do: sampleParameterReadings(rows, 'do'),
+    ph: sampleParameterReadings(rows, 'ph'),
+  }), [rows]);
+  const plottedData = useMemo(() => ({
+    temperature: prepareParameterRows(sampledData.temperature, 'temperature'),
+    do: prepareParameterRows(sampledData.do, 'do'),
+    ph: prepareParameterRows(sampledData.ph, 'ph'),
+  }), [sampledData]);
+  const invalidTimestamps = readings.length - rows.length;
+  const alerts = useMemo(() => (alertsQuery.data ?? []).filter((alert) => {
     const timestamp = Date.parse(alert.createdAt);
     return timestamp >= dates.from.getTime() && timestamp <= dates.to.getTime();
-  }).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+  }).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)), [alertsQuery.data, dates]);
   const nightWindows = useMemo(() => nightRanges(rows), [rows]);
-  const statistics = parameters.map((parameter) => calculateTrendStatistics(rows, parameter));
+  const statistics = useMemo(() => parameters.map((parameter) => calculateTrendStatistics(rows, parameter)), [rows, parameters]);
+  const comparisons = useMemo(() => ({
+    temperature: comparisonStatistics(rows, 'temperature'),
+    do: comparisonStatistics(rows, 'do'),
+    ph: comparisonStatistics(rows, 'ph'),
+  }), [rows]);
   const invalidReadings = statistics.reduce((total, stat) => total + stat.invalidReadings, 0);
-  const alertCounts = alerts.reduce<Record<string, { warning: number; critical: number }>>((counts, alert) => {
+  const alertCounts = useMemo(() => alerts.reduce<Record<string, { warning: number; critical: number }>>((counts, alert) => {
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date(alert.createdAt));
     counts[day] ??= { warning: 0, critical: 0 };
     counts[day][alert.severity] += 1;
     return counts;
-  }, {});
-  const alertFrequency = Object.entries(alertCounts).sort(([left], [right]) => left.localeCompare(right)).map(([day, counts]) => ({
+  }, {}), [alerts]);
+  const alertFrequency = useMemo(() => Object.entries(alertCounts).sort(([left], [right]) => left.localeCompare(right)).map(([day, counts]) => ({
     date: day,
     day: new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' }).format(new Date(`${day}T12:00:00+08:00`)),
     ...counts,
-  }));
+  })), [alertCounts]);
   const selectedTank = (tanksQuery.data ?? []).find((tank: Tank) => tank.id === tankId);
+  const currentDay = selectedTank ? rearingDay(selectedTank.rearingStartDate) : null;
   const from = dates.from.getTime();
   const to = dates.to.getTime();
   const chartZoomKey = `${tankId ?? ''}:${queryDates.from}:${queryDates.to}`;
-  const xTicks = range === '24h' || (range === 'custom' && to - from <= 2 * 86_400_000)
-    ? threeHourTicks(from, to)
-    : dailyTicks(from, to);
+  const [dataFrom, dataTo] = chartTimeDomain(rows, from, to);
+  const gaps = useMemo(() => ({
+    temperature: gapRanges(rows, 'temperature', dataFrom, dataTo),
+    do: gapRanges(rows, 'do', dataFrom, dataTo),
+    ph: gapRanges(rows, 'ph', dataFrom, dataTo),
+  }), [rows, dataFrom, dataTo]);
   const loading = readingsQuery.isLoading || alertsQuery.isLoading || tanksQuery.isLoading || manualEntriesQuery.isLoading || thresholdsQuery.isLoading;
   const errorQuery = [readingsQuery, alertsQuery, tanksQuery, manualEntriesQuery, thresholdsQuery].find((item) => item.isError);
-  const dateFormatter = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false });
 
   async function exportChart(parameter: MeasuredParameter | 'alert-frequency') {
     try {
@@ -207,9 +340,7 @@ export default function TrendsPage() {
         ['Hatchery', 'Timestamp (PHT)', 'Tank', `${config.title} (${config.unit})`, 'Quality note'],
         ...rows.map((row) => {
           const value = metricValue(row, parameter);
-          const invalid = parameter === 'ph' && (!Number.isFinite(value) || value < 0 || value > 14);
-          const gap = parameter === 'do' && value === 0;
-          const quality = gap ? 'Sensor/offline gap; excluded from statistics and chart line' : invalid ? 'Invalid pH; excluded from statistics and chart line' : !Number.isFinite(value) ? 'Invalid sensor value; excluded from statistics and chart line' : '';
+          const quality = isValidMeasurement(parameter, value) ? '' : 'Unavailable or invalid sensor value; excluded from statistics and chart line';
           return [selectedTank?.site ?? '', formatManilaDateTime(new Date(row.timestamp)), selectedTank?.name ?? tankId ?? '', value, quality];
         }),
       ];
@@ -276,17 +407,19 @@ export default function TrendsPage() {
               <span>Safe bands use the configured thresholds.</span>
               <span>Overnight window 22:00–06:00 PHT</span>
               <span>Retention {tierConfig.retentionDays} days</span>
+              {readings.length >= TREND_READING_LIMIT && <span role="status">Showing the latest {TREND_READING_LIMIT} readings; the selected range may contain more.</span>}
+              {invalidTimestamps > 0 && <span role="status">{invalidTimestamps} readings excluded due to invalid timestamps.</span>}
             </section>
 
             <section className="card glass trends-statistics-card">
               <div className="trends-section-heading"><h2 className="card-title">Range statistics</h2><p>Last {range === '24h' ? '24 hours' : range === '7d' ? '7 days' : range === 'cycle' ? 'full cycle' : 'custom range'} · {invalidReadings} invalid readings excluded</p></div>
               <div className="table-wrap"><table className="trends-statistics-table"><thead><tr>
-                <th scope="col">Parameter</th><th scope="col">Latest</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Mean</th><th scope="col">Std dev</th><th scope="col">Time in range</th><th scope="col">Excursions</th><th scope="col">Longest (h)</th><th scope="col">Safe range</th>
+                <th scope="col">Parameter</th><th scope="col">Latest</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Mean</th><th scope="col">Std dev</th><th scope="col">Readings in range</th><th scope="col">Excursions</th><th scope="col">Longest (h)</th><th scope="col">Safe range</th>
               </tr></thead><tbody>
                 {parameters.map((parameter) => {
                   const stat = statistics.find((item) => item.parameter === parameter.key)!;
                   return <tr key={parameter.key}>
-                    <th scope="row">{parameter.title} ({parameter.unit})</th><td className="table-numeric">{renderNumber(stat.latest)}</td><td className="table-numeric">{renderNumber(stat.minimum)}</td><td className="table-numeric">{renderNumber(stat.maximum)}</td><td className="table-numeric">{renderNumber(stat.mean)}</td><td className="table-numeric">{renderNumber(stat.standardDeviation)}</td><td className="table-numeric">{stat.percentInRange === null ? '—' : `${stat.percentInRange.toFixed(1)}%`}</td><td className="table-numeric">{stat.excursions}</td><td className="table-numeric">{stat.longestExcursionHours.toFixed(1)}</td><td>{parameter.safeMax === undefined ? `≥${parameter.safeMin} ${parameter.unit}` : `${parameter.safeMin}–${parameter.safeMax} ${parameter.unit}`}</td>
+                    <th scope="row">{parameter.title} ({parameter.unit})</th><td className="table-numeric">{renderNumber(stat.latest)}</td><td className="table-numeric">{renderNumber(stat.minimum)}</td><td className="table-numeric">{renderNumber(stat.maximum)}</td><td className="table-numeric">{renderNumber(stat.mean)}</td><td className="table-numeric">{renderNumber(stat.standardDeviation)}</td><td className="table-numeric">{stat.percentInRange === null ? '—' : `${stat.percentInRange.toFixed(1)}%`}</td><td className="table-numeric">{stat.readings ? stat.excursions : '—'}</td><td className="table-numeric">{stat.readings ? stat.longestExcursionHours.toFixed(1) : '—'}</td><td>{safeRangeLabel(parameter)}</td>
                   </tr>;
                 })}
               </tbody></table></div>
@@ -295,35 +428,27 @@ export default function TrendsPage() {
             <section className="trend-charts" aria-label="Water-quality charts">
               {parameters.map((parameter) => {
                 const stat = statistics.find((item) => item.parameter === parameter.key)!;
-                const plottedRows = prepareParameterRows(rows, parameter.key);
-                const gaps = gapRanges(rows, parameter.key, from, to);
+                const plottedRows = plottedData[parameter.key];
+                const chartGaps = gaps[parameter.key];
                 const zoomSelection = chartZoom.key === chartZoomKey ? chartZoom.ranges[parameter.key] : undefined;
                 const zoomStartIndex = zoomSelection ? Math.max(0, Math.min(zoomSelection.startIndex, plottedRows.length - 1)) : 0;
-                const zoomEndIndex = zoomSelection ? Math.max(zoomStartIndex + 1, Math.min(zoomSelection.endIndex, plottedRows.length - 1)) : plottedRows.length - 1;
+                const zoomEndIndex = zoomSelection ? Math.max(zoomStartIndex, Math.min(zoomSelection.endIndex, plottedRows.length - 1)) : plottedRows.length - 1;
                 const isZoomed = Boolean(zoomSelection && (zoomStartIndex > 0 || zoomEndIndex < plottedRows.length - 1));
                 const canZoomIn = plottedRows.length > 2 && zoomEndIndex - zoomStartIndex > 2;
-                const zoomFrom = isZoomed ? plottedRows[zoomStartIndex].timestamp : from;
-                const zoomTo = isZoomed ? plottedRows[zoomEndIndex].timestamp : to;
+                const zoomStart = isZoomed ? plottedRows[zoomStartIndex].timestamp : dataFrom;
+                const zoomEnd = isZoomed ? plottedRows[zoomEndIndex].timestamp : dataTo;
+                const zoomFrom = zoomStart === zoomEnd ? Math.max(dataFrom, zoomStart - 60_000) : zoomStart;
+                const zoomTo = zoomStart === zoomEnd ? Math.min(dataTo, zoomEnd + 60_000) : zoomEnd;
                 const zoomedRows = isZoomed
-                  ? rows.filter((row) => Date.parse(row.timestamp) >= zoomFrom && Date.parse(row.timestamp) <= zoomTo)
-                  : rows;
+                  ? sampledData[parameter.key].filter((row) => Date.parse(row.timestamp) >= zoomFrom && Date.parse(row.timestamp) <= zoomTo)
+                  : sampledData[parameter.key];
                 const domain = trendYAxisDomain(parameter, zoomedRows);
-                const bandMax = parameter.safeMax ?? domain[1];
-                const outOfRange = validReadings(rows, parameter.key).filter((row) => !isInRange(metricValue(row, parameter.key), parameter));
-                const parameterAlerts = alerts.filter((alert) => {
-                  const name = alert.parameter.toLowerCase();
-                  const matchesParameter = parameter.key === 'do'
-                    ? name === 'do' || name.includes('oxygen')
-                    : parameter.key === 'ph' ? name === 'ph' : name.includes('temperature');
-                  const validValue = Number.isFinite(alert.value) &&
-                    (parameter.key !== 'do' || alert.value > 0) &&
-                    (parameter.key !== 'ph' || (alert.value >= 0 && alert.value <= 14));
-                  return matchesParameter && validValue;
-                });
                 return <article className="card glass trend-chart-card" key={parameter.key}>
                   <header className="trend-chart-heading">
-                    <div><h2 className="card-title">{parameter.title}</h2><p className="small muted">Safe range: {parameter.safeMax === undefined ? `≥${parameter.safeMin} ${parameter.unit}` : `${parameter.safeMin}–${parameter.safeMax} ${parameter.unit}`}</p></div>
+                    <div><h2 className="card-title">{parameter.title} <span className="trend-chart-unit">({parameter.unit})</span></h2>
+                      <p className="small muted">Safe range: {safeRangeLabel(parameter)}</p></div>
                     <div className="trend-chart-actions">
+                      {canExport && <ChartDownloadMenu title={parameter.title} disabled={!rows.length} onCsv={() => exportCsv(parameter.key)} onImage={() => void exportChart(parameter.key)} />}
                       <button type="button" className="icon-button trends-chart-zoom-control" aria-label={`Zoom in ${parameter.title}`} title="Zoom in" disabled={!canZoomIn} onClick={() => {
                         const nextSelection = adjustChartZoom(zoomSelection, plottedRows.length, 'in');
                         if (!nextSelection) return;
@@ -350,95 +475,42 @@ export default function TrendsPage() {
                       }))}><RotateCcw size={18} aria-hidden="true" /></button>
                     </div>
                   </header>
-                  <div className="trend-chart-frame" id={`trend-chart-${parameter.key}`} role="img" aria-label={`${parameter.title} trend chart. Configured safe range ${parameter.safeMin}${parameter.safeMax === undefined ? ' and above' : ` to ${parameter.safeMax}`} ${parameter.unit}; overnight windows and sensor gaps highlighted.`}>
-                    {rows.length === 0 ? <EmptyState>No readings are available for this range.</EmptyState> : <ResponsiveContainer>
-                      <LineChart data={plottedRows} margin={{ top: 10, right: 12, bottom: 10, left: 0 }}>
-                        <defs><pattern id={`gap-pattern-${parameter.key}`} width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="var(--glass-bg-strong)" fillOpacity="0.16" /><line x1="0" y1="0" x2="0" y2="7" stroke="var(--text-secondary)" strokeOpacity="0.65" strokeWidth="2" /></pattern></defs>
-                        <CartesianGrid stroke="var(--control-border)" strokeDasharray="4 4" />
-                        {nightWindows.map((item) => <ReferenceArea key={`night-${item.x1}`} x1={item.x1} x2={item.x2} fill="var(--chart-night)" fillOpacity={0.12} ifOverflow="hidden" />)}
-                        <ReferenceArea y1={parameter.safeMin} y2={bandMax} ifOverflow="hidden" fill="var(--ok)" fillOpacity={0.09} />
-                        {gaps.map((gap, index) => <ReferenceArea key={`gap-${index}`} x1={gap.x1} x2={gap.x2} fill={`url(#gap-pattern-${parameter.key})`} ifOverflow="hidden" />)}
-                        <XAxis
-                          dataKey="timestamp"
-                          type="number"
-                          scale="time"
-                          domain={[zoomFrom, zoomTo]}
-                          ticks={xTicks}
-                          allowDataOverflow
-                          stroke="var(--text-secondary)"
-                          tick={{ fill: 'var(--text-secondary)', fontSize: 10 }}
-                          tickFormatter={(value: number) => range === '24h'
-                            ? dateFormatter.format(new Date(value))
-                            : new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' }).format(new Date(value))}
-                        />
-                        <YAxis domain={domain} allowDataOverflow width={48} stroke="var(--text-secondary)" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
-                        <Tooltip contentStyle={{ background: 'var(--glass-bg-strong)', border: '1px solid var(--control-border)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }} labelStyle={{ color: 'var(--text-primary)' }} labelFormatter={(value) => `${formatManilaDateTime(new Date(Number(value)))} PHT`} formatter={(value) => [`${Number(value).toFixed(2)} ${parameter.unit}`, parameter.title]} />
-                        <Line dataKey={parameter.key === 'do' ? 'doMgL' : parameter.key} name={parameter.title} stroke={parameter.color} strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
-                        {outOfRange.filter((row) => {
-                          const value = metricValue(row, parameter.key);
-                          return value >= domain[0] && value <= domain[1];
-                        }).map((row) => <ReferenceDot key={`excursion-${row.id}`} x={Date.parse(row.timestamp)} y={metricValue(row, parameter.key)} r={4} fill="var(--warn-text)" stroke="var(--glass-bg-strong)" />)}
-                        {parameterAlerts.map((alert: AlertItem) => <ReferenceDot key={alert.id} x={Date.parse(alert.createdAt)} y={alert.value} r={5} fill={alert.severity === 'critical' ? 'var(--critical-text)' : 'var(--warn-text)'} stroke="var(--glass-bg-strong)" />)}
-                        <Brush
-                          dataKey="timestamp"
-                          height={20}
-                          startIndex={zoomStartIndex}
-                          endIndex={zoomEndIndex}
-                          stroke="var(--accent)"
-                          fill="var(--glass-bg-strong)"
-                          travellerWidth={8}
-                          onChange={(selection) => {
-                            if (selection?.startIndex === undefined || selection.endIndex === undefined) return;
-                            setChartZoom((current) => ({
-                              key: chartZoomKey,
-                              ranges: {
-                                ...(current.key === chartZoomKey ? current.ranges : {}),
-                                [parameter.key]: { startIndex: selection.startIndex, endIndex: selection.endIndex },
-                              },
-                            }));
-                          }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>}
-                  </div>
+                  <TrendChartPlot parameter={parameter} plottedRows={plottedRows} nightWindows={nightWindows} gaps={chartGaps}
+                    zoomFrom={zoomFrom} zoomTo={zoomTo} yMin={domain[0]} yMax={domain[1]} startIndex={zoomStartIndex} endIndex={zoomEndIndex}
+                    zoomKey={chartZoomKey} setChartZoom={setChartZoom} />
                   <div className="trend-chart-stats" aria-label={`${parameter.title} chart statistics`}>
                     <div><span>Latest</span><strong>{renderNumber(stat.latest)} {parameter.unit}</strong></div>
                     <div><span>Min / max</span><strong>{renderNumber(stat.minimum)} / {renderNumber(stat.maximum)}</strong></div>
                     <div><span>Mean</span><strong>{renderNumber(stat.mean)}</strong></div>
                     <div><span>In range</span><strong>{stat.percentInRange === null ? '—' : `${stat.percentInRange.toFixed(1)}%`}</strong></div>
                   </div>
-                  <div className="trend-card-legend"><span><i className="trend-line-key" style={{ background: parameter.color }} />{selectedTank?.name ?? 'Reading'}</span><span><i className="trend-safe-key" />Safe range</span><span><i className="trend-night-key" />Overnight</span><span><i className="trend-gap-key" />Offline gap</span><span><i className="trend-excursion-key" />Out of range</span></div>
-                  <p className="trend-chart-caption">Use Zoom in/out for quick adjustments or drag the handles below for a specific time range. Safe bands use configured thresholds; missing readings are shown as gaps.</p>
-                  {canExport && <div className="trends-inline-actions trends-download-actions">
-                    <button type="button" className="icon-button trends-chart-export" aria-label={`Download ${parameter.title} PNG`} title={`Download ${parameter.title} PNG`} disabled={!rows.length} onClick={() => void exportChart(parameter.key)}><FileImage size={18} aria-hidden="true" /></button>
-                    <button type="button" className="icon-button trends-csv-button" aria-label={`Download ${parameter.title} CSV`} title={`Download ${parameter.title} CSV`} disabled={!rows.length} onClick={() => exportCsv(parameter.key)}><FileSpreadsheet size={18} aria-hidden="true" /></button>
-                  </div>}
+                  <div className="trend-chart-footer">
+                    <div className="trend-card-legend"><span><i className="trend-line-key" style={{ background: parameter.color }} />In-range reading</span><span><i className="trend-excursion-key" />Out-of-range reading</span><span><i className="trend-safe-key" />Safe range</span><span><i className="trend-night-key" />Overnight</span><span><i className="trend-gap-key" />Offline gap</span></div>
+                    <ChartGuide title={parameter.title} />
+                  </div>
                 </article>;
               })}
               <article className="card glass trends-overnight-panel">
                 <h2 className="card-title">Overnight vs daytime</h2>
-                <p className="small muted">Mean valid readings · overnight 22:00–06:00 PHT</p>
-                <div className="table-wrap"><table className="trends-overnight-table"><thead><tr><th scope="col">Parameter</th><th scope="col">Day mean</th><th scope="col">Night mean</th><th scope="col">Min</th><th scope="col">Change</th></tr></thead><tbody>
+                <p className="small muted">Day 06:00–22:00 · night 22:00–06:00 PHT · change = night mean − day mean</p>
+                <div className="table-wrap"><table className="trends-overnight-table"><thead><tr><th scope="col">Parameter</th><th scope="col">Day mean</th><th scope="col">Day min</th><th scope="col">Night mean</th><th scope="col">Night min</th><th scope="col">Change</th></tr></thead><tbody>
                   {parameters.map((parameter) => {
-                    const values = validReadings(rows, parameter.key);
-                    const dayValues = values.filter((row) => !inOvernightWindow(row.timestamp)).map((row) => metricValue(row, parameter.key));
-                    const nightValues = values.filter((row) => inOvernightWindow(row.timestamp)).map((row) => metricValue(row, parameter.key));
-                    const dayMean = average(dayValues);
-                    const nightMean = average(nightValues);
+                    const { day, night } = comparisons[parameter.key];
                     return <tr key={parameter.key}><th scope="row">{parameter.title} ({parameter.unit})</th>
-                      <td className="table-numeric">{renderNumber(dayMean)}</td>
-                      <td className="table-numeric">{renderNumber(nightMean)}</td>
-                      <td className="table-numeric">{renderNumber(values.length ? Math.min(...values.map((row) => metricValue(row, parameter.key))) : null)}</td>
-                      <td className="table-numeric">{dayMean === null || nightMean === null ? '—' : renderNumber(nightMean - dayMean)}</td>
+                      <td className="table-numeric">{renderNumber(day.mean)}</td>
+                      <td className="table-numeric">{renderNumber(day.min)}</td>
+                      <td className="table-numeric">{renderNumber(night.mean)}</td>
+                      <td className="table-numeric">{renderNumber(night.min)}</td>
+                      <td className="table-numeric">{day.mean === null || night.mean === null ? '—' : renderNumber(night.mean - day.mean)}</td>
                     </tr>;
                   })}
                 </tbody></table></div>
                 <div className="trends-rearing">
-                  <div className="trends-rearing-heading"><h3>Rearing day view</h3><span>Day {selectedTank ? getRaisingDay(selectedTank.rearingStartDate) : '—'} of 21</span></div>
-                  <div className="trends-rearing-track" aria-label={`Rearing day ${selectedTank ? getRaisingDay(selectedTank.rearingStartDate) : 0} of 21`}>
-                    {Array.from({ length: 21 }, (_, index) => <i key={index} className={selectedTank && index < getRaisingDay(selectedTank.rearingStartDate) ? 'is-complete' : ''} />)}
+                  <div className="trends-rearing-heading"><h3>Rearing day view</h3><span>{currentDay === null ? 'Start date unavailable' : currentDay < 0 ? `Starts in ${-currentDay} days` : currentDay > 21 ? `Day ${currentDay} · cycle ended` : `Day ${currentDay} of 21`}</span></div>
+                  <div className="trends-rearing-track" role="img" aria-label={currentDay === null ? 'Rearing start date unavailable' : `Rearing day ${currentDay}; harvest window begins on day 21`}>
+                    {Array.from({ length: 22 }, (_, index) => <i key={index} className={currentDay !== null && index === currentDay ? 'is-current' : currentDay !== null && index < currentDay ? 'is-complete' : ''} />)}
                   </div>
-                  <div className="trends-rearing-labels"><span>Day 0</span><span>Day {selectedTank ? getRaisingDay(selectedTank.rearingStartDate) : '—'} today</span><span>Day 21 harvest window</span></div>
+                  <div className="trends-rearing-labels"><span>Day 0</span><span>Day 21 harvest window</span></div>
                   <p className="small muted">Switch the selected tank to compare its cycle against another rearing cycle.</p>
                 </div>
               </article>

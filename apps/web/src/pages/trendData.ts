@@ -1,4 +1,4 @@
-import { isValidMeasurement as isValidSensorMeasurement, SAMPLE_INTERVAL_MS } from '@hydrosense/shared';
+import { getManilaDateString, isValidMeasurement as isValidSensorMeasurement, SAMPLE_INTERVAL_MS } from '@hydrosense/shared';
 import type { MeasuredParameter, Reading } from '@hydrosense/shared';
 
 export { SAMPLE_INTERVAL_MS };
@@ -9,7 +9,7 @@ export interface TrendParameter {
   key: MeasuredParameter;
   title: string;
   unit: string;
-  safeMin: number;
+  safeMin?: number;
   safeMax?: number;
 }
 
@@ -28,7 +28,8 @@ export interface TrendStatistic {
 }
 
 export function prepareTrendRows(readings: Reading[]) {
-  const rows = [...readings].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+  const rows = readings.filter((row) => Number.isFinite(Date.parse(row.timestamp)))
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
   return { rows, chartRows: rows.map((row) => ({ ...row, timestamp: Date.parse(row.timestamp) })) };
 }
 
@@ -42,13 +43,76 @@ export function isValidMeasurement(value: number, parameter: MeasuredParameter) 
 
 export function trendYAxisDomain(parameter: TrendParameter, rows: Reading[]): [number, number] {
   const values = rows.map((row) => parameterValue(row, parameter.key)).filter((value) => isValidMeasurement(value, parameter.key));
-  if (parameter.key === 'ph') return [Math.max(0, Math.floor(Math.min(5, ...values))), Math.min(14, Math.ceil(Math.max(9, ...values)))];
-  if (parameter.key === 'do') return [0, Math.max(10, Math.ceil(Math.max(...values, 4) + 1))];
-  if (parameter.safeMax === undefined) throw new Error(`A maximum safe limit is required for ${parameter.title}.`);
-  const minimum = Math.min(parameter.safeMin, ...values);
-  const maximum = Math.max(parameter.safeMax, ...values);
+  const bounds = [parameter.safeMin, parameter.safeMax].filter((value): value is number => value !== undefined && Number.isFinite(value));
+  const minimum = Math.min(...values, ...bounds);
+  const maximum = Math.max(...values, ...bounds);
+  if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return [0, 1];
   const padding = Math.max(0.5, (maximum - minimum) * 0.1);
-  return [Math.floor(minimum - padding), Math.ceil(maximum + padding)];
+  const lower = Math.floor(minimum - padding);
+  const upper = Math.ceil(maximum + padding);
+  return [parameter.key === 'ph' || parameter.key === 'do' ? Math.max(0, lower) : lower,
+    parameter.key === 'ph' ? Math.min(14, upper) : upper];
+}
+
+export function chartTimeDomain(rows: Reading[], from: number, to: number): [number, number] {
+  if (!rows.length) return [from, to];
+  const first = Date.parse(rows[0].timestamp);
+  const last = Date.parse(rows[rows.length - 1].timestamp);
+  const padding = Math.max(60_000, Math.min(SAMPLE_INTERVAL_MS / 2, (last - first) * 0.05));
+  return [Math.max(from, first - padding), Math.min(to, last + padding)];
+}
+
+export function comparisonStatistics(rows: Reading[], parameter: MeasuredParameter) {
+  const day: number[] = [];
+  const night: number[] = [];
+  rows.forEach((row) => {
+    const time = Date.parse(row.timestamp);
+    const value = parameterValue(row, parameter);
+    if (!Number.isFinite(time) || !isValidMeasurement(value, parameter)) return;
+    const hour = new Date(time + MANILA_OFFSET_MS).getUTCHours();
+    (hour >= 22 || hour < 6 ? night : day).push(value);
+  });
+  const summarize = (values: number[]) => ({
+    mean: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null,
+    min: values.length ? Math.min(...values) : null,
+  });
+  return { day: summarize(day), night: summarize(night) };
+}
+
+export function rearingDay(startDate: string, at = new Date()): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return null;
+  const start = Date.parse(`${startDate}T00:00:00+08:00`);
+  if (!Number.isFinite(start) || getManilaDateString(new Date(start)) !== startDate) return null;
+  const today = Date.parse(`${getManilaDateString(at)}T00:00:00+08:00`);
+  return Math.floor((today - start) / 86_400_000);
+}
+
+function sampleSlot(timestamp: number) {
+  return Math.floor((timestamp + MANILA_OFFSET_MS) / SAMPLE_INTERVAL_MS);
+}
+
+export function sampleParameterReadings(rows: Reading[], parameter: MeasuredParameter): Reading[] {
+  const selected = new Map<number, Reading>();
+  for (const row of rows) {
+    const slot = sampleSlot(Date.parse(row.timestamp));
+    const previous = selected.get(slot);
+    if (isValidMeasurement(parameterValue(row, parameter), parameter) ||
+        !previous || !isValidMeasurement(parameterValue(previous, parameter), parameter)) {
+      selected.set(slot, row);
+    }
+  }
+
+  const sampled: Reading[] = [];
+  for (const row of rows) {
+    const chosen = selected.get(sampleSlot(Date.parse(row.timestamp)));
+    if (row === chosen) {
+      sampled.push(row);
+    } else if (!isValidMeasurement(parameterValue(row, parameter), parameter) &&
+      sampled.length && isValidMeasurement(parameterValue(sampled[sampled.length - 1], parameter), parameter)) {
+      sampled.push(row);
+    }
+  }
+  return sampled;
 }
 
 export function prepareParameterRows(rows: Reading[], parameter: MeasuredParameter) {
@@ -65,7 +129,8 @@ export function prepareParameterRows(rows: Reading[], parameter: MeasuredParamet
     if (!next) return;
     const currentTime = Date.parse(row.timestamp);
     const nextTime = Date.parse(next.timestamp);
-    if (nextTime - currentTime > MAX_CONTIGUOUS_INTERVAL_MS) {
+    if (nextTime === currentTime || nextTime - currentTime > MAX_CONTIGUOUS_INTERVAL_MS ||
+        sampleSlot(nextTime) - sampleSlot(currentTime) > 1) {
       chartRows.push({
         ...row,
         id: `${row.id}-gap-${next.id}`,
@@ -140,15 +205,18 @@ export function calculateTrendStatistics(rows: Reading[], parameter: TrendParame
   const values = samples.map(({ value }) => value);
   const mean = values.reduce((total, value) => total + value, 0) / values.length;
   const standardDeviation = Math.sqrt(values.reduce((total, value) => total + (value - mean) ** 2, 0) / values.length);
-  const inRange = (value: number) => value >= parameter.safeMin && (parameter.safeMax === undefined || value <= parameter.safeMax);
+  const inRange = (value: number) => (parameter.safeMin === undefined || value >= parameter.safeMin) && (parameter.safeMax === undefined || value <= parameter.safeMax);
   let excursions = 0;
   let longestExcursionMs = 0;
   let currentExcursionMs = 0;
   let inExcursion = false;
-  samples.forEach((sample, index) => {
-    const outside = !inRange(sample.value);
-    const previous = samples[index - 1];
-    const contiguous = previous && sample.timestamp - previous.timestamp <= MAX_CONTIGUOUS_INTERVAL_MS;
+  const timeline = rows.map((reading) => ({ timestamp: Date.parse(reading.timestamp), value: parameterValue(reading, parameter.key) }))
+    .filter((sample) => Number.isFinite(sample.timestamp)).sort((a, b) => a.timestamp - b.timestamp);
+  timeline.forEach((sample, index) => {
+    const valid = isValidMeasurement(sample.value, parameter.key);
+    const outside = valid && !inRange(sample.value);
+    const previous = timeline[index - 1];
+    const contiguous = previous && isValidMeasurement(previous.value, parameter.key) && sample.timestamp - previous.timestamp <= MAX_CONTIGUOUS_INTERVAL_MS;
     if (!outside || !contiguous) {
       if (inExcursion) longestExcursionMs = Math.max(longestExcursionMs, currentExcursionMs);
       currentExcursionMs = 0;
@@ -159,8 +227,8 @@ export function calculateTrendStatistics(rows: Reading[], parameter: TrendParame
       excursions += 1;
       inExcursion = true;
     }
-    const next = samples[index + 1];
-    if (next && next.timestamp - sample.timestamp <= MAX_CONTIGUOUS_INTERVAL_MS) {
+    const next = timeline[index + 1];
+    if (next && isValidMeasurement(next.value, parameter.key) && next.timestamp - sample.timestamp <= MAX_CONTIGUOUS_INTERVAL_MS) {
       currentExcursionMs += next.timestamp - sample.timestamp;
     }
   });
@@ -201,7 +269,8 @@ export function nightRanges(rows: Reading[]) {
   const start = new Date(rows[0].timestamp);
   const end = new Date(rows[rows.length - 1].timestamp);
   const ranges: Array<{ x1: number; x2: number }> = [];
-  for (let day = -1; day <= 22; day += 1) {
+  const days = Math.ceil((end.getTime() - start.getTime()) / 86_400_000);
+  for (let day = -1; day <= days; day += 1) {
     const date = new Date(start.getTime() + day * 86_400_000);
     const localDate = date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
     const x1 = Date.parse(`${localDate}T22:00:00+08:00`);

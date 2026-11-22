@@ -111,14 +111,15 @@ export default function CalibrationPage() {
               </header>
               <div className="dash-calibration-due-content">
                 {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data?.length ? <p className="dash-calibration-empty" role="status">No calibration records are available.</p> : (
-                  <div className="table-wrap"><table className="dash-calibration-table"><thead><tr><th>Parameter / standard</th><th>Before → after</th><th>Calibrated</th><th>Next due</th></tr></thead><tbody>
+                  <div className="table-wrap"><table className="dash-calibration-table"><thead><tr><th scope="col">Parameter / standard</th><th scope="col">Before → after</th><th scope="col">Calibrated</th><th scope="col">Next due</th></tr></thead><tbody>
                     {query.data.map((log) => {
                       const overdue = new Date(log.nextDue).getTime() < now;
+                      const unit = log.parameter === 'ph' ? 'pH' : 'mg/L';
                       return <tr key={log.id}>
                         <td><strong>{log.parameter.toUpperCase()}</strong><small>{log.standard}</small></td>
-                        <td className="table-numeric">{log.before} → {log.after}</td>
-                        <td>{getManilaDateString(new Date(log.date))}</td>
-                        <td className={overdue ? 'row-overdue' : ''}>{getManilaDateString(new Date(log.nextDue))}{overdue ? ' · OVERDUE' : ''}<small>By {log.user}</small></td>
+                        <td className="table-numeric">{log.before.toFixed(2)} → {log.after.toFixed(2)} {unit}</td>
+                        <td><time className="calibration-date" dateTime={log.date}>{getManilaDateString(new Date(log.date))}</time></td>
+                        <td className={overdue ? 'row-overdue' : ''}><time className="calibration-date" dateTime={log.nextDue}>{getManilaDateString(new Date(log.nextDue))}</time>{overdue && <strong className="calibration-overdue">OVERDUE</strong>}<small>By {log.user}</small></td>
                       </tr>;
                     })}
                   </tbody></table></div>

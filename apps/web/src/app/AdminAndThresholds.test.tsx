@@ -217,6 +217,29 @@ describe('users and roles', () => {
 });
 
 describe('threshold review', () => {
+  it('aligns the calibration log table and includes units for reference readings', async () => {
+    signIn('admin');
+    vi.spyOn(api, 'listCalibrationLogs').mockResolvedValue([{
+      id: 'calibration-1',
+      tankId: 'tank-1',
+      parameter: 'ph',
+      standard: 'pH 7.00 buffer',
+      before: 6.95,
+      after: 7,
+      date: '2026-11-21T12:00:00+08:00',
+      user: 'Test User',
+      nextDue: '2026-12-21T12:00:00+08:00',
+    }]);
+    window.history.replaceState({}, '', '/calibration');
+    render(<App />);
+    const section = screen.getByRole('heading', { name: 'Calibration due dates' }).closest('section')!;
+    const table = await within(section).findByRole('table');
+    expect(within(table).getAllByRole('columnheader')).toHaveLength(4);
+    expect(within(table).getByRole('cell', { name: '6.95 → 7.00 pH' })).toBeInTheDocument();
+    expect(within(table).getByText('2026-11-21')).toHaveAttribute('datetime', '2026-11-21T12:00:00+08:00');
+    expect(within(table).getByText('2026-12-21')).toHaveAttribute('datetime', '2026-12-21T12:00:00+08:00');
+  });
+
   it('shows calibration thresholds as read-only reference values', async () => {
     signIn('admin');
     vi.spyOn(api, 'listThresholds').mockResolvedValue(DEFAULT_THRESHOLDS.map((item) => item.parameter === 'do' ? { ...item, max: undefined } : { ...item }));
@@ -226,8 +249,10 @@ describe('threshold review', () => {
     const heading = await screen.findByRole('heading', { name: 'Measured parameter thresholds' });
     expect(await screen.findByText('Reference values only. Calibration is logged above.')).toBeInTheDocument();
     expect(screen.getByText('Reference values only. Calibration is logged above.').parentElement).toBe(heading.parentElement);
-    expect(screen.getByRole('row', { name: 'Temperature (°C) 26 °C 30 °C' })).toBeInTheDocument();
-    expect(screen.getByRole('row', { name: 'Dissolved oxygen (mg/L) 4 mg/L Not set' })).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: 'Measured parameter thresholds' });
+    expect(within(table).getAllByRole('row')).toHaveLength(4);
+    expect(within(table).getByRole('row', { name: 'Temperature (°C) 26 °C 30 °C' })).toBeInTheDocument();
+    expect(within(table).getByRole('row', { name: 'Dissolved oxygen (mg/L) 4 mg/L Not set' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Minimum')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Maximum')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Review and save' })).not.toBeInTheDocument();

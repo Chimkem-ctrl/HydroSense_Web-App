@@ -293,6 +293,7 @@
 .glass-shell .live-screen .reading-head { min-height: 32px; }
 .glass-shell .live-screen .reading-label { font-size: 14px; line-height: 1.25; }
 .glass-shell .live-screen .reading-number { display: flex; align-items: baseline; gap: var(--space-2); font-variant-numeric: tabular-nums; }
+.glass-shell .live-screen .reading-number > span:first-child { font-size: clamp(40px, 3.5vw, 48px); font-weight: 800; letter-spacing: -0.035em; line-height: 1; }
 .glass-shell .live-screen .reading-unit { font-size: 14px; font-weight: 600; line-height: 1; white-space: nowrap; }
 .glass-shell .live-screen .reading-status, .glass-shell .live-screen .reading-caption { font-size: 14px; line-height: 1.4; }
 .glass-shell .live-screen .reading-scale { grid-template-columns: minmax(0, 1fr) 24px; align-items: center; column-gap: var(--space-2); row-gap: var(--space-1); padding-top: var(--space-2); font-size: 12px; }
