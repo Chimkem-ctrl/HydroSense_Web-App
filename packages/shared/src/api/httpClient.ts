@@ -6,6 +6,7 @@ export class HttpApiClient implements HydroSenseApi {
     private readonly baseUrl: string,
     private readonly getAccessToken?: () => string | null | Promise<string | null>,
     private readonly apiKey?: string,
+    private readonly onUnauthorized?: (token: string) => void,
   ) {}
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -20,6 +21,7 @@ export class HttpApiClient implements HydroSenseApi {
       },
     });
     if (!response.ok) {
+      if (response.status === 401 && token) this.onUnauthorized?.(token);
       const body = await response.text();
       throw new Error(`HydroSense API ${response.status} ${response.statusText}: ${body || path}`);
     }

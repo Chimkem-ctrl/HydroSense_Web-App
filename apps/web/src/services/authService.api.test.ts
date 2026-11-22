@@ -1,15 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+function tokenFor(id: string, expiresAt = Math.floor(Date.now() / 1000) + 3600) {
+  return `header.${btoa(JSON.stringify({ sub: id, exp: expiresAt }))}.signature`;
+}
+
+async function establishSession(id: string, role: 'operator' | 'admin') {
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id }, access_token: tokenFor(id) }), { status: 200 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify([{
+      id, first_name: 'Jane', last_name: 'Smith', email: 'jane@example.test',
+      status: 'approved', role, created_at: '2026-01-01',
+    }]), { status: 200 }));
+  vi.stubGlobal('fetch', fetchMock);
+  const service = await import('./authService');
+  await service.authService.signIn('jane@example.test', 'password');
+  return service;
+}
+
 beforeEach(() => {
   vi.resetModules();
   vi.stubEnv('VITE_DATA_MODE', 'api');
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 describe('API account review', () => {
@@ -84,16 +103,11 @@ describe('API account review', () => {
   });
 
   it('loads and saves the signed-in user profile picture', async () => {
-    window.localStorage.setItem('hydrosense.auth.user', JSON.stringify({
-      id: '1', firstName: 'Jane', lastName: 'Smith', email: 'jane@example.test',
-      role: 'operator', requestedRole: null, status: 'approved', createdAt: '2026-01-01',
-    }));
-    window.localStorage.setItem('hydrosense.auth.access-token', 'token');
+    const { authService, getCurrentUser } = await establishSession('1', 'operator');
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ avatarUrl: 'https://storage.example/old-avatar' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ avatarUrl: 'https://storage.example/new-avatar' }), { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);
-    const { authService, getCurrentUser } = await import('./authService');
     expect(await authService.getProfileAvatarUrl()).toBe('https://storage.example/old-avatar');
     const file = new File([new Uint8Array([1, 2, 3])], 'profile.png', { type: 'image/png' });
     expect(await authService.saveProfileAvatar(file)).toBe('https://storage.example/new-avatar');
@@ -104,13 +118,11 @@ describe('API account review', () => {
   });
 
   it('maps pending and approved profile sites from the API', async () => {
-    window.localStorage.setItem('hydrosense.auth.user', JSON.stringify({ id: 'admin', role: 'admin' }));
-    window.localStorage.setItem('hydrosense.auth.access-token', 'token');
+    const { authService, hatcheryLabel } = await establishSession('admin', 'admin');
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify([{ id: '1', firstName: 'Pending', lastName: 'User', email: 'pending@example.test', role: null, requestedRole: 'operator', site: 'camiguin-sagay', createdAt: '2026-01-01' }]), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify([{ id: '2', firstName: 'Approved', lastName: 'User', email: 'approved@example.test', role: 'operator', site: 'camiguin-sagay', createdAt: '2026-01-01' }]), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
-    const { authService, hatcheryLabel } = await import('./authService');
     const pending = await authService.listPendingRequests();
     const approved = await authService.listApprovedUsers();
     expect(pending[0].hatcheryId).toBe('camiguin-sagay');
@@ -123,7 +135,7 @@ describe('API account review', () => {
 
   it('stores the sign-in site and fetches the latest profile assignment', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: tokenFor('1') }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify([{
         id: '1', first_name: 'Jane', last_name: 'Smith', email: 'jane@example.test',
         status: 'approved', role: 'operator', site: 'Original site', created_at: '2026-01-01',
@@ -141,7 +153,7 @@ describe('API account review', () => {
 
   it('routes verified sign-ins with pending profiles to admin approval', async () => {
     vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: tokenFor('1') }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify([{
         id: '1',
         first_name: 'Jane',
@@ -158,9 +170,8 @@ describe('API account review', () => {
   });
 
   it('reports a profile site lookup failure', async () => {
-    window.localStorage.setItem('hydrosense.auth.access-token', 'token');
+    const { authService } = await establishSession('1', 'operator');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: 'Access denied' }), { status: 403 })));
-    const { authService } = await import('./authService');
     await expect(authService.getProfileSite({
       id: '1', firstName: 'Jane', lastName: 'Smith', email: 'jane@example.test',
       role: 'operator', requestedRole: null, status: 'approved', createdAt: '2026-01-01',
@@ -168,13 +179,11 @@ describe('API account review', () => {
   });
 
   it('lists unassigned pending requests and sends the selected admin role', async () => {
-    window.localStorage.setItem('hydrosense.auth.user', JSON.stringify({ id: 'admin', role: 'admin' }));
-    window.localStorage.setItem('hydrosense.auth.access-token', 'token');
+    const { authService } = await establishSession('admin', 'admin');
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify([{ id: '1', firstName: 'Jane', lastName: 'Smith', email: 'jane@example.test', status: 'pending', role: null, requestedRole: null, createdAt: '2026-01-01' }]), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: '1', status: 'approved', role: 'admin' }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
-    const { authService } = await import('./authService');
     expect(await authService.listPendingRequests()).toMatchObject([{ firstName: 'Jane', lastName: 'Smith', role: null }]);
     await authService.approveRequest('1', 'admin');
     expect(fetchMock.mock.calls[1][1].body).toBe(JSON.stringify({ status: 'approved', role: 'admin' }));
@@ -182,9 +191,68 @@ describe('API account review', () => {
 
   it('does not present a rejected account as pending', async () => {
     vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: 'token' }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify([{ status: 'rejected', role: null }]), { status: 200 })));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: tokenFor('1') }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: '1', status: 'rejected', role: null }]), { status: 200 })));
     const { authService } = await import('./authService');
     await expect(authService.signIn('jane@example.test', 'password')).rejects.toThrow('Request not approved.');
+  });
+
+  it('clears stale persisted credentials on launch', async () => {
+    window.localStorage.setItem('hydrosense.auth.access-token', tokenFor('1'));
+    window.localStorage.setItem('hydrosense.auth.user', JSON.stringify({ id: '1', role: 'admin', status: 'approved' }));
+    const { resetSessionOnLaunch, getCurrentUser } = await import('./authService');
+    resetSessionOnLaunch();
+    expect(getCurrentUser()).toBeNull();
+    expect(window.localStorage.getItem('hydrosense.auth.access-token')).toBeNull();
+    expect(window.localStorage.getItem('hydrosense.auth.user')).toBeNull();
+  });
+
+  it.each(['invalid', tokenFor('1', 1)])('rejects a malformed or expired sign-in token', async (token) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ user: { id: '1' }, access_token: token }), { status: 200 })));
+    const { authService, getCurrentUser } = await import('./authService');
+    await expect(authService.signIn('jane@example.test', 'password')).rejects.toThrow('invalid or expired');
+    expect(getCurrentUser()).toBeNull();
+  });
+
+  it('does not create a session when the server rejects the access token', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: tokenFor('1') }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Invalid token' }), { status: 401 })));
+    const { authService, getCurrentUser } = await import('./authService');
+    await expect(authService.signIn('jane@example.test', 'password')).rejects.toThrow('Invalid token');
+    expect(getCurrentUser()).toBeNull();
+    expect(window.sessionStorage.getItem('hydrosense.auth.access-token')).toBeNull();
+  });
+
+  it.each(['missing', 'replaced'])('clears a session when its token is %s', async (change) => {
+    const { getCurrentUser } = await establishSession('1', 'operator');
+    expect(getCurrentUser()).not.toBeNull();
+    if (change === 'missing') window.sessionStorage.removeItem('hydrosense.auth.access-token');
+    else window.sessionStorage.setItem('hydrosense.auth.access-token', tokenFor('other'));
+    expect(getCurrentUser()).toBeNull();
+    expect(window.sessionStorage.getItem('hydrosense.auth.user')).toBeNull();
+  });
+
+  it('signs out an active session when the token expires', async () => {
+    vi.useFakeTimers();
+    try {
+      const { getCurrentUser } = await establishSession('1', 'operator');
+      expect(getCurrentUser()).not.toBeNull();
+      vi.advanceTimersByTime(3_600_000);
+      expect(getCurrentUser()).toBeNull();
+      expect(window.sessionStorage.getItem('hydrosense.auth.access-token')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('signs out only when a rejected request used the current token', async () => {
+    const { getCurrentUser, getApiAccessToken, signOutIfTokenMatches } = await establishSession('1', 'operator');
+    const token = getApiAccessToken();
+    if (!token) throw new Error('Expected a signed-in session.');
+    signOutIfTokenMatches('older-token');
+    expect(getCurrentUser()).not.toBeNull();
+    signOutIfTokenMatches(token);
+    expect(getCurrentUser()).toBeNull();
   });
 });

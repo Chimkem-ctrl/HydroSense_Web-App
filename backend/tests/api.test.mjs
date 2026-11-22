@@ -20,7 +20,10 @@ function setup(role = 'admin', status = 'approved') {
   const failures = {};
   const uploads = [];
   const inserts = [];
+  const authUsers = profiles.map(({ id, email }) => ({ id, email }));
+  let nextUserId = 0;
   let signupRequest;
+  const rpcRequests = [];
   const db = {
     storage: {
       from(bucket) {
@@ -33,7 +36,14 @@ function setup(role = 'admin', status = 'approved') {
         };
       },
     },
-    auth: { admin: { deleteUser: async () => ({ error: failures.auth ? { message: failures.auth } : null }) } },
+    auth: { admin: { deleteUser: async (id) => {
+      if (failures.auth) return { error: { message: failures.auth } };
+      const index = authUsers.findIndex((user) => user.id === id);
+      if (index < 0) return { error: { status: 404, message: 'User not found' } };
+      authUsers.splice(index, 1);
+      tables.profiles = tables.profiles.filter((user) => user.id !== id);
+      return { error: null };
+    } } },
     async rpc(name, args) {
       if (name === 'latest_tank_readings') {
         if (failures.readings) return { data: null, error: { message: failures.readings } };
@@ -123,11 +133,25 @@ function setup(role = 'admin', status = 'approved') {
       HARDWARE_INGEST_API_KEY: 'hardware-key',
     })[name] }, serve: (fn) => { handler = fn; } },
     createClient: (_url, key) => key === 'service' ? db : {
+      rpc: async (name, args) => {
+        rpcRequests.push({ name, args });
+        if (failures[name]) return { data: null, error: failures[name] };
+        return { data: name === 'chat_open_direct' || name === 'chat_send_message' ? 'result-id' : [], error: null };
+      },
       auth: {
         getUser: async () => ({ data: { user: { id: 'actor' } }, error: null }),
         signInWithPassword: async () => ({ data: { user: { id: 'actor' }, session: { access_token: 'access', refresh_token: 'refresh' } }, error: null }),
         signUp: async (body) => {
           signupRequest = body;
+          if (failures.trackSignups) {
+            if (authUsers.some((user) => user.email.toLowerCase() === body.email.toLowerCase())) {
+              return { data: null, error: { message: 'Email already registered' } };
+            }
+            const user = { id: `new-${++nextUserId}`, email: body.email };
+            authUsers.push(user);
+            tables.profiles.push({ ...user, role: null, status: 'pending', first_name: body.options.data.firstName, last_name: body.options.data.lastName });
+            return { data: { user }, error: null };
+          }
           return { data: { user: { id: 'new', email: body.email } }, error: null };
         },
       },
@@ -141,9 +165,11 @@ function setup(role = 'admin', status = 'approved') {
   runInNewContext(javascript, context);
   return {
     tables,
+    authUsers,
     failures,
     uploads,
     inserts,
+    rpcRequests,
     get signupRequest() { return signupRequest; },
     raw: (request) => handler(request),
     hardwareRequest: (path, body, key = 'hardware-key') => handler(new Request(`https://example.test/functions/v1/api${path}`, {
@@ -164,6 +190,27 @@ function setup(role = 'admin', status = 'approved') {
     })),
   };
 }
+
+test('chat API validates messages, enforces admin controls, and propagates database access checks', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const app = setup('operator');
+  assert.equal((await app.request(`/v1/chat/threads/${id}/messages`, 'POST', { body: '  ' })).status, 400);
+  assert.equal((await app.request(`/v1/chat/threads/${id}/messages`, 'POST', { body: 'a'.repeat(601) })).status, 400);
+  assert.equal((await app.request(`/v1/chat/threads/${id}/messages`, 'POST', { body: 'a'.repeat(600) })).status, 201);
+  assert.equal(app.rpcRequests.at(-1).name, 'chat_send_message');
+  app.failures.chat_send_message = { code: 'P0001', message: 'Message rate limit exceeded.' };
+  assert.equal((await app.request(`/v1/chat/threads/${id}/messages`, 'POST', { body: 'hello' })).status, 429);
+  app.failures.chat_list_messages = { code: '42501', message: 'Conversation not found.' };
+  assert.equal((await app.request(`/v1/chat/threads/${id}/messages`)).status, 403);
+  assert.equal((await app.request(`/v1/chat/threads/${id}/read`, 'POST', { messageId: id })).status, 200);
+  assert.equal(app.rpcRequests.at(-1).name, 'chat_mark_read');
+  assert.equal((await app.request('/v1/chat/threads', 'POST', { userId: 'not-a-uuid' })).status, 400);
+  assert.equal((await app.request(`/v1/admin/users/${id}/chat`, 'PATCH', { enabled: false })).status, 403);
+  const admin = setup();
+  assert.equal((await admin.request(`/v1/admin/users/${id}/chat`, 'PATCH', { enabled: false })).status, 200);
+  assert.equal(admin.rpcRequests.at(-1).name, 'chat_set_enabled');
+  assert.equal((await setup('operator', 'pending').request('/v1/chat/contacts')).status, 403);
+});
 
 test('buffered readings preserve time, deduplicate retries, and never alert for historical samples', async () => {
   const app = setup();
@@ -676,18 +723,49 @@ test('operational mutations validate input and use the authenticated actor', asy
   assert.equal(app.tables.calibration_logs[0].user_name, 'Admin User');
 });
 
-test('deletion reports partial failure and reviews retain their existing role', async () => {
+test('failed auth deletion preserves the profile and reviews retain their existing role', async () => {
   const app = setup();
   app.failures.auth = 'sensitive detail';
   const deleted = await app.request('/v1/admin/users/member', 'DELETE');
   assert.equal(deleted.status, 500);
   assert.doesNotMatch((await deleted.json()).error, /sensitive detail/);
-  assert.equal(app.tables.profiles.some((user) => user.id === 'member'), false);
-  assert.match(app.tables.audit_logs[0].detail, /auth deletion failed/);
+  assert.equal(app.tables.profiles.some((user) => user.id === 'member'), true);
+  assert.equal(app.authUsers.some((user) => user.id === 'member'), true);
+  assert.equal(app.tables.audit_logs.length, 0);
   app.tables.profiles.find((user) => user.id === 'pending').role = 'operator';
   assert.equal((await app.request('/v1/admin/pending-requests/pending/reject', 'PUT')).status, 200);
   assert.equal(app.tables.profiles.find((user) => user.id === 'pending').role, 'operator');
-  assert.equal(app.tables.audit_logs[1].action, 'Request rejected');
+  assert.equal(app.tables.audit_logs[0].action, 'Request rejected');
+});
+
+test('deleting an approved user frees the email for a new pending signup', async () => {
+  const app = setup();
+  app.failures.trackSignups = true;
+  const body = {
+    firstName: 'New', lastName: 'User', email: 'reuse@example.test', password: 'password123', employeeId: '123',
+    phone: '+639123456789', emergencyContactName: 'John', emergencyContactPhone: '+639123456789',
+    hatcheryId: 'camiguin-sagay', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
+  };
+  assert.equal((await app.request('/v1/auth/signup', 'POST', body)).status, 201);
+  const originalId = app.authUsers.find((user) => user.email === body.email).id;
+  assert.equal((await app.request(`/v1/admin/pending-requests/${originalId}/approve`, 'PUT', { role: 'operator' })).status, 200);
+  assert.equal((await app.request(`/v1/admin/users/${originalId}`, 'DELETE')).status, 200);
+  assert.equal(app.tables.profiles.some((user) => user.id === originalId), false);
+  assert.equal(app.tables.audit_logs.at(-1).action, 'User deleted');
+  const response = await app.request('/v1/auth/signup', 'POST', body);
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).status, 'verify-email');
+  assert.notEqual(app.authUsers.find((user) => user.email === body.email).id, originalId);
+  assert.equal(app.tables.profiles.find((user) => user.email === body.email).status, 'pending');
+});
+
+test('deletes an orphaned auth user and reports a missing user', async () => {
+  const app = setup();
+  app.tables.profiles = app.tables.profiles.filter((user) => user.id !== 'member');
+  assert.equal((await app.request('/v1/admin/users/member', 'DELETE')).status, 200);
+  assert.equal(app.authUsers.some((user) => user.id === 'member'), false);
+  assert.equal(app.tables.audit_logs.at(-1).action, 'User deleted');
+  assert.equal((await app.request('/v1/admin/users/member', 'DELETE')).status, 404);
 });
 
 test('malformed JSON returns 400 and signup trims email', async () => {

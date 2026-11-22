@@ -7,7 +7,7 @@ import type { LinkingOptions } from '@react-navigation/native';
 import { BottomTabBarHeightCallbackContext, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { focusManager, onlineManager } from '@tanstack/react-query';
+import { defaultShouldDehydrateMutation, defaultShouldDehydrateQuery, focusManager, onlineManager } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import * as Notifications from 'expo-notifications';
 import * as SystemUI from 'expo-system-ui';
@@ -41,6 +41,7 @@ import { AuditLogsScreen, ProfileScreen, UsersScreen } from './managementScreens
 import { CriticalAlertModal } from './components/CriticalAlertModal';
 import { BlurTargetContext, TabBarVisibleContext } from './components/ui';
 import { SplashGate } from './splashScreen';
+import { ChatScreen } from './ChatScreen';
 import { api, liveClient } from './services/client';
 import { queryClient, queryPersister } from './services/queryClient';
 import { canAccess } from './access';
@@ -100,6 +101,7 @@ function MainTabs() {
     <Tabs.Screen name="Alerts" component={AlertsScreen} />
     <Tabs.Screen name="Trends" component={TrendsScreen} />
     <Tabs.Screen name="More" component={MoreScreen} />
+    <Tabs.Screen name="Chat" component={ChatScreen} />
     <Tabs.Screen name="Activity" component={ActivityLogsScreen} />
     <Tabs.Screen name="Reports" component={ReportsScreen} />
     <Tabs.Screen name="Status" component={StatusScreen} />
@@ -249,7 +251,10 @@ function ThemedApp() {
     });
   }, [colors.canvas]);
   const paperTheme = mode === 'dark' ? MD3DarkTheme : MD3LightTheme;
-  return <PaperProvider theme={{ ...paperTheme, colors: { ...paperTheme.colors, primary: colors.teal, background: colors.canvas, surface: colors.surface, onSurface: colors.ink, onSurfaceVariant: colors.muted } }}><PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1000 }}>
+  return <PaperProvider theme={{ ...paperTheme, colors: { ...paperTheme.colors, primary: colors.teal, background: colors.canvas, surface: colors.surface, onSurface: colors.ink, onSurfaceVariant: colors.muted } }}><PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1000, dehydrateOptions: {
+    shouldDehydrateQuery: (query) => query.queryKey[0] !== 'mobile-chat' && defaultShouldDehydrateQuery(query),
+    shouldDehydrateMutation: (mutation) => mutation.options.mutationKey?.[0] !== 'mobile-chat' && defaultShouldDehydrateMutation(mutation),
+  } }}>
     <SessionProvider>
       <TankProvider>
         <AppNavigation />

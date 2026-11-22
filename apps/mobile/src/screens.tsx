@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Dialog, Portal } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ClipboardList, Database, Droplets, Eye, FileDown, FileSpreadsheet, FileText, ListFilter, Maximize2, MoreHorizontal, Plus, Trash2, UserRound, Waves, Wifi } from 'lucide-react-native';
+import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ClipboardList, Database, Droplets, Eye, FileDown, FileSpreadsheet, FileText, ListFilter, Maximize2, MessageCircle, MoreHorizontal, Plus, Trash2, UserRound, Waves, Wifi } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { fromByteArray } from 'base64-js';
@@ -292,6 +292,7 @@ export function MoreScreen({ navigation }: Props<'More'>) {
       ...(can(user?.role, 'validation') ? [{ label: 'Validation', icon: ClipboardList, open: () => navigation.navigate('Review') }] : []),
     ] },
     { title: 'Account', items: [
+      { label: 'Chat', icon: MessageCircle, open: () => navigation.navigate('Chat') },
       { label: 'My profile', icon: UserRound, open: () => navigation.navigate('Profile') },
     ] },
   ];

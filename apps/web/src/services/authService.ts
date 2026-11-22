@@ -61,9 +61,54 @@ const ADMIN_ID = 'demo-admin';
 const ADMIN_SALT = 'hydrosense-demo-admin-v2';
 const DUMMY_SALT = 'hydrosense-auth-invalid-account-v2';
 const AUTH_CHANGE_EVENT = 'hydrosense:auth-change';
+const API_TOKEN_KEY = 'hydrosense.auth.access-token';
+const API_USER_KEY = 'hydrosense.auth.user';
 const PROFILE_AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const PROFILE_AVATAR_INPUT_MAX_BYTES = 10 * 1024 * 1024;
 const PROFILE_AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+let activeApiToken: string | null = null;
+let activeApiUser: AuthUser | null = null;
+let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+
+function clearSession() {
+  activeApiToken = null;
+  activeApiUser = null;
+  if (expiryTimer !== undefined) clearTimeout(expiryTimer);
+  expiryTimer = undefined;
+  window.sessionStorage.removeItem(SESSION_KEY);
+  window.sessionStorage.removeItem(API_TOKEN_KEY);
+  window.sessionStorage.removeItem(API_USER_KEY);
+  window.localStorage.removeItem(SESSION_KEY);
+  window.localStorage.removeItem(API_TOKEN_KEY);
+  window.localStorage.removeItem(API_USER_KEY);
+}
+
+export function resetSessionOnLaunch() {
+  clearSession();
+}
+
+function tokenExpiry(token: string, userId: string): number | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return null;
+    const payload: unknown = JSON.parse(window.atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (typeof payload !== 'object' || payload === null || !('sub' in payload) || !('exp' in payload) ||
+        payload.sub !== userId || typeof payload.exp !== 'number' || !Number.isFinite(payload.exp)) return null;
+    return payload.exp * 1000;
+  } catch {
+    return null;
+  }
+}
+
+function scheduleExpiry(token: string, expiresAt: number) {
+  if (expiryTimer !== undefined) clearTimeout(expiryTimer);
+  expiryTimer = setTimeout(() => {
+    if (activeApiToken !== token) return;
+    if (expiresAt > Date.now()) scheduleExpiry(token, expiresAt);
+    else signOut();
+  }, Math.min(Math.max(0, expiresAt - Date.now()), 2_147_483_647));
+}
 
 type ReviewRole = Exclude<Role, 'admin'>;
 
@@ -80,13 +125,14 @@ const adminUser: AuthUser & { role: 'admin'; status: 'approved' } = {
 };
 
 async function listApiAdminProfiles(status: 'pending' | 'approved'): Promise<AuthUser[]> {
-  const token = window.localStorage.getItem('hydrosense.auth.access-token');
+  const token = getApiAccessToken();
   const response = await fetch(`${SUPABASE_URL}/functions/v1/api/v1/admin/users?status=${status}`, {
     headers: {
       apikey: API_KEY,
       Authorization: `Bearer ${token}`,
     },
   });
+  if (response.status === 401 && token) signOutIfTokenMatches(token);
   const profiles = await response.json();
   if (!response.ok) throw new Error(profiles.error ?? 'Unable to load users.');
   return (profiles as Array<Record<string, unknown>>).map((profile) => ({
@@ -158,7 +204,7 @@ function readFileAsDataUrl(file: Blob): Promise<string> {
 }
 
 async function updateApiProfile(userId: string, status: AccountStatus, role: Role | null): Promise<AuthUser> {
-  const token = window.localStorage.getItem('hydrosense.auth.access-token');
+  const token = getApiAccessToken();
   const response = await fetch(`${SUPABASE_URL}/functions/v1/api/v1/admin/users/${encodeURIComponent(userId)}`, {
     method: 'PATCH',
     headers: {
@@ -171,6 +217,7 @@ async function updateApiProfile(userId: string, status: AccountStatus, role: Rol
       role,
     }),
   });
+  if (response.status === 401 && token) signOutIfTokenMatches(token);
   const result = await response.json();
   if (!response.ok) throw new Error(result.error ?? result.message ?? 'Unable to update account request.');
   const profile = Array.isArray(result) ? result[0] : result;
@@ -192,7 +239,7 @@ function isRequestedRole(value: unknown): value is RequestedRole {
 }
 
 async function removeApiAccount(userId: string): Promise<void> {
-  const token = window.localStorage.getItem('hydrosense.auth.access-token');
+  const token = getApiAccessToken();
   const response = await fetch(`${SUPABASE_URL}/functions/v1/api/v1/admin/users/${encodeURIComponent(userId)}`, {
     method: 'DELETE',
     headers: {
@@ -200,6 +247,7 @@ async function removeApiAccount(userId: string): Promise<void> {
       Authorization: `Bearer ${token ?? ''}`,
     },
   });
+  if (response.status === 401 && token) signOutIfTokenMatches(token);
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error ?? result.message ?? 'Unable to remove account.');
 }
@@ -319,7 +367,7 @@ function secureEquals(left: string, right: string) {
 
 function saveSession(userId: string) {
   try {
-    window.localStorage.setItem(SESSION_KEY, JSON.stringify({ userId }));
+    window.sessionStorage.setItem(SESSION_KEY, JSON.stringify({ userId }));
   } catch (error) {
     throw new Error(`Could not save your demo sign-in session: ${String(error)}`);
   }
@@ -327,17 +375,19 @@ function saveSession(userId: string) {
 }
 
 function readSessionUserId(): string | null {
-  const saved = window.localStorage.getItem(SESSION_KEY);
+  const saved = window.sessionStorage.getItem(SESSION_KEY);
   if (saved === null) return null;
   let parsed: unknown;
   try {
     parsed = JSON.parse(saved);
   } catch {
-    throw new Error('The saved sign-in session is invalid. Sign in again.');
+    clearSession();
+    return null;
   }
   if (typeof parsed !== 'object' || parsed === null ||
       !('userId' in parsed) || typeof parsed.userId !== 'string') {
-    throw new Error('The saved sign-in session is invalid. Sign in again.');
+    clearSession();
+    return null;
   }
   return parsed.userId;
 }
@@ -363,13 +413,14 @@ function assertStatusRole(status: AccountStatus, role: Role | null) {
 
 export function getCurrentUser(): AuthUser | null {
   if (DATA_MODE === 'api') {
-    const stored = window.localStorage.getItem('hydrosense.auth.user');
-    if (!stored || !window.localStorage.getItem('hydrosense.auth.access-token')) return null;
-    try {
-      return JSON.parse(stored) as AuthUser;
-    } catch {
-      return null;
+    const stored = window.sessionStorage.getItem(API_USER_KEY);
+    const token = window.sessionStorage.getItem(API_TOKEN_KEY);
+    if (activeApiUser && stored === JSON.stringify(activeApiUser) && token && token === activeApiToken) {
+      const expiry = tokenExpiry(token, activeApiUser.id);
+      if (expiry !== null && expiry > Date.now()) return { ...activeApiUser };
     }
+    if (stored || token || activeApiToken) clearSession();
+    return null;
   }
   const userId = readSessionUserId();
   if (!userId) return null;
@@ -377,19 +428,24 @@ export function getCurrentUser(): AuthUser | null {
     return { ...adminUser, avatarUrl: window.localStorage.getItem(ADMIN_AVATAR_KEY) ?? undefined };
   }
   const account = readAccounts().find((item) => item.user.id === userId);
-  if (!account || account.user.status !== 'approved' || account.user.role === null) return null;
+  if (!account || account.user.status !== 'approved' || account.user.role === null) {
+    clearSession();
+    return null;
+  }
   return { ...account.user };
 }
 
 export function signOut() {
-  if (DATA_MODE === 'api') {
-    window.localStorage.removeItem('hydrosense.auth.access-token');
-    window.localStorage.removeItem('hydrosense.auth.user');
-    notifyAuthChanged();
-    return;
-  }
-  window.localStorage.removeItem(SESSION_KEY);
+  clearSession();
   notifyAuthChanged();
+}
+
+export function getApiAccessToken(): string | null {
+  return getCurrentUser() && DATA_MODE === 'api' ? activeApiToken : null;
+}
+
+export function signOutIfTokenMatches(token: string) {
+  if (activeApiToken === token) signOut();
 }
 
 export const authService = {
@@ -398,11 +454,12 @@ export const authService = {
     if (!user) throw new Error('Sign in to view your profile picture.');
     if (DATA_MODE !== 'api') return user.avatarUrl;
 
-    const token = window.localStorage.getItem('hydrosense.auth.access-token');
+    const token = getApiAccessToken();
     if (!token) throw new Error('Your session has expired. Sign in again.');
     const response = await fetch(`${SUPABASE_URL}/functions/v1/api/v1/profile`, {
       headers: { apikey: API_KEY, Authorization: `Bearer ${token}` },
     });
+    if (response.status === 401) signOutIfTokenMatches(token);
     const result = await response.json();
     if (!response.ok) throw new Error(result.error ?? result.message ?? 'Unable to load your profile picture.');
     if (result.avatarUrl !== null && result.avatarUrl !== undefined && typeof result.avatarUrl !== 'string') {
@@ -421,7 +478,7 @@ export const authService = {
     const image = await prepareProfileAvatar(file);
 
     if (DATA_MODE === 'api') {
-      const token = window.localStorage.getItem('hydrosense.auth.access-token');
+      const token = getApiAccessToken();
       if (!token) throw new Error('Your session has expired. Sign in again.');
       const response = await fetch(`${SUPABASE_URL}/functions/v1/api/v1/profile/avatar`, {
         method: 'PUT',
@@ -432,10 +489,12 @@ export const authService = {
         },
         body: image,
       });
+      if (response.status === 401) signOutIfTokenMatches(token);
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? result.message ?? 'Unable to save your profile picture.');
       if (typeof result.avatarUrl !== 'string') throw new Error('The saved profile picture URL is invalid.');
-      window.localStorage.setItem('hydrosense.auth.user', JSON.stringify({ ...user, avatarUrl: result.avatarUrl }));
+      activeApiUser = { ...user, avatarUrl: result.avatarUrl };
+      window.sessionStorage.setItem(API_USER_KEY, JSON.stringify(activeApiUser));
       notifyAuthChanged();
       return result.avatarUrl;
     }
@@ -460,11 +519,12 @@ export const authService = {
 
   async getProfileSite(user: AuthUser): Promise<string | undefined> {
     if (DATA_MODE !== 'api') return user.hatcheryId;
-    const token = window.localStorage.getItem('hydrosense.auth.access-token');
+    const token = getApiAccessToken();
     if (!token) throw new Error('Your session has expired. Sign in again.');
     const response = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=site`, {
       headers: { apikey: API_KEY, Authorization: `Bearer ${token}` },
     });
+    if (response.status === 401) signOutIfTokenMatches(token);
     const profiles = await response.json();
     if (!response.ok) throw new Error(profiles.message ?? 'Unable to load your hatchery assignment.');
     if (!Array.isArray(profiles) || !profiles[0]) throw new Error('Your account profile was not found.');
@@ -493,6 +553,12 @@ export const authService = {
         }
         throw new Error(authResult.error_description ?? authResult.error ?? 'Email or password is incorrect.');
       }
+      const expiresAt = typeof authResult.access_token === 'string' && typeof authResult.user?.id === 'string'
+        ? tokenExpiry(authResult.access_token, authResult.user.id) : null;
+      if (expiresAt === null || expiresAt <= Date.now()) {
+        signOut();
+        throw new Error('The sign-in session is invalid or expired.');
+      }
 
       const profileResponse = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(authResult.user.id)}&select=*`, {
         headers: {
@@ -501,9 +567,13 @@ export const authService = {
         },
       });
       const profiles = await profileResponse.json();
-      if (!profileResponse.ok) throw new Error(profiles.message ?? 'Unable to load your account status.');
+      if (!profileResponse.ok) {
+        if (profileResponse.status === 401) signOut();
+        throw new Error(profiles.message ?? 'Unable to load your account status.');
+      }
       const profile = Array.isArray(profiles) ? profiles[0] : undefined;
-      if (!profile) throw new Error('Your account profile was not found.');
+      if (!profile || profile.id !== authResult.user.id) throw new Error('Your account profile was not found.');
+      if (profile.active === false) throw new Error('Account is inactive.');
       if (profile.status === 'rejected') throw new Error('Request not approved.');
       if (profile.status === 'pending') {
         return { status: 'pending', redirectPath: '/pending-approval' };
@@ -529,8 +599,11 @@ export const authService = {
         hatcheryId: profile.site ?? undefined,
         createdAt: profile.created_at,
       };
-      window.localStorage.setItem('hydrosense.auth.access-token', authResult.access_token);
-      window.localStorage.setItem('hydrosense.auth.user', JSON.stringify(user));
+      window.sessionStorage.setItem(API_TOKEN_KEY, authResult.access_token);
+      window.sessionStorage.setItem(API_USER_KEY, JSON.stringify(user));
+      activeApiToken = authResult.access_token;
+      activeApiUser = user;
+      scheduleExpiry(authResult.access_token, expiresAt);
       notifyAuthChanged();
       return { status: 'approved', user, redirectPath: '/' };
     }

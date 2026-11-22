@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render as renderBase, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render as renderBase, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 import App from '../App';
@@ -44,12 +44,12 @@ function signInAs(role: 'operator' | 'manager' | 'admin', phone?: string) {
     createdAt: '2026-01-01T00:00:00.000Z',
   };
   window.localStorage.setItem('hydrosense.auth.accounts.v2', JSON.stringify([{ user, passwordSalt: 'salt', passwordHash: 'hash' }]));
-  window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
+  window.sessionStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
 }
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
-  window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: 'demo-admin' }));
+  window.sessionStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: 'demo-admin' }));
   window.localStorage.setItem('hydrosense.theme', 'dark');
 });
 
@@ -58,7 +58,7 @@ afterEach(() => {
   queryClient.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  window.localStorage.removeItem('hydrosense.auth.session.v2');
+  window.sessionStorage.removeItem('hydrosense.auth.session.v2');
   window.localStorage.removeItem('hydrosense.auth.accounts.v2');
   window.localStorage.removeItem('hydrosense.theme');
 });
@@ -403,13 +403,13 @@ describe('themed dashboard routes', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
       };
       window.localStorage.setItem('hydrosense.auth.accounts.v2', JSON.stringify([{ user, passwordSalt: 'salt', passwordHash: 'hash' }]));
-      window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
+      window.sessionStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
     }
     window.history.replaceState({}, '', '/tanks');
     const { container } = render(<App />);
     await screen.findByRole('heading', { name: 'Tank Overview & System Health', level: 1 });
     expect(container.querySelector('.app-shell')?.getAttribute('data-role')).toBe(role);
-    expect(screen.getByText(`${role.toUpperCase()} Workspace`)).not.toBeNull();
+    expect(screen.getByText(`${role.toUpperCase()} Workspace`)).toBeInTheDocument();
   });
 
   it.each(routes.flatMap(([path, title]) => (['light', 'dark'] as const).map((theme) => [path, title, theme] as const)))('renders %s in the shared shell (%s, %s)', async (path, title, theme) => {
@@ -473,6 +473,20 @@ describe('themed dashboard routes', () => {
     expect(within(screen.getByRole('dialog', { name: 'Current notifications' })).getAllByRole('link').length).toBeGreaterThanOrEqual(4);
   });
 
+  it('places chat beside notifications and closes the popover when opened', async () => {
+    signInAs('operator');
+    window.history.replaceState({}, '', '/tanks');
+    render(<App />);
+    const bell = await screen.findByRole('button', { name: /open alerts/ });
+    const chat = screen.getByRole('link', { name: 'Chat, 0 unread messages' });
+    expect(chat.nextElementSibling).toContainElement(bell);
+    fireEvent.click(bell);
+    expect(screen.getByRole('dialog', { name: 'Current notifications' })).toBeInTheDocument();
+    fireEvent.click(chat);
+    expect(screen.queryByRole('dialog', { name: 'Current notifications' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Chat' })).toBeInTheDocument();
+  });
+
   it('keeps the tank table available when probe readings are invalid', async () => {
     const getReading = api.getLatestReading.bind(api);
     vi.spyOn(api, 'getLatestReading').mockImplementation(async (tankId) => {
@@ -510,7 +524,7 @@ describe('themed dashboard routes', () => {
         role, requestedRole: role, status: 'approved', createdAt: '2026-01-01T00:00:00.000Z',
       };
       window.localStorage.setItem('hydrosense.auth.accounts.v2', JSON.stringify([{ user, passwordSalt: 'salt', passwordHash: 'hash' }]));
-      window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
+      window.sessionStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
     }
     window.history.replaceState({}, '', '/tanks');
     render(<App />);
@@ -524,7 +538,7 @@ describe('themed dashboard routes', () => {
       role: 'operator', requestedRole: 'operator', status: 'approved', hatcheryId: 'camiguin-sagay', createdAt: '2026-01-01T00:00:00.000Z',
     };
     window.localStorage.setItem('hydrosense.auth.accounts.v2', JSON.stringify([{ user, passwordSalt: 'salt', passwordHash: 'hash' }]));
-    window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
+    window.sessionStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
     const validation = vi.spyOn(api, 'listValidationRows');
     const calibration = vi.spyOn(api, 'listCalibrationLogs');
     vi.spyOn(api, 'listThresholds').mockResolvedValue([
@@ -981,6 +995,14 @@ describe('themed dashboard routes', () => {
 });
 
 describe('themed authentication routes', () => {
+  function navigateAfterSplash(path: string) {
+    if (path === '/signin') return;
+    act(() => {
+      window.history.pushState({}, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+  }
+
   const authRoutes = [
     ['/signin', 'Welcome Back'],
     ['/signup', "Let's Get Started"],
@@ -988,19 +1010,21 @@ describe('themed authentication routes', () => {
     ['/pending-approval', 'Request submitted'],
   ] as const;
   it.each(authRoutes.flatMap(([path, title]) => (['light', 'dark'] as const).map((theme) => [path, title, theme] as const)))('renders %s with glass (%s, %s)', async (path, title, theme) => {
-    window.localStorage.removeItem('hydrosense.auth.session.v2');
+    window.sessionStorage.removeItem('hydrosense.auth.session.v2');
     window.localStorage.setItem('hydrosense.theme', theme);
     window.history.replaceState({}, '', path);
     const { container } = render(<App />);
+    navigateAfterSplash(path);
     expect(await screen.findByRole('heading', { name: title, level: 1 })).toBeInTheDocument();
     expect(container.querySelector('.auth-background .glass-panel')).toBeInTheDocument();
     expect(document.documentElement).toHaveAttribute('data-theme', theme);
   });
 
   it.each(['/signin', '/signup'])('shows the mobile-style brand on %s', async (path) => {
-    window.localStorage.removeItem('hydrosense.auth.session.v2');
+    window.sessionStorage.removeItem('hydrosense.auth.session.v2');
     window.history.replaceState({}, '', path);
     const { container } = render(<App />);
+    navigateAfterSplash(path);
     const header = container.querySelector('.auth-header--branded');
     expect(await screen.findByText('WATER QUALITY MONITORING')).toBeInTheDocument();
     expect(header).toHaveTextContent('HydroSense');

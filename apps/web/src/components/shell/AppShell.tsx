@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageCircle,
   Settings,
   Users,
   Waves,
@@ -33,6 +34,7 @@ import { useLatestReading, useOpenAlerts, usePendingRequests, useProfileSite } f
 import { formatManilaDateTime } from '@hydrosense/shared';
 import { CriticalAlertModal } from './CriticalAlertModal';
 import { HatcherySelect } from '../common/HatcherySelect';
+import { useChatThreads } from '../../hooks/useChatThreads';
 
 const icons: Record<string, LucideIcon> = {
   '/': LayoutDashboard,
@@ -75,6 +77,7 @@ export function AppShell() {
   const latestReading = useLatestReading(tankId);
   const alerts = useOpenAlerts();
   const pendingRequests = usePendingRequests();
+  const chatThreads = useChatThreads();
   const site = useProfileSite(role !== 'admin');
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -174,6 +177,7 @@ export function AppShell() {
   const alertCount = openAlerts.length + pendingCount;
   const visibleExportNotifications = exportNotifications.filter((notification) => notification.userId === user.id);
   const notificationCount = alertCount + visibleExportNotifications.length;
+  const unreadMessages = (chatThreads.data ?? []).reduce((total, thread) => total + thread.unreadCount, 0);
   const alertLabel = `${alertCount} open ${alertCount === 1 ? 'alert' : 'alerts'}${role === 'admin' && pendingRequests.isError
     ? ', account requests unavailable'
     : role === 'admin' && pendingRequests.isLoading
@@ -223,6 +227,9 @@ export function AppShell() {
             <span className={`connection-pill ${displayConnection === 'connected' ? 'connection-online' : 'connection-offline'}`} aria-label={`Connection ${displayConnection}`}>
               {displayConnection === 'connected' ? <Wifi size={16} aria-hidden="true" /> : <WifiOff size={16} aria-hidden="true" />}<span>{displayConnection === 'connected' ? 'Live' : displayConnection === 'connecting' ? 'Connecting' : 'Offline'}</span>
             </span>
+            <Link to="/chat" className="icon-button header-alert-link" aria-label={chatThreads.isError ? 'Chat, unread messages unavailable' : `Chat, ${unreadMessages} unread messages`} onClick={() => { setNotificationsOpen(false); setAccountMenuOpen(false); }}>
+              <MessageCircle size={18} aria-hidden="true" />{unreadMessages > 0 && <span className="header-alert-count">{unreadMessages}</span>}
+            </Link>
             <div className="notification-menu" ref={notificationsRef}>
               <button type="button" className="icon-button header-alert-link" aria-haspopup="dialog" aria-expanded={notificationsOpen} aria-label={alertLabel} title={alertLabel} onClick={() => { setAccountMenuOpen(false); setNotificationsOpen((open) => !open); }}>
                 <Bell size={18} /><span className="header-alert-count">{notificationCount}</span>
