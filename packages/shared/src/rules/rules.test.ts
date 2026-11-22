@@ -166,7 +166,8 @@ describe('Asia/Manila date helpers', () => {
 
   it('filters mock readings by timestamp instants across UTC and Manila offsets', async () => {
     const api = new MockApiClient();
-    const from = `${getManilaDateString()}T00:00:00+08:00`;
+    const previousDay = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const from = `${getManilaDateString(previousDay)}T00:00:00+08:00`;
     const readings = await api.listReadings({ tankId: 'tank-a', from });
     expect(readings.length).toBeGreaterThan(0);
     expect(readings.every((reading) => Date.parse(reading.timestamp) >= Date.parse(from))).toBe(true);

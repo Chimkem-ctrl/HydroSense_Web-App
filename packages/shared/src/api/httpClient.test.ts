@@ -24,7 +24,6 @@ describe('HTTP API authorization errors', () => {
     expect(onUnauthorized).toHaveBeenCalledOnce();
     expect(onUnauthorized).toHaveBeenCalledWith('current-token');
   });
-
   it('identifies the failing endpoint without exposing query parameters', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":"Internal server error."}', { status: 500 })));
     const api = new HttpApiClient('https://example.test');

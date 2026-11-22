@@ -31,7 +31,7 @@ function render(ui: ReactElement) {
 function signIn(role: 'operator' | 'manager' | 'admin', hatcheryId?: string) {
   const user = { id: 'test-user', firstName: 'Test', lastName: 'User', email: 'user@example.com', role, requestedRole: role === 'admin' ? null : role, status: 'approved', hatcheryId, createdAt: '2026-01-01T00:00:00Z' };
   window.localStorage.setItem('hydrosense.auth.accounts.v2', JSON.stringify([{ user, passwordSalt: 'salt', passwordHash: 'hash' }]));
-  window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
+  window.sessionStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
 }
 
 function mockAccounts() {
@@ -49,6 +49,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 describe('users and roles', () => {

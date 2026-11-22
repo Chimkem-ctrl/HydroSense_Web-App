@@ -2,7 +2,7 @@ import { Children, isValidElement } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ panel: null as string | null, role: 'operator' as 'operator' | 'admin', tanksLoading: false, tanksError: null as Error | null, refetchTanks: vi.fn(), setPanel: vi.fn(), setTankId: vi.fn() }));
+const state = vi.hoisted(() => ({ panel: null as string | null, role: 'operator' as 'operator' | 'admin', width: 390, tanksLoading: false, tanksError: null as Error | null, refetchTanks: vi.fn(), setPanel: vi.fn(), setTankId: vi.fn() }));
 vi.mock('react', async (importOriginal) => {
   const react = await importOriginal<typeof import('react')>();
   return {
@@ -14,13 +14,13 @@ vi.mock('react', async (importOriginal) => {
 vi.mock('react-native', () => ({
   Alert: { alert: vi.fn() }, Modal: 'Modal', Pressable: 'Pressable', ScrollView: 'ScrollView',
   StyleSheet: { create: (styles: object) => styles, absoluteFill: {} }, Text: 'Text', View: 'View',
-  useWindowDimensions: () => ({ width: 390, height: 844 }),
+  useWindowDimensions: () => ({ width: state.width, height: 844 }),
 }));
 vi.mock('@react-native-community/netinfo', () => ({ default: { addEventListener: vi.fn() } }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [], isError: false }) }));
 vi.mock('lucide-react-native', () => Object.fromEntries([
   'Activity', 'AlertTriangle', 'ArrowLeft', 'Bell', 'Check', 'ChevronDown', 'ClipboardList', 'Database', 'FileText',
-  'LayoutDashboard', 'LogOut', 'MapPin', 'Menu', 'Sliders', 'UserRound', 'Users', 'Waves', 'Wifi', 'WifiOff', 'X',
+  'LayoutDashboard', 'LogOut', 'MapPin', 'Menu', 'MessageCircle', 'Sliders', 'UserRound', 'Users', 'Waves', 'Wifi', 'WifiOff', 'X',
 ].map((name) => [name, name])));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ top: 24, bottom: 34, left: 0, right: 0 }) }));
 vi.mock('../services/client', () => ({ api: {}, listPendingAccounts: vi.fn(), liveClient: null }));
@@ -63,8 +63,10 @@ beforeEach(() => {
   state.tanksLoading = false;
   state.tanksError = null;
   state.refetchTanks.mockClear();
+  state.width = 390;
   state.setPanel.mockClear();
   state.setTankId.mockClear();
+  vi.mocked(props.navigation.navigate).mockClear();
 });
 
 describe('account profile controls', () => {
@@ -93,6 +95,33 @@ describe('account profile controls', () => {
     (brand?.props.onLogoPress as () => void)();
     expect(state.setPanel).toHaveBeenCalledWith('navigation');
     expect(elements(root, 'Menu')).toHaveLength(0);
+  });
+
+  it('places chat beside notifications and opens the chat screen', () => {
+    const root = HeaderToolbar(props);
+    const headerRow = elements(root, 'View').find((item) => {
+      const children = Children.toArray(item.props.children as ReactNode);
+      return children.some((child) => isValidElement<Record<string, unknown>>(child) && child.props.accessibilityLabel === 'Open chat');
+    });
+    const buttons = Children.toArray(headerRow?.props.children as ReactNode).filter(isValidElement<Record<string, unknown>>);
+    const chatIndex = buttons.findIndex((item) => item.props.accessibilityLabel === 'Open chat');
+    expect(chatIndex).toBeGreaterThanOrEqual(0);
+    expect(String(buttons[chatIndex + 1].props.accessibilityLabel)).toContain('open alerts');
+    (buttons[chatIndex].props.onPress as () => void)();
+    expect(props.navigation.navigate).toHaveBeenCalledWith('Chat');
+  });
+
+  it('keeps touch targets full-size and repositions notifications on narrow screens', () => {
+    state.width = 320;
+    state.panel = 'notifications';
+    const root = HeaderToolbar(props);
+    const chat = elements(root, 'Pressable').find((item) => item.props.accessibilityLabel === 'Open chat');
+    expect(chat?.props.style).toEqual(expect.arrayContaining([expect.objectContaining({ width: 48, height: 48 })]));
+    const header = elements(root, 'Brand').find((item) => typeof item.props.onLogoPress === 'function');
+    expect(header?.props.showCaption).toBe(false);
+    const panel = elements(root, 'SafeAreaView').find((item) => Array.isArray(item.props.edges) && item.props.edges.length === 0);
+    const panelStyles = (panel?.props.style as unknown[]).flat(Infinity).filter(Boolean);
+    expect(Object.assign({}, ...panelStyles)).toMatchObject({ right: 64, width: 244 });
   });
 
   it('does not offer calibration in administrator navigation', () => {

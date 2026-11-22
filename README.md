@@ -82,7 +82,7 @@ Copy `.env.example` to `.env.local` and set values as needed:
 | `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Web project's publishable key | Publishable key for mobile API requests; set this when using a different backend. Never use a service-role key. |
 | `EXPO_PUBLIC_WS_URL` | unset | Optional compatible mobile WebSocket stream URL. Set in `apps/mobile/.env.local`; API data is otherwise refreshed by polling. |
 
-In mock mode, account records and a session containing only the user ID are stored in browser localStorage under v2 keys. Demo accounts are created on the first mock-mode sign-in:
+In mock mode, account records are stored in browser localStorage; the session contains only the user ID. Demo accounts are created on the first mock-mode sign-in:
 
 | Role | Email | Demo password |
 | --- | --- | --- |
@@ -95,7 +95,7 @@ My Profile lets signed-in users change their password after verifying the curren
 password. API mode uses the configured Supabase Auth service; demo-mode changes
 apply only to the current browser and persist in local storage.
 
-On the web, a signed-out visit to sign-in or a protected page starts at the splash screen. Get Started opens sign-in, and an approved sign-in opens the dashboard (Live Monitor). Signed-in users can open protected links during a running session; web sessions are cleared on each app launch, including a page reload, and API sessions expire with their access token. Signup and password recovery remain public.
+On the web, a signed-out visit to sign-in or a protected page starts at the splash screen. Get Started opens sign-in, and an approved sign-in opens the dashboard (Live Monitor). Signed-in users can open protected links during a running session. Web sessions are cleared on each app launch, including a page reload, and API sessions expire with their access token; sign in again after reloading or reopening the app. Signup and password recovery remain public.
 
 The web header provides admins with one hatchery selector across tabs; managers and operators use their assigned hatchery. The selector includes Sagay, Benoni, and API tank locations, even when a location has no tanks. Reports and activity exports use the selected hatchery; legacy hatchery-wide activity is assigned to Sagay. Audit and system records lack hatchery identifiers, so they are available only with All hatcheries selected. Apply the activity hatchery migration before deploying the updated API function.
 Report statistics chart the percentage of valid readings within configured thresholds; the chart is included in PDF exports. Web report PDFs use A4 print layouts.

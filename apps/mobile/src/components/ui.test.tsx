@@ -34,7 +34,7 @@ vi.mock('../theme', () => ({
   useTheme: () => ({ colors: { canvas: '#eaf3ff', surface: '#ffffff', glassControl: 'rgba(255,255,255,0.25)', backgroundVia: '#dfeafe', backgroundTo: '#f3eefe' }, reduceTransparency: themeState.reduceTransparency }),
 }));
 
-import { BlurTargetContext, CalendarFilterField, Card, Chip, FilterField, GlassDialog, Page } from './ui';
+import { BlurTargetContext, Brand, CalendarFilterField, Card, Chip, FilterField, GlassDialog, Page } from './ui';
 
 type ElementProps = { children?: ReactNode; style?: unknown; contentContainerStyle?: unknown; resizeMode?: string; intensity?: number; blurReductionFactor?: number; tint?: string; ref?: unknown; accessibilityLabel?: string; accessibilityState?: unknown; onChangeText?: (value: string) => void; onPress?: () => void; edges?: string[] };
 
@@ -85,6 +85,20 @@ describe('log filter controls', () => {
     vi.mocked(useContext).mockReturnValueOnce(false);
     const standard = findElement(FilterField({ label: 'From', value: '', onChangeText: () => {} }), 'TextInput');
     expect(flattenStyle(standard?.props.style).backgroundColor).toBe('#ffffff');
+  });
+});
+
+describe('header brand', () => {
+  it('opens navigation and hides the caption in compact headers', () => {
+    const onLogoPress = vi.fn();
+    const brand = Brand({ compact: true, onLogoPress, logoExpanded: false });
+    const button = findElement(brand, 'Pressable');
+    expect(button?.props.accessibilityLabel).toBe('Open navigation menu');
+    expect(button?.props.accessibilityState).toEqual({ expanded: false });
+    button?.props.onPress?.();
+    expect(onLogoPress).toHaveBeenCalledOnce();
+    const texts = Children.toArray(findElement(brand, 'View')?.props.children);
+    expect(texts.some((node) => isValidElement<ElementProps>(node) && node.props.children === 'WATER QUALITY MONITORING')).toBe(false);
   });
 });
 

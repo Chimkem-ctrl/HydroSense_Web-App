@@ -44,11 +44,13 @@ async function signInAsAdmin() {
 describe('authService', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
     Object.defineProperty(window, 'crypto', { configurable: true, value: webcrypto });
   });
 
   afterEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it('signs in the configured admin and stores only the user ID in the session', async () => {
@@ -56,7 +58,7 @@ describe('authService', () => {
 
     expect(result).toMatchObject({ status: 'approved', redirectPath: '/' });
     expect(getCurrentUser()).toMatchObject({ id: 'demo-admin', role: 'admin', status: 'approved' });
-    expect(JSON.parse(window.localStorage.getItem(SESSION_KEY) ?? '{}')).toEqual({ userId: 'demo-admin' });
+    expect(JSON.parse(window.sessionStorage.getItem(SESSION_KEY) ?? '{}')).toEqual({ userId: 'demo-admin' });
   });
 
   it.each([
@@ -89,16 +91,27 @@ describe('authService', () => {
     await expect(authService.signIn(operator.email, operator.password)).rejects.toThrow('Email or password is incorrect.');
   });
 
+  it('allows a removed user to request a new account with the same email', async () => {
+    const userId = await createPendingRequest();
+    await signInAsAdmin();
+    await authService.approveRequest(userId, 'operator');
+    await authService.removeAccount(userId);
+    signOut();
+    await expect(authService.signUp(signupValues())).resolves.toMatchObject({ status: 'pending' });
+    await expect(authService.signUp(signupValues({ email: DEMO_ROLE_CREDENTIALS[0].email })))
+      .rejects.toThrow('An account with this email already exists.');
+  });
+
   it('does not sign in pending accounts and checks the password before reporting pending status', async () => {
     await authService.signUp(signupValues());
-    expect(window.localStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(window.sessionStorage.getItem(SESSION_KEY)).toBeNull();
 
     await expect(authService.signIn('taylor@example.com', 'incorrect-password'))
       .rejects.toThrow('Email or password is incorrect.');
     await expect(authService.signIn('taylor@example.com', 'TestPass!2026'))
       .resolves.toMatchObject({ status: 'pending', redirectPath: '/pending-approval' });
     expect(getCurrentUser()).toBeNull();
-    expect(window.localStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(window.sessionStorage.getItem(SESSION_KEY)).toBeNull();
   });
 
   it('stores the requested role, selected hatchery, and employee ID', async () => {

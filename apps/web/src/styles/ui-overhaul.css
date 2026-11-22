@@ -62,6 +62,13 @@
 .glass-shell .page-controls .connection-pill { background: rgba(255, 255, 255, .08); color: #fff; }
 .glass-shell .page-controls .icon-button:hover { background: rgba(255, 255, 255, .2); }
 .glass-shell .page-controls .header-hatchery-select { width: auto; max-width: min(55vw, 520px); }
+@media (max-width: 420px) {
+  .glass-shell .page-controls { gap: 4px; }
+  .glass-shell .page-controls .icon-button { width: 36px; min-width: 36px; }
+  .glass-shell .page-controls .connection-pill { padding: 0 8px; }
+  .glass-shell .page-controls .connection-pill span { display: none; }
+  .glass-shell .page-controls .header-hatchery-select { max-width: 96px; }
+}
 .glass-shell .page-controls .header-hatchery-select .hs-select-trigger {
   min-height: 40px; border-radius: 999px; background: rgba(255, 255, 255, .08); color: #fff; text-align: left;
   border-color: var(--glass-border); font-size: var(--font-caption); font-weight: 700;

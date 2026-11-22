@@ -9,6 +9,7 @@ import { useAuth, useRole } from '../app/auth/RoleContext';
 import { usePendingRequests, useProfileSite } from '../app/data/hooks';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { authService, hatcheryLabel } from '../services/authService';
+import { chatService } from '../services/chatService';
 import { downloadCsv } from '../services/downloadCsv';
 import type { AuditLog } from '@hydrosense/shared';
 import { PageHeading } from '../components/common/PageHeading';
@@ -90,6 +91,13 @@ export function AdminUsersPage() {
   });
   const removeAccount = useMutation({
     mutationFn: async (userId: string) => authService.removeAccount(userId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      await queryClient.invalidateQueries({ queryKey: ['audit-logs'] });
+    },
+  });
+  const updateChat = useMutation({
+    mutationFn: ({ userId, enabled }: { userId: string; enabled: boolean }) => chatService.setEnabled(userId, enabled),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       await queryClient.invalidateQueries({ queryKey: ['audit-logs'] });
@@ -196,8 +204,8 @@ export function AdminUsersPage() {
           {tierConfig.teamAccounts && !users.isLoading && !users.isError && <span className="admin-users-count admin-users-count--accounts">{visibleAdminUsers.length} {visibleAdminUsers.length === 1 ? 'account' : 'accounts'}</span>}
         </div>
         {!tierConfig.teamAccounts ? null : users.isLoading ? <LoadingState /> : users.isError ? <ErrorState error={users.error} onRetry={() => void users.refetch()} /> : !visibleAdminUsers.length ? <EmptyState>No administrator accounts are registered.</EmptyState> :
-          <div className="table-wrap" role="region" aria-label="Admin accounts table" tabIndex={0}><table className="admin-users-table admin-accounts-table"><thead><tr><th scope="col">Name</th><th scope="col">ID</th><th scope="col">Email</th><th scope="col">Phone number</th><th scope="col">Role</th><th scope="col">Hatchery / site</th><th scope="col">Last active</th></tr></thead><tbody>
-            {visibleAdminUsers.map((user) => <tr key={user.id}><td><UserIdentity user={user} /></td><td>{user.employeeId || '—'}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{ROLE_LABELS[user.role]}</td><td>{hatcheryLabel(user.site)}</td><td>{formatManilaDateTime(user.lastActive)} PHT</td></tr>)}
+          <div className="table-wrap" role="region" aria-label="Admin accounts table" tabIndex={0}><table className="admin-users-table admin-accounts-table"><thead><tr><th scope="col">Name</th><th scope="col">ID</th><th scope="col">Email</th><th scope="col">Phone number</th><th scope="col">Role</th><th scope="col">Hatchery / site</th><th scope="col">Last active</th>{DATA_MODE === 'api' && <th scope="col">Chat</th>}</tr></thead><tbody>
+            {visibleAdminUsers.map((user) => <tr key={user.id}><td><UserIdentity user={user} /></td><td>{user.employeeId || '—'}</td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{ROLE_LABELS[user.role]}</td><td>{hatcheryLabel(user.site)}</td><td>{formatManilaDateTime(user.lastActive)} PHT</td>{DATA_MODE === 'api' && <td>{typeof user.chatEnabled === 'boolean' ? <button type="button" className="button" disabled={updateChat.isPending} onClick={() => updateChat.mutate({ userId: user.id, enabled: !user.chatEnabled })}>{user.chatEnabled ? 'Disable chat' : 'Enable chat'}</button> : 'Unavailable'}</td>}</tr>)}
           </tbody></table></div>}
       </section>}
       <section className="card admin-users-panel" aria-labelledby="team-accounts-title">
@@ -215,10 +223,13 @@ export function AdminUsersPage() {
           {selectedHatchery === 'all' && <h3>{name}</h3>}
           <div className="table-wrap" tabIndex={0} role="region" aria-label={`${name} accounts`}><table className="admin-users-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Employee ID</th><th scope="col">Role</th><th scope="col">Last active</th>{!isManager && <th scope="col">Actions</th>}</tr></thead><tbody>
             {!members.length && <tr><td className="admin-users-search-empty" colSpan={isManager ? 6 : 7} role="status">No accounts match your search.</td></tr>}
-            {members.map((user) => <tr key={user.id}><td><UserIdentity user={user} /></td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{user.employeeId || '—'}</td><td><span>{ROLE_LABELS[user.role]}</span></td><td>{formatManilaDateTime(user.lastActive)} PHT</td>{!isManager && <td><button type="button" className="button button-danger" disabled={removeAccount.isPending} onClick={() => setConfirmation({ action: 'remove', userId: user.id, name: user.name })}>Remove account</button></td>}</tr>)}
+            {members.map((user) => <tr key={user.id}><td><UserIdentity user={user} /></td><td>{user.email}</td><td><PhoneCell phone={user.phone} /></td><td>{user.employeeId || '—'}</td><td><span>{ROLE_LABELS[user.role]}</span></td><td>{formatManilaDateTime(user.lastActive)} PHT</td>{!isManager && <td>
+              {DATA_MODE === 'api' && (typeof user.chatEnabled === 'boolean' ? <button type="button" className="button" disabled={updateChat.isPending} onClick={() => updateChat.mutate({ userId: user.id, enabled: !user.chatEnabled })}>{user.chatEnabled ? 'Disable chat' : 'Enable chat'}</button> : <span>Chat setting unavailable</span>)}
+              <button type="button" className="button button-danger" disabled={removeAccount.isPending} onClick={() => setConfirmation({ action: 'remove', userId: user.id, name: user.name })}>Remove account</button></td>}</tr>)}
           </tbody></table></div></section>; })}</div></>
         )}
           {removeAccount.isError && <ErrorState error={removeAccount.error} />}
+          {updateChat.isError && <ErrorState error={updateChat.error} />}
       </section>
       {confirmation && confirmationDetails && <div className="dialog-backdrop admin-users-confirmation-backdrop" role="presentation" onMouseDown={(event) => {
         if (event.target === event.currentTarget && !confirmationBusy) setConfirmation(null);
