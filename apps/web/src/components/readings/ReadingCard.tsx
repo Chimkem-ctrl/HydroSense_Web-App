@@ -38,13 +38,12 @@ export function ReadingCard({ parameter, reading, threshold, showRangeMeter = fa
       <p className="reading-status">{!valid ? 'Invalid reading excluded' : stale ? 'Last reading; status unavailable' : distance}</p>
       {gauge ? (
         <div className="reading-scale">
-          <div className="reading-scale-track" role="img" aria-label={`${safeRange}. Current value ${formatParameter(parameter, value)}`} style={{ '--safe-start': `${gauge.safeStart}%`, '--safe-end': `${gauge.safeEnd}%` } as CSSProperties}>
-            <i className="reading-safe-band" style={{ left: `${gauge.safeStart}%`, width: `${gauge.safeEnd - gauge.safeStart}%` }} />
+          <div className={`reading-scale-track${max === undefined ? ' reading-scale-track-minimum-only' : ''}`} role="img" aria-label={`${safeRange}. Current value ${formatParameter(parameter, value)}`} style={{ '--safe-start': `${gauge.safeStart}%`, '--safe-end': `${gauge.safeEnd}%` } as CSSProperties}>
             <span style={{ left: `${gauge.position}%` }} />
           </div>
           <div className="reading-scale-labels" aria-hidden="true">
-            {min !== undefined && <span style={{ left: `${gauge.safeStart}%` }}>{min}</span>}
-            {max !== undefined && <span style={{ left: `${gauge.safeEnd}%` }}>{max}</span>}
+            {min !== undefined && <span className={gauge.safeStart === 0 ? 'reading-scale-label-start' : undefined} style={{ left: `${gauge.safeStart}%` }}>{min}</span>}
+            {max !== undefined && <span className={gauge.safeEnd === 100 ? 'reading-scale-label-end' : undefined} style={{ left: `${gauge.safeEnd}%` }}>{max}</span>}
           </div>
           <button type="button" className="info-tip" aria-label={scaleNote} title={scaleNote}><Info size={14} aria-hidden="true" /></button>
         </div>

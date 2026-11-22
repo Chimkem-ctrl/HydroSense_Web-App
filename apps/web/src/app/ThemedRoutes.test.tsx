@@ -92,6 +92,29 @@ describe('themed dashboard routes', () => {
     expect(png.parentElement).toBe(csv.parentElement);
   });
 
+  it('labels the chart zoom icons by action and chart', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    signInAs('admin');
+    window.history.replaceState({}, '', '/trends');
+    render(<App />);
+    const zoomIn = await screen.findByRole('button', { name: 'Zoom in Temperature' });
+    for (const [name, title] of [
+      ['Zoom in Temperature', 'Zoom in'],
+      ['Zoom out Temperature', 'Zoom out'],
+      ['Reset zoom Temperature', 'Reset zoom'],
+    ]) {
+      const button = screen.getByRole('button', { name });
+      expect(button).toHaveAttribute('title', title);
+      expect(button.querySelector('svg')).not.toBeNull();
+      expect(button.textContent).toBe('');
+      expect(button.parentElement).toBe(zoomIn.parentElement);
+    }
+  });
+
   it('navigates historical readings with labelled arrow buttons', async () => {
     vi.spyOn(api, 'listReadings').mockResolvedValue(Array.from({ length: 21 }, (_, index) => ({
       id: `reading-${index}`, tankId: 'tank-1', timestamp: new Date().toISOString(), temperature: 27, doMgL: 5, ph: 7,

@@ -161,11 +161,9 @@
 .reading-card[data-parameter='temperature'] { --param-color: #fb923c; }
 .reading-card[data-parameter='do'] { --param-color: #2dd4bf; }
 .reading-card[data-parameter='ph'] { --param-color: #a78bfa; }
-.glass-shell .reading-card[data-parameter] .reading-safe-band { background: var(--param-color); }
 .glass-shell .reading-card[data-parameter] .reading-scale-track > span { border-color: var(--param-color); }
 .glass-shell .reading-card[data-parameter] .reading-scale-labels span { color: var(--param-color); }
 .glass-shell .reading-card[data-parameter] .reading-number { color: var(--param-color); }
-.glass-shell .reading-card.reading-stale .reading-safe-band { background: var(--text-secondary); }
 .glass-shell .live-device-metrics .status-online { color: #4ade80; }
 .glass-shell .live-device-metrics .status-offline { color: #f87171; }
 [data-theme='light'] .glass-shell .live-device-metrics .status-online { color: #15803d; }
