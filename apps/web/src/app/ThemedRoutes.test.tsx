@@ -641,6 +641,7 @@ describe('themed dashboard routes', () => {
     render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: 'Change password' }));
     const dialog = screen.getByRole('dialog', { name: 'Change password' });
+    expect(dialog.closest('#device-maintenance')).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm change' }));
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Enter your current password.');
     expect(change).not.toHaveBeenCalled();
@@ -654,6 +655,34 @@ describe('themed dashboard routes', () => {
     expect(screen.queryByRole('dialog', { name: 'Change password' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     expect(screen.getByLabelText('Current password')).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'discarded-password' } });
+    fireEvent.mouseDown(screen.getByRole('dialog', { name: 'Change password' }).parentElement!);
+    expect(screen.queryByRole('dialog', { name: 'Change password' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(screen.getByLabelText('Current password')).toHaveValue('');
+  });
+
+  it.each(['operator', 'manager', 'admin'] as const)('uses the correct password dialog dismissal for %s', async (role) => {
+    signInAs(role);
+    window.history.replaceState({}, '', '/profile');
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Change password' }));
+    const dialog = screen.getByRole('dialog', { name: 'Change password' });
+    const close = within(dialog).queryByRole('button', { name: 'Close change password dialog' });
+    if (role === 'admin') {
+      expect(close).toBeInTheDocument();
+      expect(within(dialog).queryByText(/Enter your current password and choose a new one/)).not.toBeInTheDocument();
+      expect(within(dialog).queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+      fireEvent.change(within(dialog).getByLabelText('Current password'), { target: { value: 'discarded-password' } });
+      fireEvent.click(close!);
+      expect(screen.queryByRole('dialog', { name: 'Change password' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+      expect(screen.getByLabelText('Current password')).toHaveValue('');
+    } else {
+      expect(close).not.toBeInTheDocument();
+      expect(within(dialog).getByText(/Enter your current password and choose a new one/)).toBeInTheDocument();
+      expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    }
   });
 
   it.each(['operator', 'manager', 'admin'] as const)('shows profile sections and unavailable actions for %s', async (role) => {

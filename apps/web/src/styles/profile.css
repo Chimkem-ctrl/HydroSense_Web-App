@@ -41,17 +41,29 @@
 .profile-page .profile-actions { display: grid; gap: 8px; }
 .profile-page .profile-actions .button { width: 100%; }
 .profile-page .profile-details > .profile-security { align-items: center; padding-block: 8px; }
-.profile-page .profile-security .button { width: 100%; min-height: 32px; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--control-border); background: transparent; color: var(--text); font-size: 12px; cursor: pointer; transition: background-color 200ms ease, border-color 200ms ease, backdrop-filter 200ms ease; }
-.profile-page .profile-security .button:hover { background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .5); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-[data-theme='light'] .profile-page .profile-security .button:hover { background: rgba(20, 33, 58, .08); border-color: rgba(20, 33, 58, .35); }
+.profile-page .profile-security .button { width: 100%; min-height: 32px; padding: 0 10px; border-radius: var(--radius-pill); font-size: 12px; cursor: pointer; transition: background-color 200ms ease, border-color 200ms ease; }
 .profile-page .profile-security p { margin: 6px 0 0; font-size: 12px; }
 .profile-password-backdrop { z-index: 80; }
-.profile-password-dialog { width: min(440px, 100%); max-height: 90vh; overflow-y: auto; }
+.glass-shell .profile-page .dialog.profile-password-dialog { width: min(440px, 100%); max-height: 90vh; overflow-y: auto; padding: 28px; border-color: rgba(var(--overlay-accent), .4); background: rgb(var(--overlay-tint)); }
 .profile-password-dialog h2, .profile-password-dialog p { margin: 0; }
+.profile-password-dialog h2, .profile-password-dialog > p { text-align: center; }
 .profile-password-dialog > p { color: var(--text-secondary); line-height: 1.5; }
+.profile-password-dialog form { gap: 14px; }
+.glass-shell .profile-password-dialog .field input { border-color: rgba(var(--overlay-accent), .5); background: rgba(var(--overlay-accent), .14); color: var(--text-primary); }
+.glass-shell .profile-password-dialog .field input:focus-visible { outline-color: rgb(var(--overlay-accent)); }
 .profile-password-dialog .profile-password-error { color: var(--critical); }
-.profile-password-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
-.profile-password-submit { border-color: var(--critical); background: color-mix(in srgb, var(--critical) 10%, var(--surface)); color: var(--critical); }
+.profile-password-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.profile-password-actions .button { min-width: 120px; }
+.glass-shell[data-role='admin'] .profile-page .dialog.profile-password-dialog { position: relative; background: #e4e6e8; border-color: #b7bbc1; }
+[data-theme='dark'] .glass-shell[data-role='admin'] .profile-page .dialog.profile-password-dialog { background: #151619; border-color: #62656b; }
+.glass-shell[data-role='admin'] .profile-password-dialog h2 { padding-inline: 44px; }
+.glass-shell[data-role='admin'] .profile-password-close { position: absolute; top: 12px; right: 12px; background: transparent; border-color: transparent; color: var(--text-primary); }
+.glass-shell[data-role='admin'] .profile-password-close:hover:not(:disabled) { background: color-mix(in srgb, var(--text-primary) 10%, transparent); border-color: transparent; }
+.glass-shell[data-role='admin'] .profile-password-actions { justify-content: flex-end; }
+.glass-shell .profile-page .profile-security .button, .glass-shell .profile-password-dialog .profile-password-submit { border-color: #b94d4d; background: #fff0ef; color: #962626; }
+.glass-shell .profile-page .profile-security .button:hover:not(:disabled), .glass-shell .profile-password-dialog .profile-password-submit:hover:not(:disabled) { background: #ffe0de; }
+[data-theme='dark'] .glass-shell .profile-page .profile-security .button, [data-theme='dark'] .glass-shell .profile-password-dialog .profile-password-submit { border-color: #d17777; background: #552b2d; color: #ffe2e2; }
+[data-theme='dark'] .glass-shell .profile-page .profile-security .button:hover:not(:disabled), [data-theme='dark'] .glass-shell .profile-password-dialog .profile-password-submit:hover:not(:disabled) { background: #693639; }
 .profile-page #device-maintenance { grid-column: 1 / -1; }
 .profile-page .profile-maintenance-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items: end; gap: 16px; }
 .profile-page .profile-maintenance-fields .profile-actions { display: flex; flex-wrap: wrap; align-self: end; align-items: center; }

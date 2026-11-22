@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
-import { Camera, LoaderCircle } from 'lucide-react';
+import { Camera, LoaderCircle, X } from 'lucide-react';
 import { formatManilaDateTime, validatePasswordChange } from '@hydrosense/shared';
 import { useAuth, useRole } from '../app/auth/RoleContext';
 import { ROLE_LABELS } from '../app/config';
@@ -182,32 +182,35 @@ export default function ProfilePage() {
               <button className="button" type="button" disabled>Request reboot</button>
             </> : <button className="button" type="button" disabled>Reboot device</button>}
           </div>
-          {passwordOpen && <div className="dialog-backdrop profile-password-backdrop">
-            <section className="dialog card stack profile-password-dialog" role="dialog" aria-modal="true" aria-labelledby="change-password-title" onKeyDown={(event) => { if (event.key === 'Escape') closePasswordDialog(); }}>
-              <h2 id="change-password-title">Change password</h2>
-              <p>Are you sure you want to change your password? Enter your current password and choose a new one.</p>
-              <form className="stack" noValidate onSubmit={(event) => {
-                event.preventDefault();
-                const issue = validatePasswordChange(currentPassword, newPassword, confirmPassword);
-                if (issue) { setPasswordError(issue); return; }
-                setPasswordError('');
-                changePassword.mutate();
-              }}>
-                <label className="field">Current password<input autoFocus type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
-                <label className="field">New password<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
-                <label className="field">Confirm new password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => { setConfirmPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
-                <p className="small muted">Use at least 8 characters.</p>
-                {passwordError && <p className="profile-password-error" role="alert">{passwordError}</p>}
-                <div className="profile-password-actions">
-                  <button className="button" type="button" disabled={changePassword.isPending} onClick={closePasswordDialog}>Cancel</button>
-                  <button className="button profile-password-submit" type="submit" disabled={changePassword.isPending}>{changePassword.isPending ? 'Changing...' : 'Confirm change'}</button>
-                </div>
-              </form>
-            </section>
-          </div>}
           </div>
         </section>
       </div>
+      {passwordOpen && <div className="dialog-backdrop profile-password-backdrop" role="presentation" onMouseDown={(event) => {
+        if (event.target === event.currentTarget) closePasswordDialog();
+      }}>
+        <section className="dialog card stack profile-password-dialog" role="dialog" aria-modal="true" aria-labelledby="change-password-title" onKeyDown={(event) => { if (event.key === 'Escape') closePasswordDialog(); }}>
+          {role === 'admin' && <button className="icon-button profile-password-close" type="button" aria-label="Close change password dialog" disabled={changePassword.isPending} onClick={closePasswordDialog}><X size={18} aria-hidden="true" /></button>}
+          <h2 id="change-password-title">Change password</h2>
+          <p>Are you sure you want to change your password?{role !== 'admin' && ' Enter your current password and choose a new one.'}</p>
+          <form className="stack" noValidate onSubmit={(event) => {
+            event.preventDefault();
+            const issue = validatePasswordChange(currentPassword, newPassword, confirmPassword);
+            if (issue) { setPasswordError(issue); return; }
+            setPasswordError('');
+            changePassword.mutate();
+          }}>
+            <label className="field">Current password<input autoFocus type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
+            <label className="field">New password<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
+            <label className="field">Confirm new password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => { setConfirmPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
+            <p className="small muted">Use at least 8 characters.</p>
+            {passwordError && <p className="profile-password-error" role="alert">{passwordError}</p>}
+            <div className="profile-password-actions">
+              {role !== 'admin' && <button className="button" type="button" disabled={changePassword.isPending} onClick={closePasswordDialog}>Cancel</button>}
+              <button className="button profile-password-submit" type="submit" disabled={changePassword.isPending}>{changePassword.isPending ? 'Changing...' : 'Confirm change'}</button>
+            </div>
+          </form>
+        </section>
+      </div>}
     </div>
   );
 }
