@@ -388,6 +388,65 @@ Deno.serve(async (request) => {
     }
     const actor = [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || profile.email;
 
+    const chatThreadRoute = action.match(/^\/v1\/chat\/threads\/([0-9a-f-]+)\/(messages|read)$/i);
+    const chatAdminRoute = action.match(/^\/v1\/admin\/users\/([0-9a-f-]+)\/chat$/i);
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (action === "/v1/chat/contacts" || action === "/v1/chat/threads" || chatThreadRoute || chatAdminRoute) {
+      let rpcName: string;
+      let args: Record<string, unknown> = {};
+      let successStatus = 200;
+      if (action === "/v1/chat/contacts" && request.method === "GET") {
+        rpcName = "chat_contacts";
+      } else if (action === "/v1/chat/threads" && request.method === "GET") {
+        rpcName = "chat_list_threads";
+      } else if (action === "/v1/chat/threads" && request.method === "POST") {
+        const body = await readJson(request);
+        if (typeof body.userId !== "string" || !uuidPattern.test(body.userId)) return json({ error: "A valid contact is required." }, 400);
+        rpcName = "chat_open_direct";
+        args = { p_user: body.userId };
+      } else if (chatThreadRoute && uuidPattern.test(chatThreadRoute[1]) &&
+          chatThreadRoute[2] === "messages" && request.method === "GET") {
+        rpcName = "chat_list_messages";
+        args = { p_thread: chatThreadRoute[1] };
+      } else if (chatThreadRoute && uuidPattern.test(chatThreadRoute[1]) &&
+          chatThreadRoute[2] === "messages" && request.method === "POST") {
+        const body = await readJson(request);
+        if (typeof body.body !== "string" || !body.body.trim() || Array.from(body.body).length > 600) {
+          return json({ error: "Messages must contain between 1 and 600 characters." }, 400);
+        }
+        rpcName = "chat_send_message";
+        args = { p_thread: chatThreadRoute[1], p_body: body.body };
+        successStatus = 201;
+      } else if (chatThreadRoute && uuidPattern.test(chatThreadRoute[1]) &&
+          chatThreadRoute[2] === "read" && request.method === "POST") {
+        const body = await readJson(request);
+        if (typeof body.messageId !== "string" || !uuidPattern.test(body.messageId)) {
+          return json({ error: "A valid last-read message is required." }, 400);
+        }
+        rpcName = "chat_mark_read";
+        args = { p_thread: chatThreadRoute[1], p_message: body.messageId };
+      } else if (chatAdminRoute && uuidPattern.test(chatAdminRoute[1]) && request.method === "PATCH") {
+        if (profile.role !== "admin") return json({ error: "Forbidden." }, 403);
+        const body = await readJson(request);
+        if (typeof body.enabled !== "boolean") return json({ error: "A chat setting is required." }, 400);
+        rpcName = "chat_set_enabled";
+        args = { p_user: chatAdminRoute[1], p_enabled: body.enabled };
+      } else {
+        return json({ error: "Unknown chat route or method." }, 404);
+      }
+      const { data, error } = await authClient.rpc(rpcName, args);
+      if (error) {
+        if (error.code === "42501") return json({ error: error.message }, 403);
+        if (error.code === "22023") return json({ error: error.message }, 400);
+        if (error.code === "P0001") return json({ error: error.message }, 429);
+        if (error.code === "P0002") return json({ error: error.message }, 404);
+        return serverError(error);
+      }
+      if (rpcName === "chat_open_direct" || rpcName === "chat_send_message") return json({ id: data }, successStatus);
+      if (rpcName === "chat_mark_read" || rpcName === "chat_set_enabled") return json({ success: true });
+      return json(data);
+    }
+
     if (action === "/v1/tanks" && request.method === "GET") {
       let query = admin.from("tanks").select("*").order("name");
       if (profile.role === "manager") {
@@ -911,7 +970,7 @@ Deno.serve(async (request) => {
       return json(await Promise.all((data ?? []).map(async (user) => ({
         id: user.id, firstName: user.first_name, lastName: user.last_name, name: `${user.first_name} ${user.last_name}`.trim(), email: user.email,
         role: user.role, requestedRole: user.requested_role, status: user.status, createdAt: user.created_at,
-        site: user.site, active: user.active, lastActive: user.last_active,
+        site: user.site, active: user.active, lastActive: user.last_active, chatEnabled: user.chat_enabled,
         employeeId: user.employee_id, phone: user.phone, position: user.position, address: user.address,
         emergencyContactName: user.emergency_contact_name, emergencyContactPhone: user.emergency_contact_phone,
         avatarUrl: await profileAvatarUrl(user.avatar_path),

@@ -3,7 +3,7 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowD
 import NetInfo from '@react-native-community/netinfo';
 import { useQuery } from '@tanstack/react-query';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
-import { Activity, AlertTriangle, Bell, ClipboardList, Database, FileText, LayoutDashboard, LogOut, UserRound, Users, Wifi, WifiOff, X } from 'lucide-react-native';
+import { Activity, AlertTriangle, Bell, ClipboardList, Database, FileText, LayoutDashboard, LogOut, MessageCircle, UserRound, Users, Wifi, WifiOff, X } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MainTabParamList } from '../navigation';
 import { canAccess } from '../access';
@@ -59,12 +59,15 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
     ...(canAccess(user?.role ?? null, 'validation') ? [{ name: 'Review', label: 'Validation', icon: ClipboardList, group: 'Records' } satisfies Destination] : []),
     ...(canAccess(user?.role ?? null, 'users') ? [{ name: 'Users', label: 'Users & roles', icon: Users, group: 'Manage' } satisfies Destination] : []),
     ...(canAccess(user?.role ?? null, 'admin') ? [{ name: 'AuditLogs', label: 'Audit & system logs', icon: ClipboardList, group: 'Manage' } satisfies Destination] : []),
+    { name: 'Chat', label: 'Chat', icon: MessageCircle, group: 'Manage' },
     { name: 'Profile', label: 'My profile', icon: UserRound, group: 'Manage' },
   ];
   const connectionLabel = getConnectionLabel(online, connection, latestReading.data?.timestamp, Date.now());
   const connectionColor = connectionLabel === 'Live' ? colors.normal : colors.critical;
+  const horizontalPadding = width < 380 ? 12 : headerHorizontalPadding;
+  const buttonGap = width < 380 ? 4 : headerButtonGap;
   const popoverTop = insets.top + headerTopPadding + headerButtonSize + headerBottomPadding + 8;
-  const popoverRight = headerHorizontalPadding + (panel === 'notifications' ? headerButtonSize + headerButtonGap : 0);
+  const popoverRight = horizontalPadding + (panel === 'notifications' ? headerButtonSize + buttonGap : 0);
   const isPopover = panel === 'account' || panel === 'notifications';
   function goTo(name: keyof MainTabParamList) {
     setPanel(null);
@@ -83,9 +86,12 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   }
 
   return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safe}>
-    <View style={styles.header}>
-      <View style={styles.brandRow}>
-        <View style={styles.brandSlot}><Brand compact onLogoPress={() => setPanel('navigation')} logoExpanded={panel === 'navigation'} /></View>
+    <View style={[styles.header, { paddingHorizontal: horizontalPadding }]}>
+      <View style={[styles.brandRow, { gap: buttonGap }]}>
+        <View style={styles.brandSlot}><Brand compact showCaption={width >= 420} onLogoPress={() => setPanel('navigation')} logoExpanded={panel === 'navigation'} /></View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open chat" accessibilityState={{ selected: route.name === 'Chat' }} onPress={() => goTo('Chat')} style={[styles.iconButton, route.name === 'Chat' && styles.activeIconButton]}>
+          <MessageCircle size={20} color={route.name === 'Chat' ? colors.teal : colors.ink} />
+        </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={alerts.isError ? 'Alerts unavailable; open alerts' : alertCount === undefined ? 'Loading alerts; open alerts' : `${alertCount} open alerts and pending requests${pending.isError ? ', account requests unavailable' : ''}`} accessibilityState={{ expanded: panel === 'notifications' }} onPress={() => setPanel('notifications')} style={styles.iconButton}>
           <Bell size={20} color={colors.ink} />
           {alertCount !== undefined && alertCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{alertCount > 99 ? '99+' : alertCount}</Text></View>}
@@ -98,7 +104,7 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
     <Modal visible={panel !== null} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setPanel(null)}>
       <View style={styles.overlay}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={StyleSheet.absoluteFill} />
-        <SafeAreaView edges={isPopover ? [] : ['top', 'bottom']} style={[styles.panel, { backgroundColor: mode === 'dark' ? '#181818' : colors.surface }, isPopover && [styles.popover, { top: popoverTop, right: popoverRight, width: Math.min(340, Math.max(0, width - popoverRight - headerHorizontalPadding)), maxHeight: Math.max(0, height - popoverTop - insets.bottom - 16) }]]}>
+        <SafeAreaView edges={isPopover ? [] : ['top', 'bottom']} style={[styles.panel, { backgroundColor: mode === 'dark' ? '#181818' : colors.surface }, isPopover && [styles.popover, { top: popoverTop, right: popoverRight, width: Math.min(340, Math.max(0, width - popoverRight - horizontalPadding)), maxHeight: Math.max(0, height - popoverTop - insets.bottom - 16) }]]}>
           <View style={[styles.panelHeader, isPopover && styles.popoverHeader]}>{panel === 'navigation' ? <View style={styles.panelBrand}><Brand compact showCaption /></View> : <Text style={styles.panelTitle}>{panel === 'notifications' ? 'Notifications' : 'Account'}</Text>}<Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={styles.close}><X size={20} color={colors.ink} /></Pressable></View>
           <ScrollView contentContainerStyle={[styles.panelContent, isPopover && styles.popoverContent]} indicatorStyle={mode === 'dark' ? 'white' : 'black'}>
             {panel === 'navigation' && <>
@@ -146,6 +152,7 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: headerButtonGap },
   brandSlot: { flex: 1, minWidth: 0, overflow: 'hidden' },
   iconButton: { width: headerButtonSize, height: headerButtonSize, flexShrink: 0, borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  activeIconButton: { backgroundColor: colors.selected, borderColor: colors.teal },
   avatar: { width: headerButtonSize, height: headerButtonSize, flexShrink: 0, borderRadius: uiScale.radius.pill, backgroundColor: colors.selected, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   badge: { position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, paddingHorizontal: 3, borderRadius: 10, backgroundColor: '#b51c1c', alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: 'white', fontWeight: '700', fontSize: uiScale.type.caption },

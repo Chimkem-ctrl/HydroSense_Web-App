@@ -147,6 +147,7 @@ export interface DashboardUser {
   role: Role;
   site: string;
   active: boolean;
+  chatEnabled?: boolean;
   lastActive: string;
   employeeId?: string;
   phone?: string;

@@ -391,6 +391,20 @@ describe('themed dashboard routes', () => {
     expect(within(screen.getByRole('dialog', { name: 'Current notifications' })).getAllByRole('link').length).toBeGreaterThanOrEqual(4);
   });
 
+  it('places chat beside notifications and closes the popover when opened', async () => {
+    signInAs('operator');
+    window.history.replaceState({}, '', '/tanks');
+    render(<App />);
+    const bell = await screen.findByRole('button', { name: /open alerts/ });
+    const chat = screen.getByRole('link', { name: 'Chat, 0 unread messages' });
+    expect(chat.nextElementSibling).toContainElement(bell);
+    fireEvent.click(bell);
+    expect(screen.getByRole('dialog', { name: 'Current notifications' })).toBeInTheDocument();
+    fireEvent.click(chat);
+    expect(screen.queryByRole('dialog', { name: 'Current notifications' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Chat' })).toBeInTheDocument();
+  });
+
   it('keeps the tank table available when probe readings are invalid', async () => {
     const getReading = api.getLatestReading.bind(api);
     vi.spyOn(api, 'getLatestReading').mockImplementation(async (tankId) => {

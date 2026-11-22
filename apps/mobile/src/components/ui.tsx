@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Dialog, Portal } from 'react-native-paper';
 import { authColors, uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
+import logoImage from '../../assets/hydrosense-logo.png';
 import oceanImage from '../../../web/public/assets/images/deep-blue-ocean.jpg';
 
 export const BlurTargetContext = createContext<RefObject<ComponentRef<typeof View> | null> | null>(null);
@@ -62,13 +63,17 @@ export function Page({ children, auth = false, redesigned = false, bottomPadding
 export function Brand({ compact = false, showCaption = !compact, onLogoPress, logoExpanded, auth = false }: { compact?: boolean; showCaption?: boolean; onLogoPress?: () => void; logoExpanded?: boolean; auth?: boolean }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  return <View style={compact || auth ? styles.brandCompact : styles.brand}>
-    <Image source={require('../../assets/hydrosense-logo.png')} resizeMode="contain" accessibilityLabel="HydroSense logo" style={auth ? styles.authLogo : compact ? styles.logoSmall : styles.logo} />
+  const content = <>
+    <Image source={logoImage} resizeMode="contain" accessibilityLabel="HydroSense logo" style={auth ? styles.authLogo : compact ? styles.logoSmall : styles.logo} />
     <View style={compact || auth ? styles.brandTextCompact : styles.brandText}>
       <Text numberOfLines={compact || auth ? 1 : undefined} style={auth ? styles.authBrandName : compact ? styles.brandNameSmall : styles.brandName}>HydroSense</Text>
-      <Text numberOfLines={compact || auth ? 1 : undefined} style={[styles.brandCaption, auth && styles.authBrandCaption]}>WATER QUALITY MONITORING</Text>
+      {showCaption && <Text numberOfLines={compact || auth ? 1 : undefined} style={[styles.brandCaption, compact && styles.brandCaptionCompact, auth && styles.authBrandCaption]}>WATER QUALITY MONITORING</Text>}
     </View>
-  </View>;
+  </>;
+  const style = compact || auth ? styles.brandCompact : styles.brand;
+  return onLogoPress
+    ? <Pressable accessibilityRole="button" accessibilityLabel="Open navigation menu" accessibilityState={{ expanded: logoExpanded }} onPress={onLogoPress} style={style}>{content}</Pressable>
+    : <View style={style}>{content}</View>;
 }
 
 export function Title({ children, detail, centered = false }: { children: string; detail?: string; centered?: boolean }) {

@@ -146,6 +146,47 @@ Account approval flow:
 3. An administrator approves the account and grants `operator` or `manager`.
 4. `POST /v1/auth/signin` returns a session only for approved accounts.
 
+### Chat
+
+The web chat supports direct conversations between approved active non-admin
+users across hatcheries. Conversations with administrators use shared
+HydroSense Team threads, which all approved active admins can read and answer;
+admins cannot read other users' direct conversations. Disabled chat blocks
+sending only. Pending, rejected and inactive accounts cannot access chat or
+appear as contacts. Sending is limited to 20 messages per minute per user.
+In the admin web view, team conversations appear in the list after their first
+message; admins can still start a conversation by searching for the user.
+
+The chat migration adds `profiles.chat_enabled`, `chat_threads`,
+`chat_messages`, and per-user `chat_read_receipts`. Participant and sender
+references are set to null on deletion, preserving messages as “Deleted user”.
+Thread and message reads are protected by RLS; mutations use authenticated
+database functions that enforce access, eligibility, the 600-character limit,
+rate limits, and atomic admin audit entries. The web client polls every ten
+seconds. Chat is not available in demo mode or the mobile app.
+
+Apply `20261122220000_chat.sql` once to the target database using the team's
+normal migration process, then deploy the updated Edge Function and web app.
+Do not run the migration on a shared database without authorization. The
+`POST /v1/chat/threads/:id/read` endpoint accepts `{ "messageId": "<uuid>" }`
+to mark messages through the last message actually displayed.
+
+To run the isolated SQL/RLS test from the repository root with Docker and the
+local Supabase Postgres image:
+
+```powershell
+docker run --name hydrosense-chat-test -e POSTGRES_PASSWORD=local-test-only -d public.ecr.aws/supabase/postgres:17.12.0.000
+docker exec hydrosense-chat-test pg_isready -U postgres
+docker cp backend\supabase\migrations\20261122220000_chat.sql hydrosense-chat-test:/tmp/hydrosense-chat-migration.sql
+Get-Content -Raw backend\tests\chat.integration.sql | docker exec -i hydrosense-chat-test psql -U postgres -d postgres
+docker stop hydrosense-chat-test
+docker rm hydrosense-chat-test
+```
+
+Wait until `pg_isready` reports that the new container is accepting connections
+before running the test. The test creates temporary fixtures in a transaction
+and rolls them back; never point it at an existing project database.
+
 Never expose the service-role/secret key in a browser, mobile application, or repository.
 
 ## REST API

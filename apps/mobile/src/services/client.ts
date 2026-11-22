@@ -50,7 +50,7 @@ export interface AccountProfile {
   emergencyContactPhone: string | null;
 }
 
-async function authenticatedRequest(path: string, init?: RequestInit): Promise<unknown> {
+export async function authenticatedRequest(path: string, init?: RequestInit): Promise<unknown> {
   if (!accessToken) throw new Error('Your session has expired. Sign in again.');
   const response = await fetch(`${API_BASE_URL.replace(/\/$/, '')}${path}`, {
     ...init,

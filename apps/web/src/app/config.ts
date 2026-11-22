@@ -63,6 +63,7 @@ export const ROLE_ACCESS: Record<string, Role[]> = {
   users: ['manager', 'admin'],
   logs: ['admin'],
   profile: ['operator', 'manager', 'admin'],
+  chat: ['operator', 'manager', 'admin'],
 };
 
 export const NAV_ITEMS = [

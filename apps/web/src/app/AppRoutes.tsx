@@ -10,6 +10,7 @@ import LiveMonitorPage from '../pages/LiveMonitorPage';
 import TankOverviewPage from '../pages/TankOverviewPage';
 import TrendsPage from '../pages/TrendsPage';
 import ProfilePage from '../pages/ProfilePage';
+import ChatPage from '../pages/ChatPage';
 import {
   AlertsPage,
   CalibrationPage,
@@ -93,6 +94,7 @@ export default function AppRoutes() {
         <Route path="admin/logs" element={<Guarded path="logs"><AdminLogsPage /></Guarded>} />
         <Route path="settings/notifications" element={<Navigate to="/profile" replace />} />
         <Route path="profile" element={<Guarded path="profile"><ProfilePage /></Guarded>} />
+        <Route path="chat" element={<Guarded path="chat"><ChatPage /></Guarded>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

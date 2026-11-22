@@ -4,6 +4,7 @@ export type MainTabParamList = {
   Alerts: undefined;
   Trends: undefined;
   More: undefined;
+  Chat: undefined;
   Activity: undefined;
   Reports: undefined;
   Status: undefined;

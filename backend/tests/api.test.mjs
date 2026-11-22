@@ -21,6 +21,7 @@ function setup(role = 'admin', status = 'approved') {
   const authUsers = profiles.map(({ id, email }) => ({ id, email }));
   let nextUserId = 0;
   let signupRequest;
+  const rpcRequests = [];
   const db = {
     storage: {
       from(bucket) {
@@ -128,6 +129,11 @@ function setup(role = 'admin', status = 'approved') {
       HARDWARE_INGEST_API_KEY: 'hardware-key',
     })[name] }, serve: (fn) => { handler = fn; } },
     createClient: (_url, key) => key === 'service' ? db : {
+      rpc: async (name, args) => {
+        rpcRequests.push({ name, args });
+        if (failures[name]) return { data: null, error: failures[name] };
+        return { data: name === 'chat_open_direct' || name === 'chat_send_message' ? 'result-id' : [], error: null };
+      },
       auth: {
         getUser: async () => ({ data: { user: { id: 'actor' } }, error: null }),
         signInWithPassword: async () => ({ data: { user: { id: 'actor' }, session: { access_token: 'access', refresh_token: 'refresh' } }, error: null }),
@@ -158,6 +164,7 @@ function setup(role = 'admin', status = 'approved') {
     authUsers,
     failures,
     uploads,
+    rpcRequests,
     get signupRequest() { return signupRequest; },
     raw: (request) => handler(request),
     hardwareRequest: (path, body, key = 'hardware-key') => handler(new Request(`https://example.test/functions/v1/api${path}`, {
@@ -178,6 +185,27 @@ function setup(role = 'admin', status = 'approved') {
     })),
   };
 }
+
+test('chat API validates messages, enforces admin controls, and propagates database access checks', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const app = setup('operator');
+  assert.equal((await app.request(`/v1/chat/threads/${id}/messages`, 'POST', { body: '  ' })).status, 400);
+  assert.equal((await app.request(`/v1/chat/threads/${id}/messages`, 'POST', { body: 'a'.repeat(601) })).status, 400);
+  assert.equal((await app.request(`/v1/chat/threads/${id}/messages`, 'POST', { body: 'a'.repeat(600) })).status, 201);
+  assert.equal(app.rpcRequests.at(-1).name, 'chat_send_message');
+  app.failures.chat_send_message = { code: 'P0001', message: 'Message rate limit exceeded.' };
+  assert.equal((await app.request(`/v1/chat/threads/${id}/messages`, 'POST', { body: 'hello' })).status, 429);
+  app.failures.chat_list_messages = { code: '42501', message: 'Conversation not found.' };
+  assert.equal((await app.request(`/v1/chat/threads/${id}/messages`)).status, 403);
+  assert.equal((await app.request(`/v1/chat/threads/${id}/read`, 'POST', { messageId: id })).status, 200);
+  assert.equal(app.rpcRequests.at(-1).name, 'chat_mark_read');
+  assert.equal((await app.request('/v1/chat/threads', 'POST', { userId: 'not-a-uuid' })).status, 400);
+  assert.equal((await app.request(`/v1/admin/users/${id}/chat`, 'PATCH', { enabled: false })).status, 403);
+  const admin = setup();
+  assert.equal((await admin.request(`/v1/admin/users/${id}/chat`, 'PATCH', { enabled: false })).status, 200);
+  assert.equal(admin.rpcRequests.at(-1).name, 'chat_set_enabled');
+  assert.equal((await setup('operator', 'pending').request('/v1/chat/contacts')).status, 403);
+});
 
 test('buffered readings preserve time, deduplicate retries, and never alert for historical samples', async () => {
   const app = setup();
