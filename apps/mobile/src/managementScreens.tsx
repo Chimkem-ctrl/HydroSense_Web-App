@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Dialog } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatManilaDateTime, validatePasswordChange } from '@hydrosense/shared';
+import { formatManilaDateTime, hatcheryId, tankInHatchery, validatePasswordChange } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
 import { Check, ClipboardList, MapPin, Search, UserRound, Users, X } from 'lucide-react-native';
 import { canAccess } from './access';
@@ -31,16 +31,9 @@ function value(text?: string | null) {
   return text?.trim() || 'N/A';
 }
 
-function isTankOne(name: string) {
-  return /^tank\s+0?1\b/i.test(name.trim());
-}
-
-function sameHatchery(left: string, right: string) {
-  return hatcheryLabel(left).trim().toLowerCase() === hatcheryLabel(right).trim().toLowerCase();
-}
-
 function ChangePasswordRow({ userId, email }: { userId: string; email: string }) {
   const { colors } = useTheme();
+  const { height } = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -70,24 +63,26 @@ function ChangePasswordRow({ userId, email }: { userId: string; email: string })
     </Pressable>
     {success && <Text accessibilityLiveRegion="polite" style={{ color: colors.ink }}>Password changed successfully.</Text>}
     <GlassDialog solid visible={open} onDismiss={close}>
-      <Dialog.Title style={{ color: colors.ink }}>Change password</Dialog.Title>
-      <Dialog.Content>
-        <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 400 }} contentContainerStyle={{ gap: 10 }}>
-          <Text style={{ color: colors.ink }}>Are you sure you want to change your password? Enter your current password and choose a new one.</Text>
-          <Text style={{ color: colors.ink }}>Current password</Text>
-          <TextInput accessibilityLabel="Current password" value={current} onChangeText={(text) => { setCurrent(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" editable={!mutation.isPending} style={inputStyle} />
-          <Text style={{ color: colors.ink }}>New password</Text>
-          <TextInput accessibilityLabel="New password" value={next} onChangeText={(text) => { setNext(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="new-password" editable={!mutation.isPending} style={inputStyle} />
-          <Text style={{ color: colors.ink }}>Confirm new password</Text>
-          <TextInput accessibilityLabel="Confirm new password" value={confirmation} onChangeText={(text) => { setConfirmation(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="new-password" editable={!mutation.isPending} style={inputStyle} />
-          <Text style={{ color: colors.muted }}>Use at least 8 characters.</Text>
-          {error ? <Text accessibilityRole="alert" style={{ color: colors.critical }}>{error}</Text> : null}
-        </ScrollView>
-      </Dialog.Content>
-      <Dialog.Actions>
-        <Button label="Cancel" secondary disabled={mutation.isPending} onPress={close} />
-        <Button label={mutation.isPending ? 'Changing...' : 'Confirm change'} disabled={mutation.isPending} onPress={submit} />
-      </Dialog.Actions>
+      <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: height * 0.8 }} contentContainerStyle={{ paddingBottom: 16 }}>
+        <Dialog.Title style={{ color: colors.ink }}>Change password</Dialog.Title>
+        <Dialog.Content>
+          <View style={{ gap: 10 }}>
+            <Text style={{ color: colors.ink }}>Are you sure you want to change your password? Enter your current password and choose a new one.</Text>
+            <Text style={{ color: colors.ink }}>Current password</Text>
+            <TextInput accessibilityLabel="Current password" value={current} onChangeText={(text) => { setCurrent(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" editable={!mutation.isPending} style={inputStyle} />
+            <Text style={{ color: colors.ink }}>New password</Text>
+            <TextInput accessibilityLabel="New password" value={next} onChangeText={(text) => { setNext(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="new-password" editable={!mutation.isPending} style={inputStyle} />
+            <Text style={{ color: colors.ink }}>Confirm new password</Text>
+            <TextInput accessibilityLabel="Confirm new password" value={confirmation} onChangeText={(text) => { setConfirmation(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="new-password" editable={!mutation.isPending} style={inputStyle} />
+            <Text style={{ color: colors.muted }}>Use at least 8 characters.</Text>
+            {error ? <Text accessibilityRole="alert" style={{ color: colors.critical }}>{error}</Text> : null}
+          </View>
+        </Dialog.Content>
+        <Dialog.Actions style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8, paddingHorizontal: 24 }}>
+          <Button label={mutation.isPending ? 'Changing...' : 'Confirm change'} disabled={mutation.isPending} onPress={submit} />
+          <Button label="Cancel" secondary disabled={mutation.isPending} onPress={close} />
+        </Dialog.Actions>
+      </ScrollView>
     </GlassDialog>
   </View>;
 }
@@ -105,15 +100,15 @@ export function ProfileScreen() {
   const { user } = useSession();
   const { colors } = useTheme();
   const styles = createManagementStyles(colors);
-  const { tanks, tankId, isLoading, error, refetch } = useTankSelection();
+  const { allTanks, tankId, isLoading, error, refetch } = useTankSelection();
   const profile = useProfile();
   const [maintenanceHatchery, setMaintenanceHatchery] = useState('');
   const [maintenanceTankId, setMaintenanceTankId] = useState('');
-  const hatcheries = [...new Set(tanks.map((item) => item.site.trim()).filter(Boolean))];
-  const assignedHatchery = profile.data?.site || tanks.find((item) => item.id === tankId)?.site || '';
+  const hatcheries = [...new Map(allTanks.filter((item) => item.site.trim()).map((item) => [hatcheryId(item.site), item.site])).values()];
+  const assignedHatchery = profile.data?.site || allTanks.find((item) => item.id === tankId)?.site || '';
   const selectedHatchery = user?.role === 'admin' ? maintenanceHatchery : assignedHatchery;
   const maintenanceTanks = selectedHatchery
-    ? tanks.filter((item) => isTankOne(item.name) && sameHatchery(item.site, selectedHatchery))
+    ? allTanks.filter((item) => tankInHatchery(item, hatcheryId(selectedHatchery)))
     : [];
   return <Page maxWidth={680}>
     <Title icon={<UserRound size={23} color={colors.teal} />} detail="View your account, role, hatchery, and alert preferences.">My profile</Title>
@@ -163,7 +158,7 @@ export function ProfileScreen() {
           {user?.role === 'admin' && !maintenanceHatchery ? <Text style={styles.detail}>Select a hatchery first.</Text> :
             maintenanceTanks.length ? maintenanceTanks.map((item) => <Pressable key={item.id} accessibilityRole="radio" accessibilityLabel={item.name} accessibilityState={{ checked: maintenanceTankId === item.id }} onPress={() => setMaintenanceTankId(item.id)} style={[styles.roleOption, maintenanceTankId === item.id && styles.roleSelected]}>
               <Text style={[styles.roleText, maintenanceTankId === item.id && styles.roleTextSelected]}>{item.name}</Text>
-            </Pressable>) : <Text style={styles.detail}>{selectedHatchery ? 'Tank 01 is not available for this hatchery.' : 'Hatchery assignment is not available.'}</Text>}
+            </Pressable>) : <Text style={styles.detail}>{selectedHatchery ? 'No tanks are available for this hatchery.' : 'Hatchery assignment is not available.'}</Text>}
         </View>
       </>}
       {user && <DeviceMaintenanceControls role={user.role} />}

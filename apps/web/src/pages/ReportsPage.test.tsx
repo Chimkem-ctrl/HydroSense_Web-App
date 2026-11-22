@@ -114,10 +114,11 @@ describe('ReportsPage filters dropdown', () => {
     vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: createUrl, revokeObjectURL: vi.fn() }));
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     renderReportsPage();
-    await screen.findByRole('button', { name: 'Download CSV' });
+    const download = await screen.findByRole('button', { name: 'Download CSV' });
     fireEvent.click(screen.getByRole('combobox', { name: 'CSV dataset' }));
     fireEvent.click(screen.getByRole('option', { name: 'Activity logs' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }));
+    await waitFor(() => expect(download).toBeEnabled());
+    fireEvent.click(download);
     const blob = createUrl.mock.calls[0][0] as Blob;
     const text = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -130,6 +131,39 @@ describe('ReportsPage filters dropdown', () => {
     expect(text).toContain('"Water source"');
     expect(text).toContain('"Sea"');
     expect(text).toContain('"Heavy rain"');
+  });
+
+  it('exports only the active hatchery and keeps the CSV action disabled for an empty dataset', async () => {
+    selectedTankContext.hatchery = 'camiguin-benoni';
+    vi.mocked(api.listTanks).mockResolvedValue([
+      { id: 'tank-1', name: 'Sagay tank', site: 'Sagay', rearingStartDate: '2025-01-01', deviceId: 'sagay' },
+      { id: 'tank-2', name: 'Benoni tank', site: 'Benoni', rearingStartDate: '2025-01-01', deviceId: 'benoni' },
+    ]);
+    vi.mocked(api.listReadings).mockImplementation(async ({ tankId } = {}) => [{
+      id: `reading-${tankId}`, tankId: tankId!, timestamp: new Date().toISOString(), temperature: 28, doMgL: 5, ph: 7.4,
+    }]);
+    const createUrl = vi.fn((_blob: Blob) => 'blob:report');
+    vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: createUrl, revokeObjectURL: vi.fn() }));
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    renderReportsPage();
+    const download = await screen.findByRole('button', { name: 'Download CSV' });
+    await waitFor(() => expect(download).toBeEnabled());
+    fireEvent.click(download);
+    const blob = createUrl.mock.calls[0][0];
+    const text = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(blob);
+    });
+    expect(text).toContain('"Benoni"');
+    expect(text).toContain('"tank-2"');
+    expect(text).not.toContain('tank-1');
+    expect(api.listReadings).not.toHaveBeenCalledWith(expect.objectContaining({ tankId: 'tank-1' }));
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'CSV dataset' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Alerts' }));
+    expect(download).toBeDisabled();
   });
   it('shows selected section count and preserves the filter controls in the dropdown', async () => {
     renderReportsPage();
@@ -188,7 +222,7 @@ describe('ReportsPage filters dropdown', () => {
       renderReportsPage();
 
       expect(await screen.findByRole('alert')).toHaveTextContent('Too many readings occur within one millisecond to produce a complete report.');
-      expect(screen.queryByRole('button', { name: 'Download CSV' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Download CSV' })).toBeDisabled();
     });
   });
 

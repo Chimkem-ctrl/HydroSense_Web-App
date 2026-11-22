@@ -1,6 +1,7 @@
 import { useContext, useMemo, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import type { ViewStyle } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Dialog, Portal } from 'react-native-paper';
@@ -187,10 +188,10 @@ function TankSummaryCard({ tank, onOpen, onRemove, removeDisabled = false }: { t
   const device = statuses.data?.find((item) => item.deviceId === tank.deviceId);
   const day = getRaisingDay(tank.rearingStartDate);
   const freshness = reading.data ? readingFreshness(reading.data.timestamp, device?.online) : null;
-  return <Card title={tank.name}>
+  return <Card title={tank.name} action={!statuses.isLoading && !statuses.isError ? <Text style={{ color: device ? device.online ? colors.normal : colors.critical : colors.muted, fontWeight: '700' }}>{device ? device.online ? 'Online' : 'Offline' : 'No device status'}</Text> : undefined}>
     <Text style={{ color: colors.muted }}>{tank.deviceId} · Rearing day {day} of 21</Text>
     <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 21, now: day }} style={{ height: 6, backgroundColor: colors.border, borderRadius: 3 }}><View style={{ width: `${day / 21 * 100}%`, height: 6, backgroundColor: colors.teal, borderRadius: 3 }} /></View>
-    {statuses.isLoading ? <StateMessage message="Loading connection…" loading /> : statuses.isError ? <StateMessage message={`Could not load connection: ${statuses.error.message}`} /> : <Text style={{ color: device ? device.online ? colors.normal : colors.critical : colors.muted, fontWeight: '700' }}>{device ? device.online ? 'Online' : 'Offline' : 'No device status'}</Text>}
+    {statuses.isLoading ? <StateMessage message="Loading connection…" loading /> : statuses.isError ? <StateMessage message={`Could not load connection: ${statuses.error.message}`} /> : null}
     {reading.isLoading ? <StateMessage message="Loading readings…" loading /> : reading.isError ? <StateMessage message={`Could not load readings: ${reading.error.message}`} /> : reading.data ? <Text style={{ color: colors.ink }}>{(['temperature', 'do', 'ph'] as const).map((parameter) => {
       const value = parameter === 'do' ? reading.data!.doMgL : reading.data![parameter];
       return isValidMeasurement(parameter, value) ? formatParameter(parameter, value) : `${parameter}: Check probe`;
@@ -366,16 +367,22 @@ export function AlertsScreen({ navigation }: Props<'Alerts'>) {
         const parameter = alertParameterKey(alert.parameter);
         const parameterLabel = ['temperature', 'do', 'ph'].includes(parameter) ? alertParameterLabel(parameter) : alert.parameter;
         const statusLabel = alert.status === 'open' ? 'New' : alert.status === 'acknowledged' ? 'Acknowledged' : 'Resolved';
-        return <Pressable key={alert.id} accessibilityRole="button" accessibilityHint="Open alert details" onPress={() => navigation.getParent()?.navigate('AlertDetail', { alertId: alert.id })} style={{ minHeight: 64, paddingVertical: uiScale.spacing[4], borderBottomWidth: 1, borderBottomColor: colors.border, gap: uiScale.spacing[2] }}>
+        const tone = alert.status === 'resolved' ? colors.normal : alert.status === 'acknowledged' ? colors.warning : null;
+        return <View key={alert.id} style={{ minHeight: 64, padding: uiScale.spacing[3], borderWidth: 1, borderColor: tone ?? colors.border, borderRadius: uiScale.radius.control, backgroundColor: tone ? `${tone}1A` : colors.glassControl, gap: uiScale.spacing[2] }}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: uiScale.spacing[2] }}><StatusIcon size={18} color={statusColor} /><Text style={{ color: colors.ink, fontSize: uiScale.type.body, fontWeight: '700', flexShrink: 1 }}>{parameterLabel}</Text></View>
-          <Text style={{ color: colors.muted, fontWeight: '700' }}>{statusLabel}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[1] }}>
+            <Text style={{ color: tone ?? colors.muted, fontWeight: '700' }}>{statusLabel}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Open details for ${parameterLabel} alert`} onPress={() => navigation.getParent()?.navigate('AlertDetail', { alertId: alert.id })} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+              <ChevronRight size={20} color={colors.ink} />
+            </Pressable>
+          </View>
         </View>
         <Text style={{ color: statusColor, fontWeight: '700' }}>{alert.severity === 'critical' ? 'Critical' : 'Warning'}</Text>
         <Text style={{ color: colors.ink, lineHeight: 20 }}><Text style={{ color: colors.muted }}>Tank: </Text>{alert.tankId}</Text>
         <Text style={{ color: colors.ink, lineHeight: 20 }}><Text style={{ color: colors.muted }}>Value: </Text>{alert.value}{'  '}<Text style={{ color: colors.muted }}>Threshold: </Text>{alert.threshold}</Text>
-        <Text style={{ color: colors.muted, lineHeight: 20 }}>{formatManilaDateTime(alert.createdAt)} PHT · tap for details</Text>
-      </Pressable>;
+        <Text style={{ color: colors.muted, lineHeight: 20 }}>{formatManilaDateTime(alert.createdAt)} PHT</Text>
+      </View>;
       })}
       {pageCount > 1 && <View style={{ alignItems: 'center', gap: uiScale.spacing[2], paddingTop: uiScale.spacing[3] }}>
         <Text style={{ color: colors.muted }}>Page {currentPage} of {pageCount}</Text>
@@ -666,8 +673,8 @@ export function ActivityLogsScreen() {
         </View>
       </Card>
       <Card title="Activity records" action={user?.role === 'admin' ? <Pressable accessibilityRole="button" accessibilityLabel={exportingLogs ? 'Preparing CSV' : 'Share CSV'} accessibilityState={{ disabled: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 }} disabled={exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0} onPress={() => void shareLogs()} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface, opacity: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 ? 0.5 : 1 }}><FileDown size={18} color={colors.teal} /></Pressable> : undefined}>
-        {logs.isLoading || tanks.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message={`Could not load activity logs: ${logs.error.message}`} /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : tanks.error ? <StateMessage message={`Could not load tanks: ${tanks.error.message}`} /> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." spacious /> : <View>{filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={record.row}>
-          <View style={record.top}>
+        {logs.isLoading || tanks.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message={`Could not load activity logs: ${logs.error.message}`} /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : tanks.error ? <StateMessage message={`Could not load tanks: ${tanks.error.message}`} /> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." spacious /> : <View style={{ gap: uiScale.spacing[3] }}>{filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={[record.row, { padding: uiScale.spacing[3], borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.glassControl }]}>
+          <View style={[record.top, { flexWrap: 'wrap' }]}>
             <Text style={record.caption}>{log.occurredAt && Number.isFinite(Date.parse(log.occurredAt)) ? `${formatManilaDateTime(log.occurredAt)} PHT` : 'Unavailable'}</Text>
               <Chip label={String(log.kind ?? 'Activity').charAt(0).toUpperCase() + String(log.kind ?? 'Activity').slice(1).toLowerCase()} />
           </View>
@@ -942,6 +949,7 @@ export function ReportsScreen() {
   const { width } = useWindowDimensions();
   const caption = { color: colors.muted, fontSize: uiScale.type.caption, textTransform: 'uppercase' as const };
   const numeric = { color: colors.ink, fontVariant: ['tabular-nums'] as const, textAlign: 'right' as const };
+  const summaryTile: ViewStyle = { flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, minWidth: 0, borderWidth: 1, borderRadius: uiScale.radius.control, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3], gap: uiScale.spacing[2] };
   const { tankId, tanks, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const { user } = useSession();
   const [selectedTanks, setSelectedTanks] = useState<string[] | null>(null);
@@ -1032,7 +1040,7 @@ export function ReportsScreen() {
     }
   }
   return <Page>
-    <Title detail="Select tanks, dates, sections and format">Report builder</Title>
+    <Title icon={<FileText size={23} color={colors.teal} />} detail="Select tanks, dates, sections and format">Reports</Title>
     <Card title="Export settings">
       <HatcheryPicker />
       <Text style={{ color: colors.muted, fontSize: uiScale.type.caption, textTransform: 'uppercase' }}>CSV dataset</Text>
@@ -1047,9 +1055,9 @@ export function ReportsScreen() {
     </Card>
     <Card>
       <Text style={{ color: colors.muted, fontSize: uiScale.type.caption, textTransform: 'uppercase' }}>Records matched</Text>
-      <Text style={{ color: colors.ink, fontSize: 36, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{matched ?? '—'}</Text>
-      <Text style={{ color: colors.muted }}>{dataset === 'readings' ? 'readings' : dataset === 'activity' ? 'activity logs' : dataset} · {from} → {to} · Asia/Manila</Text>
-      {user && can(user.role, 'exportReports') && <Button label="Download CSV" disabled={sharing || matched === null || matched === 0 || preview.isFetching} onPress={() => void shareCsv()} />}
+      <Text style={{ color: colors.ink, fontSize: 32, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{matched ?? '—'}</Text>
+      <Text style={{ color: colors.muted, lineHeight: 20 }}>{dataset === 'readings' ? 'readings' : dataset === 'activity' ? 'activity logs' : dataset} · {from} → {to} · Asia/Manila</Text>
+      {user && can(user.role, 'exportReports') && <Button label="Download CSV" icon={<FileDown size={18} color={colors.teal} />} soft disabled={sharing || matched === null || matched === 0 || preview.isFetching} onPress={() => void shareCsv()} />}
     </Card>
     <Card title="Tanks">
       {tanksLoading ? <StateMessage message="Loading tanks…" loading /> : tanksError ? <><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry tank list" secondary onPress={refetchTanks} /></> : tanks.length === 0 ? <StateMessage message="No tanks are available for this account." /> : null}
@@ -1082,7 +1090,7 @@ export function ReportsScreen() {
       {user && can(user.role, 'exportReports') && <Button label="Print / Save PDF" disabled={sharing || !model || preview.isFetching} onPress={() => void shareReport('pdf')} />}
       {!validRange ? <StateMessage message="Enter a valid start and end date." /> : !tanks.length ? <StateMessage message="No tanks are available for this hatchery." /> : !selectedIds.length ? <StateMessage message="Select a tank to generate the report." /> : preview.isLoading ? <StateMessage message="Preparing report…" loading /> : preview.isError ? <><StateMessage message={preview.error instanceof Error ? preview.error.message : 'Could not prepare report.'} /><Button label="Retry" secondary onPress={() => void preview.refetch()} /></> : model && <>
         <View style={{ gap: uiScale.spacing[2] }}>
-          <Text style={caption}>Report ID</Text><Text numberOfLines={1} ellipsizeMode="tail" style={{ color: colors.ink }}>{model.id}</Text>
+          <Text style={caption}>Report ID</Text><Text selectable style={{ color: colors.ink }}>{model.id}</Text>
           <DataRow label="Prepared by" value={`${model.generatedBy.name} (${model.generatedBy.role})`} />
           <DataRow label="Tanks / period" value={`${model.tanks.map((tank) => tank.name).join(', ')} · ${from} to ${to} PHT`} />
           <DataRow label="Generated" value={`${formatManilaDateTime(model.generatedAt)} PHT`} />
@@ -1100,12 +1108,12 @@ export function ReportsScreen() {
           </View>
         </ScrollView>}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>
-          {sections.includes('alerts') && <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Alerts</Text><Text style={{ color: colors.ink }}>{model.alertCounts.critical} critical · {model.alertCounts.warning} warning · {model.alertCounts.open} open · {model.alertCounts.acknowledged} acknowledged · {model.alertCounts.resolved} resolved</Text></View>}
-          <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Thresholds used</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[1] }}>{model.thresholds.map((threshold) => <Chip key={threshold.parameter} label={`${threshold.parameter} ${threshold.min ?? '—'}–${threshold.max ?? '—'}`} />)}</View></View>
-          <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Expected readings</Text><Text style={{ color: colors.ink }}>Expected {model.dataQuality.expectedReadings} · Received {model.dataQuality.receivedReadings} ({model.dataQuality.receivedPercent.toFixed(1)}%)</Text></View>
-          <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Activity logs</Text><Text style={numeric}>{model.activityLogs.length}</Text></View>
-          {canAccess(user?.role ?? null, 'canCalibrate') && <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Calibration</Text><Text style={numeric}>{model.calibrationLogs.length}</Text></View>}
-          {canAccess(user?.role ?? null, 'validation') && <View style={{ flexBasis: width < 360 ? '100%' : '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.glassControl, padding: uiScale.spacing[3] }}><Text style={caption}>Validation</Text><Text style={numeric}>{model.validationRows.length}</Text></View>}
+          {sections.includes('alerts') && <View style={summaryTile}><Text style={caption}>Alerts</Text><Text style={{ color: colors.ink }}>{model.alertCounts.critical} critical · {model.alertCounts.warning} warning · {model.alertCounts.open} open · {model.alertCounts.acknowledged} acknowledged · {model.alertCounts.resolved} resolved</Text></View>}
+          <View style={summaryTile}><Text style={caption}>Thresholds used</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[1] }}>{model.thresholds.map((threshold) => <Chip key={threshold.parameter} label={`${threshold.parameter} ${threshold.min ?? '—'}–${threshold.max ?? '—'}`} />)}</View></View>
+          <View style={summaryTile}><Text style={caption}>Expected readings</Text><Text style={{ color: colors.ink }}>Expected {model.dataQuality.expectedReadings} · Received {model.dataQuality.receivedReadings} ({model.dataQuality.receivedPercent.toFixed(1)}%)</Text></View>
+          <View style={summaryTile}><Text style={caption}>Activity logs</Text><Text style={numeric}>{model.activityLogs.length}</Text></View>
+          {canAccess(user?.role ?? null, 'canCalibrate') && <View style={summaryTile}><Text style={caption}>Calibration</Text><Text style={numeric}>{model.calibrationLogs.length}</Text></View>}
+          {canAccess(user?.role ?? null, 'validation') && <View style={summaryTile}><Text style={caption}>Validation</Text><Text style={numeric}>{model.validationRows.length}</Text></View>}
         </View>
         {sections.includes('raw-readings') && <View>
           <Text style={caption}>Showing first {Math.min(10, model.rawReadings.length)} of {model.rawReadings.length} readings</Text>

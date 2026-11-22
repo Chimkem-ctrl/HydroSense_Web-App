@@ -309,8 +309,8 @@ export default function ReportsPage() {
               {!dataQuery.isLoading && !dataQuery.isError && !rows.length && <p>No records match this dataset and date range.</p>}
               {notice && <p role="status">{notice}</p>}
             </div>
-            <div className={`dash-report-action-buttons${canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError ? ' has-csv' : ''}`}>
-              {canExport && rows.length > 0 && !dataQuery.isLoading && !dataQuery.isError && <button className="button button-primary button-soft-action" type="button" onClick={downloadCsv}><FileDown size={18} aria-hidden="true" />Download CSV</button>}
+            <div className={`dash-report-action-buttons${canExport ? ' has-csv' : ''}`}>
+              {canExport && <button className="button button-primary button-soft-action" type="button" disabled={!rows.length || dataQuery.isLoading || dataQuery.isError || dataQuery.isFetching} onClick={downloadCsv}><FileDown size={18} aria-hidden="true" />Download CSV</button>}
               <button
                 ref={filterButtonRef}
                 className="button dash-report-filter-button"

@@ -254,7 +254,7 @@
   white-space: nowrap;
 }
 .glass-screen .dash-report-action-buttons { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
-.glass-screen .dash-report-action-buttons.has-csv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.glass-screen .dash-report-action-buttons.has-csv { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
 .glass-screen .dash-report-action-buttons .button { width: 100%; min-width: 0; white-space: nowrap; }
 .glass-screen .dash-report-filter-button { border-color: var(--glass-border); color: var(--text-primary); background: var(--glass-bg); white-space: nowrap; }
 .glass-screen .dash-report-filter-count { border: 1px solid var(--glass-border); border-radius: var(--radius-control); background: var(--glass-bg); padding: 2px var(--space-2); font-size: var(--font-caption); font-weight: 600; }
