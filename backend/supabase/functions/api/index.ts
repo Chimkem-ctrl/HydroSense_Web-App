@@ -126,6 +126,9 @@ Deno.serve(async (request) => {
     if (action === "/v1/auth/signup" && request.method === "POST") {
       const body = await readJson(request);
       const required = ["firstName", "lastName", "employeeId", "phone", "email", "emergencyContactName", "emergencyContactPhone"];
+      if (!["operator", "manager", "admin"].includes(body.requestedRole)) {
+        return json({ error: "Select a valid requested role." }, 400);
+      }
       if (required.some((key) => typeof body[key] !== "string" || !body[key].trim()) ||
           typeof body.password !== "string" || body.password.length < 8 ||
           !["camiguin-sagay", "camiguin-benoni"].includes(body.hatcheryId) ||
@@ -164,6 +167,7 @@ Deno.serve(async (request) => {
             emergencyContactName: body.emergencyContactName,
             emergencyContactPhone: body.emergencyContactPhone,
             hatcheryId: body.hatcheryId,
+            requestedRole: body.requestedRole,
           },
         },
       });
@@ -1032,7 +1036,7 @@ Deno.serve(async (request) => {
       if (profile?.role !== "admin" || profile.status !== "approved") return json({ error: "Forbidden." }, 403);
       const body = pendingReview?.[2] === "reject" ? { status: "rejected" } :
         pendingReview?.[2] === "approve" ? { ...(await readJson(request)), status: "approved" } : await readJson(request);
-      if (!((body.status === "approved" && ["operator", "manager"].includes(body.role)) ||
+      if (!((body.status === "approved" && ["operator", "manager", "admin"].includes(body.role)) ||
         body.status === "rejected")) {
         return json({ error: "Select a valid approval role or reject the request." }, 400);
       }

@@ -149,7 +149,7 @@ function setup(role = 'admin', status = 'approved') {
             }
             const user = { id: `new-${++nextUserId}`, email: body.email };
             authUsers.push(user);
-            tables.profiles.push({ ...user, role: null, status: 'pending', first_name: body.options.data.firstName, last_name: body.options.data.lastName });
+            tables.profiles.push({ ...user, role: null, status: 'pending', first_name: body.options.data.firstName, last_name: body.options.data.lastName, requested_role: body.options.data.requestedRole, site: body.options.data.hatcheryId });
             return { data: { user }, error: null };
           }
           return { data: { user: { id: 'new', email: body.email } }, error: null };
@@ -265,7 +265,7 @@ test('signup requests email verification and stores profile metadata for the aut
   const signupBody = {
     firstName: 'Jane', lastName: 'Smith', email: 'jane@example.test', password: 'password123', employeeId: '123',
     phone: '+639123456789', emergencyContactName: 'John', emergencyContactPhone: '+639123456789',
-    hatcheryId: 'camiguin-sagay', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
+    hatcheryId: 'camiguin-sagay', requestedRole: 'manager', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
   };
   const response = await app.request('/v1/auth/signup', 'POST', signupBody);
 
@@ -283,11 +283,39 @@ test('signup requests email verification and stores profile metadata for the aut
     emergencyContactName: 'John',
     emergencyContactPhone: '+639123456789',
     hatcheryId: 'camiguin-sagay',
+    requestedRole: 'manager',
   });
   const benoniResponse = await app.request('/v1/auth/signup', 'POST', { ...signupBody, hatcheryId: 'camiguin-benoni' });
   assert.equal(benoniResponse.status, 201);
   assert.equal(app.signupRequest.options.data.hatcheryId, 'camiguin-benoni');
+  for (const role of ['operator', 'manager', 'admin']) {
+    assert.equal((await app.request('/v1/auth/signup', 'POST', { ...signupBody, requestedRole: role })).status, 201);
+    assert.equal(app.signupRequest.options.data.requestedRole, role);
+  }
+  for (const role of [undefined, '', 'superuser']) {
+    assert.equal((await app.request('/v1/auth/signup', 'POST', { ...signupBody, requestedRole: role })).status, 400);
+  }
   assert.equal((await app.request('/v1/auth/signup', 'POST', {})).status, 400);
+});
+
+test('signup role and hatchery appear in pending requests without granting a role', async () => {
+  const app = setup();
+  app.failures.trackSignups = true;
+  for (const requestedRole of ['operator', 'manager', 'admin']) {
+    const response = await app.request('/v1/auth/signup', 'POST', {
+      firstName: 'New', lastName: 'User', email: `applicant-${requestedRole}@example.test`, password: 'password123', employeeId: '123',
+      phone: '+639123456789', emergencyContactName: 'John', emergencyContactPhone: '+639123456789',
+      hatcheryId: 'camiguin-benoni', requestedRole,
+      address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
+    });
+    assert.equal(response.status, 201);
+    const requests = await (await app.request('/v1/admin/pending-requests')).json();
+    const request = requests.find((item) => item.email === `applicant-${requestedRole}@example.test`);
+    assert.equal(request.requestedRole, requestedRole);
+    assert.equal(request.site, 'camiguin-benoni');
+    assert.equal(request.role, null);
+    assert.equal(request.status, 'pending');
+  }
 });
 
 test('signup accepts Benoni', async () => {
@@ -295,7 +323,7 @@ test('signup accepts Benoni', async () => {
   const response = await app.request('/v1/auth/signup', 'POST', {
     firstName: 'Jane', lastName: 'Smith', email: 'jane@example.test', password: 'password123', employeeId: '123',
     phone: '+639123456789', emergencyContactName: 'John', emergencyContactPhone: '+639123456789',
-    hatcheryId: 'camiguin-benoni', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
+    hatcheryId: 'camiguin-benoni', requestedRole: 'operator', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
   });
   assert.equal(response.status, 201);
   assert.equal(app.signupRequest.options.data.hatcheryId, 'camiguin-benoni');
@@ -307,8 +335,8 @@ test('CORS preflight permits settings and role updates', async () => {
   assert.match(response.headers.get('access-control-allow-methods'), /\bPUT\b/);
 });
 
-test('only approved admins can review pending requests and assign non-admin roles', async () => {
-  for (const role of ['operator', 'manager']) {
+test('only approved admins can review pending requests and assign roles', async () => {
+  for (const role of ['operator', 'manager', 'admin']) {
     const app = setup();
     const pending = await app.request('/v1/admin/pending-requests');
     assert.equal((await pending.json()).length, 1);
@@ -320,11 +348,14 @@ test('only approved admins can review pending requests and assign non-admin role
   }
   assert.equal((await setup('manager').request('/v1/admin/pending-requests')).status, 403);
   assert.equal((await setup('admin', 'pending').request('/v1/admin/pending-requests')).status, 403);
+  assert.equal((await setup('manager').request('/v1/admin/pending-requests/pending/approve', 'PUT', { role: 'admin' })).status, 403);
+  assert.equal((await setup('admin', 'pending').request('/v1/admin/users/pending', 'PATCH', { status: 'approved', role: 'admin' })).status, 403);
   const app = setup();
   assert.equal((await app.request('/v1/admin/pending-requests/pending/approve', 'PUT', { role: 'invalid' })).status, 400);
   assert.equal((await app.request('/v1/admin/pending-requests/pending/reject', 'PUT')).status, 200);
   const legacy = setup();
-  assert.equal((await legacy.request('/v1/admin/users/pending', 'PATCH', { status: 'approved', role: 'admin' })).status, 400);
+  assert.equal((await legacy.request('/v1/admin/users/pending', 'PATCH', { status: 'approved', role: 'admin' })).status, 200);
+  assert.equal(legacy.tables.profiles[1].role, 'admin');
 });
 
 test('profile endpoint returns the signed-in profile and hatchery details', async () => {
@@ -744,7 +775,7 @@ test('deleting an approved user frees the email for a new pending signup', async
   const body = {
     firstName: 'New', lastName: 'User', email: 'reuse@example.test', password: 'password123', employeeId: '123',
     phone: '+639123456789', emergencyContactName: 'John', emergencyContactPhone: '+639123456789',
-    hatcheryId: 'camiguin-sagay', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
+    hatcheryId: 'camiguin-sagay', requestedRole: 'operator', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
   };
   assert.equal((await app.request('/v1/auth/signup', 'POST', body)).status, 201);
   const originalId = app.authUsers.find((user) => user.email === body.email).id;
@@ -775,7 +806,7 @@ test('malformed JSON returns 400 and signup trims email', async () => {
   const body = {
     firstName: 'Jane', lastName: 'Smith', email: ' jane@example.test ', password: 'password123', employeeId: '123',
     phone: '+639123456789', emergencyContactName: 'John', emergencyContactPhone: '+639123456789',
-    hatcheryId: 'camiguin-sagay', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
+    hatcheryId: 'camiguin-sagay', requestedRole: 'operator', address: { country: 'PH', province: 'province', city: 'city', barangay: 'barangay', street: 'Main St' },
   };
   assert.equal((await (await app.request('/v1/auth/signup', 'POST', body)).json()).email, 'jane@example.test');
   assert.equal(app.signupRequest.email, 'jane@example.test');

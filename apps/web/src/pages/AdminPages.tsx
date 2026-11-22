@@ -163,7 +163,9 @@ export function AdminUsersPage() {
           {selectedHatchery === 'all' && <h3>{name}</h3>}
           <div className="table-wrap" role="region" aria-label={`${name} pending requests`} tabIndex={0}><table className="admin-users-table admin-requests-table"><thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Requested role</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Review Role</th><th scope="col">Action</th></tr></thead><tbody>
             {!requests.length && <tr><td className="admin-users-search-empty" colSpan={8} role="status">No pending requests match your search.</td></tr>}
-            {requests.map((request) => (
+            {requests.map((request) => {
+              const reviewRole = selectedRoles[request.id] ?? request.requestedRole;
+              return (
               <tr key={request.id}>
                 <td>{request.firstName} {request.lastName}</td>
                 <td>{request.email}</td>
@@ -172,19 +174,18 @@ export function AdminUsersPage() {
                 <td>{formatManilaDateTime(request.createdAt)} PHT</td>
                 <td><span className="admin-users-status">Pending</span></td>
                 <td><label className="field"><span className="sr-only">Review role for {request.firstName} {request.lastName}</span>
-                  <Select value={selectedRoles[request.id] ?? request.requestedRole ?? ''} onChange={(event) => {
+                  <Select value={reviewRole ?? ''} onChange={(event) => {
                     const nextRole = event.target.value;
                     if (nextRole === 'admin' || nextRole === 'operator' || nextRole === 'manager') setSelectedRoles((roles) => ({ ...roles, [request.id]: nextRole }));
                     else setSelectedRoles((roles) => ({ ...roles, [request.id]: undefined }));
                   }}>
-                    <option value="">Select role</option><option value="manager">Manager</option><option value="operator">Operator</option>
+                    <option value="">Select role</option><option value="admin">Admin</option><option value="manager">Manager</option><option value="operator">Operator</option>
                   </Select>
                 </label></td>
                 <td><div className="admin-request-action-buttons">
                   <button type="button" className="admin-request-icon-button admin-request-icon-button--approve" aria-label={`Approve ${request.firstName} ${request.lastName}`} title="Approve request"
-                    disabled={approveRequest.isPending || rejectRequest.isPending || !(selectedRoles[request.id] ?? request.requestedRole)}
+                    disabled={approveRequest.isPending || rejectRequest.isPending || !reviewRole}
                     onClick={() => {
-                      const reviewRole = selectedRoles[request.id] ?? request.requestedRole;
                       if (reviewRole) setConfirmation({ action: 'approve', userId: request.id, name: `${request.firstName} ${request.lastName}`, role: reviewRole });
                     }}><Check size={18} aria-hidden="true" /></button>
                   <button type="button" className="admin-request-icon-button admin-request-icon-button--reject" aria-label={`Reject ${request.firstName} ${request.lastName}`} title="Reject request"
@@ -192,7 +193,7 @@ export function AdminUsersPage() {
                     onClick={() => setConfirmation({ action: 'reject', userId: request.id, name: `${request.firstName} ${request.lastName}` })}><X size={18} aria-hidden="true" /></button>
                 </div></td>
               </tr>
-            ))}
+            ); })}
           </tbody></table></div></section>; })}</div></>
         )}
         {approveRequest.isError && <ErrorState error={approveRequest.error} />}

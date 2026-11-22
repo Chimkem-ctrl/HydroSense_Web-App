@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { useQuery } from '@tanstack/react-query';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
 import { Activity, AlertTriangle, ArrowLeft, Bell, ClipboardList, Database, FileText, LayoutDashboard, LogOut, MessageCircle, UserRound, Users, Wifi, WifiOff, X } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Menu } from 'react-native-paper';
+import type { Role } from '@hydrosense/shared';
 import { isBottomBarRoute } from '../navigation';
 import type { MainTabParamList } from '../navigation';
 import { canAccess } from '../access';
@@ -15,6 +17,7 @@ import { Brand } from './ui';
 import { HatcheryPicker } from './HatcheryPicker';
 import { uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
+import type { ThemeMode } from '../themePreference';
 
 type Panel = 'navigation' | 'account' | 'notifications' | null;
 type Destination = { name: keyof MainTabParamList; label: string; icon: typeof Activity; group: 'Monitor' | 'Records' | 'Manage' };
@@ -23,6 +26,16 @@ const headerTopPadding = 8;
 const headerBottomPadding = 10;
 const headerButtonSize = 48;
 const headerButtonGap = 10;
+const menuTones: Record<Exclude<Role, 'admin'>, Record<ThemeMode, Pick<Palette, 'surface' | 'border' | 'teal' | 'selected'>>> = {
+  manager: {
+    light: { surface: '#d7e6ed', border: '#8eb8c9', teal: '#23617a', selected: '#bdd8e3' },
+    dark: { surface: '#152a38', border: '#5bb8e0', teal: '#7dd3fc', selected: '#254758' },
+  },
+  operator: {
+    light: { surface: '#d9e4f6', border: '#9ab4d9', teal: '#31548c', selected: '#c4d6ef' },
+    dark: { surface: '#132440', border: '#6b9dff', teal: '#a6c4ff', selected: '#263d60' },
+  },
+};
 
 export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const { colors, mode, reduceMotion } = useTheme();
@@ -30,7 +43,12 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const insets = useSafeAreaInsets();
   const styles = createStyles(colors);
   const { user, signOut } = useSession();
+  const menuColors = user?.role === 'admin'
+    ? { ...colors, surface: colors.card }
+    : user ? { ...colors, ...menuTones[user.role][mode] } : colors;
+  const menuStyles = createStyles(menuColors);
   const { tankId, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
+  const [headerLayout, setHeaderLayout] = useState({ height: headerTopPadding + headerButtonSize + headerBottomPadding + 1, rowY: headerTopPadding, rowHeight: headerButtonSize });
   const [panel, setPanel] = useState<Panel>(null);
   const [online, setOnline] = useState<boolean | null>(null);
   const [connection, setConnection] = useState(liveClient?.getConnectionState() ?? 'disconnected');
@@ -68,9 +86,11 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const connectionColor = connectionLabel === 'Live' ? colors.normal : colors.critical;
   const horizontalPadding = width < 380 ? 12 : headerHorizontalPadding;
   const buttonGap = width < 380 ? 4 : headerButtonGap;
-  const popoverTop = insets.top + headerTopPadding + headerButtonSize + headerBottomPadding + 8;
-  const popoverRight = horizontalPadding + (panel === 'notifications' ? headerButtonSize + buttonGap : 0);
-  const isPopover = panel === 'account' || panel === 'notifications';
+  const menuWidth = Math.max(0, width - insets.left - insets.right - 2 * horizontalPadding);
+  const notificationMenuWidth = Math.min(340, Math.max(0, menuWidth - headerButtonSize - buttonGap));
+  const accountMenuWidth = Math.min(340, menuWidth);
+  const menuOffset = Math.max(0, headerLayout.height - headerLayout.rowY - (headerLayout.rowHeight + headerButtonSize) / 2);
+  const menuMaxHeight = Math.max(0, height - insets.top - insets.bottom - (Platform.OS === 'android' ? insets.top : 0) - headerLayout.height - 32);
   function goTo(name: keyof MainTabParamList) {
     setPanel(null);
     navigation.navigate(name);
@@ -88,28 +108,52 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   }
 
   return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safe}>
-    <View style={[styles.header, { paddingHorizontal: horizontalPadding }]}>
-      <View style={[styles.brandRow, { gap: buttonGap }]}>
+    <View onLayout={(event) => { const { height } = event.nativeEvent.layout; setHeaderLayout((current) => ({ ...current, height })); }} style={[styles.header, { paddingHorizontal: horizontalPadding }]}>
+      <View onLayout={(event) => { const { y, height } = event.nativeEvent.layout; setHeaderLayout((current) => ({ ...current, rowY: y, rowHeight: height })); }} style={[styles.brandRow, { gap: buttonGap }]}>
         {!isBottomBarRoute(route.name) && <Pressable accessibilityRole="button" accessibilityLabel="Back to More" onPress={() => navigation.navigate('More')} style={styles.iconButton}><ArrowLeft size={20} color={colors.ink} /></Pressable>}
         <View style={styles.brandSlot}><Brand compact showCaption={width >= 420} onLogoPress={() => setPanel('navigation')} logoExpanded={panel === 'navigation'} /></View>
         <Pressable accessibilityRole="button" accessibilityLabel="Open chat" accessibilityState={{ selected: route.name === 'Chat' }} onPress={() => goTo('Chat')} style={[styles.iconButton, route.name === 'Chat' && styles.activeIconButton]}>
           <MessageCircle size={20} color={route.name === 'Chat' ? colors.teal : colors.ink} />
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={alerts.isError ? 'Alerts unavailable; open alerts' : alertCount === undefined ? 'Loading alerts; open alerts' : `${alertCount} open alerts and pending requests${pending.isError ? ', account requests unavailable' : ''}`} accessibilityState={{ expanded: panel === 'notifications' }} onPress={() => setPanel('notifications')} style={styles.iconButton}>
+        <Menu visible={panel === 'notifications'} onDismiss={() => setPanel(null)} anchorPosition="bottom" style={{ marginTop: menuOffset }} contentStyle={[menuStyles.popover, { width: notificationMenuWidth, backgroundColor: menuColors.surface }]} anchor={<Pressable accessibilityRole="button" accessibilityLabel={alerts.isError ? 'Alerts unavailable; open alerts' : alertCount === undefined ? 'Loading alerts; open alerts' : `${alertCount} open alerts and pending requests${pending.isError ? ', account requests unavailable' : ''}`} accessibilityState={{ expanded: panel === 'notifications' }} onPress={() => setPanel(panel === 'notifications' ? null : 'notifications')} style={styles.iconButton}>
           <Bell size={20} color={colors.ink} />
           {alertCount !== undefined && alertCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{alertCount > 99 ? '99+' : alertCount}</Text></View>}
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Account menu for ${user?.name ?? 'user'}`} accessibilityState={{ expanded: panel === 'account' }} onPress={() => setPanel('account')} style={styles.avatar}><UserRound size={21} color={colors.teal} /></Pressable>
+        </Pressable>}>
+          {panel === 'notifications' && <ScrollView style={{ maxHeight: menuMaxHeight }} contentContainerStyle={menuStyles.popoverContent}>
+            <Text style={menuStyles.panelTitle}>Notifications</Text>
+            {pending.data && pending.data.length > 0 && <Pressable accessibilityRole="button" onPress={() => goTo('Users')} style={menuStyles.notification}><View style={[menuStyles.dot, { backgroundColor: menuColors.teal }]} /><View style={{ flex: 1 }}><Text style={menuStyles.itemText}>{pending.data.length} pending account {pending.data.length === 1 ? 'request' : 'requests'}</Text><Text style={menuStyles.description}>Review in Users & roles</Text></View></Pressable>}
+            {openAlertItems.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => goTo('Alerts')} style={menuStyles.notification}><View style={[menuStyles.dot, { backgroundColor: item.severity === 'critical' ? colors.critical : colors.warning }]} /><View style={{ flex: 1 }}><Text style={menuStyles.itemText}>{item.parameter} {item.severity}</Text><Text style={menuStyles.description}>{item.value} · {item.threshold}</Text></View></Pressable>)}
+            {!alertCount && <Text style={menuStyles.description}>No current notifications.</Text>}
+            <Pressable accessibilityRole="button" onPress={() => goTo('Alerts')} style={menuStyles.viewAll}><Text style={menuStyles.viewAllText}>View all</Text></Pressable>
+          </ScrollView>}
+        </Menu>
+        <Menu visible={panel === 'account'} onDismiss={() => setPanel(null)} anchorPosition="bottom" style={{ marginTop: menuOffset }} contentStyle={[menuStyles.popover, { width: accountMenuWidth, backgroundColor: menuColors.surface }]} anchor={<Pressable accessibilityRole="button" accessibilityLabel={`Account menu for ${user?.name ?? 'user'}`} accessibilityState={{ expanded: panel === 'account' }} onPress={() => setPanel(panel === 'account' ? null : 'account')} style={styles.avatar}><UserRound size={21} color={colors.teal} /></Pressable>}>
+          {panel === 'account' && <ScrollView style={{ maxHeight: menuMaxHeight }} contentContainerStyle={menuStyles.popoverContent}>
+            <View style={menuStyles.accountIdentity}><Text style={menuStyles.panelTitle}>{user?.name}</Text><Text style={menuStyles.description}>{user?.role}</Text></View>
+            <View accessibilityLabel={`Connection ${connectionLabel}`} style={menuStyles.connection}>
+              {connectionLabel === 'Live' ? <Wifi size={19} color={connectionColor} /> : <WifiOff size={19} color={connectionColor} />}
+              <Text style={menuStyles.description}>Connection</Text><Text style={[menuStyles.connectionText, { color: connectionColor }]}>{connectionLabel}</Text>
+            </View>
+            {user?.role === 'admin' && (tanksLoading ? <Text style={menuStyles.description}>Loading hatcheries...</Text> : tanksError ? <View>
+              <Text accessibilityRole="alert" style={menuStyles.error}>Could not load hatcheries: {tanksError.message}</Text>
+              <Pressable accessibilityRole="button" onPress={refetchTanks} style={menuStyles.menuItem}><Text style={menuStyles.itemText}>Retry</Text></Pressable>
+            </View> : <HatcheryPicker colors={menuColors} />)}
+            <View>
+              <Pressable accessibilityRole="button" onPress={() => goTo('Profile')} style={menuStyles.menuItem}><UserRound size={19} color={menuColors.teal} /><Text style={menuStyles.itemText}>My profile</Text></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => void handleSignOut()} style={menuStyles.menuItem}><LogOut size={19} color={colors.critical} /><Text style={[menuStyles.itemText, { color: colors.critical }]}>Sign out</Text></Pressable>
+            </View>
+          </ScrollView>}
+        </Menu>
       </View>
       {alerts.isError && <Text style={styles.error}>Could not load alert count. Open alerts to retry.</Text>}
       {pending.isError && <Text style={styles.error}>Could not load account requests. Open alerts to retry.</Text>}
     </View>
-    <Modal visible={panel !== null} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setPanel(null)}>
+    <Modal visible={panel === 'navigation'} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setPanel(null)}>
       <View style={styles.overlay}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={StyleSheet.absoluteFill} />
-        <SafeAreaView edges={isPopover ? [] : ['top', 'bottom']} style={[styles.panel, { backgroundColor: mode === 'dark' ? '#181818' : colors.surface }, isPopover && [styles.popover, { top: popoverTop, right: popoverRight, width: Math.min(340, Math.max(0, width - popoverRight - horizontalPadding)), maxHeight: Math.max(0, height - popoverTop - insets.bottom - 16) }]]}>
-          <View style={[styles.panelHeader, isPopover && styles.popoverHeader]}>{panel === 'navigation' ? <View style={styles.panelBrand}><Brand compact showCaption /></View> : <Text style={styles.panelTitle}>{panel === 'notifications' ? 'Notifications' : 'Account'}</Text>}<Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={styles.close}><X size={20} color={colors.ink} /></Pressable></View>
-          <ScrollView contentContainerStyle={[styles.panelContent, isPopover && styles.popoverContent]} indicatorStyle={mode === 'dark' ? 'white' : 'black'}>
+        <SafeAreaView edges={['top', 'bottom']} style={[styles.panel, { backgroundColor: mode === 'dark' ? '#181818' : colors.surface }]}>
+          <View style={styles.panelHeader}><View style={styles.panelBrand}><Brand compact showCaption /></View><Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={styles.close}><X size={20} color={colors.ink} /></Pressable></View>
+          <ScrollView contentContainerStyle={styles.panelContent} indicatorStyle={mode === 'dark' ? 'white' : 'black'}>
             {panel === 'navigation' && <>
               {(['Monitor', 'Records', 'Manage'] as const).map((group) => {
                 const items = destinations.filter((item) => item.group === group);
@@ -123,27 +167,6 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
               <View style={styles.navigationFooter}>
                 {user?.role && <Text style={styles.copyright}>{user.role.toUpperCase()} Workspace</Text>}
                 <Text style={styles.copyright}>© 2026 HydroSense</Text>
-              </View>
-            </>}
-            {panel === 'notifications' && <>
-              {pending.data && pending.data.length > 0 && <Pressable accessibilityRole="button" onPress={() => goTo('Users')} style={styles.notification}><View style={[styles.dot, { backgroundColor: colors.teal }]} /><View style={{ flex: 1 }}><Text style={styles.itemText}>{pending.data.length} pending account {pending.data.length === 1 ? 'request' : 'requests'}</Text><Text style={styles.description}>Review in Users & roles</Text></View></Pressable>}
-              {openAlertItems.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => goTo('Alerts')} style={styles.notification}><View style={[styles.dot, { backgroundColor: item.severity === 'critical' ? colors.critical : colors.warning }]} /><View style={{ flex: 1 }}><Text style={styles.itemText}>{item.parameter} {item.severity}</Text><Text style={styles.description}>{item.value} · {item.threshold}</Text></View></Pressable>)}
-              {!alertCount && <Text style={styles.description}>No current notifications.</Text>}
-              <Pressable accessibilityRole="button" onPress={() => goTo('Alerts')} style={styles.viewAll}><Text style={styles.viewAllText}>View all</Text></Pressable>
-            </>}
-            {panel === 'account' && <>
-              <View style={styles.accountIdentity}><Text style={styles.panelTitle}>{user?.name}</Text><Text style={styles.description}>{user?.role}</Text></View>
-              <View accessibilityLabel={`Connection ${connectionLabel}`} style={styles.connection}>
-                {connectionLabel === 'Live' ? <Wifi size={19} color={connectionColor} /> : <WifiOff size={19} color={connectionColor} />}
-                <Text style={styles.description}>Connection</Text><Text style={[styles.connectionText, { color: connectionColor }]}>{connectionLabel}</Text>
-              </View>
-              {user?.role === 'admin' && (tanksLoading ? <Text style={styles.description}>Loading hatcheries...</Text> : tanksError ? <View>
-                <Text accessibilityRole="alert" style={styles.error}>Could not load hatcheries: {tanksError.message}</Text>
-                <Pressable accessibilityRole="button" onPress={refetchTanks} style={styles.menuItem}><Text style={styles.itemText}>Retry</Text></Pressable>
-              </View> : <HatcheryPicker />)}
-              <View>
-                <Pressable accessibilityRole="button" onPress={() => goTo('Profile')} style={styles.menuItem}><UserRound size={19} color={colors.muted} /><Text style={styles.itemText}>My profile</Text></Pressable>
-                <Pressable accessibilityRole="button" onPress={() => void handleSignOut()} style={styles.menuItem}><LogOut size={19} color={colors.critical} /><Text style={[styles.itemText, { color: colors.critical }]}>Sign out</Text></Pressable>
               </View>
             </>}
           </ScrollView>
@@ -168,9 +191,8 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   error: { color: colors.critical, fontSize: 14, lineHeight: 20 },
   overlay: { flex: 1, backgroundColor: colors.overlay, flexDirection: 'row' },
   panel: { backgroundColor: colors.surface, width: '85%', maxWidth: 340 },
-  popover: { position: 'absolute', borderRadius: 16, overflow: 'hidden' },
+  popover: { borderRadius: 16, overflow: 'hidden', paddingVertical: 0, borderWidth: 1, borderColor: colors.border },
   panelHeader: { paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border },
-  popoverHeader: { paddingHorizontal: 16, paddingVertical: 4 },
   panelBrand: { flex: 1, minWidth: 0 },
   panelTitle: { color: colors.ink, fontSize: 19, fontWeight: '700' },
   close: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },

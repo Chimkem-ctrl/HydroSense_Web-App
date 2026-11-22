@@ -95,7 +95,7 @@ describe('users and roles', () => {
     expect(within(requests).getByText('Other Applicant')).toBeInTheDocument();
     const approvalRole = within(requests).getByRole('combobox', { name: 'Review role for Local Applicant' });
     fireEvent.click(approvalRole);
-    expect(screen.queryByRole('option', { name: 'Admin' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Admin' })).toBeInTheDocument();
     fireEvent.click(approvalRole);
     expect(within(requests).getAllByText('Pending')).toHaveLength(2);
     expect(within(requests).getByRole('button', { name: 'Approve Local Applicant' })).toBeInTheDocument();
@@ -183,6 +183,32 @@ describe('users and roles', () => {
     const accounts = await screen.findByRole('region', { name: `${hatchery.name} accounts` });
     expect(within(accounts).getByText('Local Applicant')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('region', { name: `${hatchery.name} pending requests` })).not.toBeInTheDocument());
+  });
+
+  it('allows an admin request to be approved as admin after confirmation', async () => {
+    signIn('admin');
+    vi.spyOn(api, 'listUsers').mockResolvedValue([]);
+    vi.spyOn(authService, 'listApprovedUsers').mockResolvedValue([]);
+    vi.spyOn(authService, 'listPendingRequests').mockResolvedValue([{ ...pending[0], requestedRole: 'admin' }]);
+    const approve = vi.spyOn(authService, 'approveRequest').mockResolvedValue({ ...pending[0], requestedRole: 'admin', role: 'admin', status: 'approved' });
+    window.history.replaceState({}, '', '/admin/users');
+    render(<App />);
+    const requests = await screen.findByRole('region', { name: 'Pending requests table' });
+    const row = within(requests).getByText('Local Applicant').closest('tr')!;
+    expect(row.cells[3]).toHaveTextContent('Admin');
+    const select = within(row).getByRole('combobox', { name: 'Review role for Local Applicant' });
+    expect(select).toHaveTextContent('Admin');
+    expect(within(row).getByRole('button', { name: 'Approve Local Applicant' })).toBeEnabled();
+    fireEvent.click(select);
+    fireEvent.click(screen.getByRole('option', { name: 'Manager' }));
+    fireEvent.click(select);
+    fireEvent.click(screen.getByRole('option', { name: 'Admin' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Approve Local Applicant' }));
+    const confirmation = screen.getByRole('dialog', { name: 'Approve account request?' });
+    expect(confirmation).toHaveTextContent('approve Local Applicant as Admin');
+    expect(approve).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Approve request' }));
+    await waitFor(() => expect(approve).toHaveBeenCalledWith('p1', 'admin'));
   });
 
   it('uses the fetched site for managers with an assignment outside the signup list', async () => {

@@ -3,10 +3,12 @@ import { Pressable, Text, View } from 'react-native';
 import { Check, ChevronDown, MapPin } from 'lucide-react-native';
 import { useTankSelection } from '../state';
 import { uiScale, useTheme } from '../theme';
+import type { Palette } from '../theme';
 
-export function HatcheryPicker() {
+export function HatcheryPicker({ colors: overrideColors }: { colors?: Palette } = {}) {
   const { hatchery, setHatchery, locations } = useTankSelection();
-  const { colors } = useTheme();
+  const { colors: themeColors } = useTheme();
+  const colors = overrideColors ?? themeColors;
   const [expanded, setExpanded] = useState(false);
   const options = [{ id: 'all', name: 'All hatcheries' }, ...locations];
   const selected = options.find((location) => location.id === hatchery);

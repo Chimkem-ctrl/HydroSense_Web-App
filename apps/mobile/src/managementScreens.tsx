@@ -232,27 +232,28 @@ export function UsersScreen() {
           !pending.data?.length ? <StateMessage message="No account requests are awaiting review." /> : [...groupByHatchery(pending.data, (item) => item.site)].map(([site, allRequests]) => { const accounts = allRequests.filter((account) => filteredPending.includes(account)); return <View key={site} style={styles.group}>
             <Text style={styles.site}>{site}</Text>
             {!accounts.length && <StateMessage message="No pending requests match your search." />}
-            {accounts.map((account) => <View key={account.id} style={styles.account}>
+            {accounts.map((account) => {
+              const reviewRole = selectedRoles[account.id] ?? account.requestedRole;
+              return <View key={account.id} style={styles.account}>
               <View style={styles.requestHeader}><Text style={styles.name}>{account.firstName} {account.lastName}</Text><Text style={styles.pendingBadge}>Status: Pending</Text></View>
               <Text style={styles.detail}>{account.email}</Text>
               <Text style={styles.detail}>Phone: {value(account.phone)}</Text>
               <Text style={styles.detail}>Requested role: {account.requestedRole ? account.requestedRole[0].toUpperCase() + account.requestedRole.slice(1) : 'Not specified'}</Text>
               <Text style={styles.label}>Review Role</Text>
               <View accessibilityRole="radiogroup" style={styles.roleChoices}>
-                {(['operator', 'manager'] as const).map((role) => {
-                  const selected = (selectedRoles[account.id] ?? account.requestedRole) === role;
+                {(['operator', 'manager', 'admin'] as const).map((role) => {
+                  const selected = reviewRole === role;
                   return <Pressable key={role} accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => setSelectedRoles((current) => ({ ...current, [account.id]: role }))} style={[styles.roleOption, selected && styles.roleSelected]}><Text style={[styles.roleText, selected && styles.roleTextSelected]}>{role[0].toUpperCase() + role.slice(1)}</Text></Pressable>;
                 })}
               </View>
               <Text style={styles.label}>Action</Text>
               <View style={styles.requestActions}>
-                <Pressable accessibilityRole="button" accessibilityLabel={`Approve ${account.firstName} ${account.lastName}`} disabled={review.isPending || !(selectedRoles[account.id] ?? account.requestedRole)} onPress={() => {
-                  const role = selectedRoles[account.id] ?? account.requestedRole;
-                  if (role) setConfirmation({ action: 'approve', id: account.id, name: `${account.firstName} ${account.lastName}`, role });
+                <Pressable accessibilityRole="button" accessibilityLabel={`Approve ${account.firstName} ${account.lastName}`} disabled={review.isPending || !reviewRole} onPress={() => {
+                  if (reviewRole) setConfirmation({ action: 'approve', id: account.id, name: `${account.firstName} ${account.lastName}`, role: reviewRole });
                 }} style={[styles.requestActionButton, styles.approveAction]}><Check size={19} color={colors.normal} /></Pressable>
                 <Pressable accessibilityRole="button" accessibilityLabel={`Reject ${account.firstName} ${account.lastName}`} disabled={review.isPending} onPress={() => setConfirmation({ action: 'reject', id: account.id, name: `${account.firstName} ${account.lastName}` })} style={[styles.requestActionButton, styles.rejectAction]}><X size={19} color={colors.critical} /></Pressable>
               </View>
-            </View>)}
+            </View>; })}
           </View>; })}
         {review.isError && <StateMessage message={`Could not review request: ${review.error.message}`} />}
       </Card>}

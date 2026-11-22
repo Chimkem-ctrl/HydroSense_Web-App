@@ -213,7 +213,11 @@ Sign-up body:
 }
 ```
 
-Only `operator` and `manager` may be requested.
+Signups may request `operator`, `manager`, or `admin`. Requests remain pending;
+only approved administrators can review and assign these roles. Apply migration
+`20261123000000_requested_signup_roles.sql` before deploying the updated signup API.
+Existing pending requests can be backfilled only when their authentication metadata
+contains the requested role; older signups that omitted it cannot be recovered.
 
 ### Tanks and readings
 

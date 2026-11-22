@@ -13,7 +13,7 @@ import * as Notifications from 'expo-notifications';
 import * as SystemUI from 'expo-system-ui';
 import { StatusBar } from 'expo-status-bar';
 import { BlurTargetView } from 'expo-blur';
-import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
+import { MD3DarkTheme, MD3LightTheme } from 'react-native-paper';
 import { Activity, AlertTriangle, LayoutDashboard, MoreHorizontal, Waves } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { enableScreens } from 'react-native-screens';
@@ -34,9 +34,10 @@ import {
   TrendsScreen,
 } from './screens';
 import { LoginScreen, SignUpScreen, PendingApprovalScreen, ForgotPasswordScreen, VerifyEmailScreen } from './authScreens';
-import { useSession, SessionProvider, TankProvider } from './state';
+import { useSession } from './state';
 import { ThemeProvider, uiScale, useTheme } from './theme';
 import { HeaderToolbar } from './components/HeaderToolbar';
+import { AppProviders } from './components/AppProviders';
 import { AuditLogsScreen, ProfileScreen, UsersScreen } from './managementScreens';
 import { CriticalAlertModal } from './components/CriticalAlertModal';
 import { BlurTargetContext, TabBarVisibleContext } from './components/ui';
@@ -251,14 +252,12 @@ function ThemedApp() {
     });
   }, [colors.canvas]);
   const paperTheme = mode === 'dark' ? MD3DarkTheme : MD3LightTheme;
-  return <PaperProvider theme={{ ...paperTheme, colors: { ...paperTheme.colors, primary: colors.teal, background: colors.canvas, surface: colors.surface, onSurface: colors.ink, onSurfaceVariant: colors.muted } }}><PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1000, dehydrateOptions: {
+  return <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1000, dehydrateOptions: {
     shouldDehydrateQuery: (query) => query.queryKey[0] !== 'mobile-chat' && defaultShouldDehydrateQuery(query),
     shouldDehydrateMutation: (mutation) => mutation.options.mutationKey?.[0] !== 'mobile-chat' && defaultShouldDehydrateMutation(mutation),
   } }}>
-    <SessionProvider>
-      <TankProvider>
-        <AppNavigation />
-      </TankProvider>
-    </SessionProvider>
-  </PersistQueryClientProvider></PaperProvider>;
+    <AppProviders theme={{ ...paperTheme, colors: { ...paperTheme.colors, primary: colors.teal, background: colors.canvas, surface: colors.surface, onSurface: colors.ink, onSurfaceVariant: colors.muted } }}>
+      <AppNavigation />
+    </AppProviders>
+  </PersistQueryClientProvider>;
 }
