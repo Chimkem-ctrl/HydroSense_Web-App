@@ -91,24 +91,12 @@ describe('account profile controls', () => {
     (back?.props.onPress as () => void)();
     expect(props.navigation.navigate).toHaveBeenCalledWith('More');
   });
-  it('shows the brand and caption in the navigation header', () => {
-    state.panel = 'navigation';
+  it.each(['operator', 'manager', 'admin'] as const)('has no sidebar or navigation trigger for %s', (role) => {
+    state.role = role;
     const root = HeaderToolbar(props);
-    const brands = elements(root, 'Brand');
-    expect(brands).toHaveLength(2);
-    expect(brands.filter((brand) => brand.props.showCaption)).toHaveLength(1);
-    expect(elements(root, 'Text').some((item) => item.props.children === 'Navigation')).toBe(false);
-    expect(elements(root, 'Text').some((item) => Array.isArray(item.props.children) && item.props.children.join('') === 'OPERATOR Workspace')).toBe(true);
-    expect(elements(root, 'Text').some((item) => item.props.children === '© 2026 HydroSense')).toBe(true);
-  });
-
-  it('opens navigation from the header logo without a separate menu icon', () => {
-    const root = HeaderToolbar(props);
-    const brand = elements(root, 'Brand').find((item) => typeof item.props.onLogoPress === 'function');
-    expect(brand?.props.logoExpanded).toBe(false);
-    (brand?.props.onLogoPress as () => void)();
-    expect(state.setPanel).toHaveBeenCalledWith('navigation');
-    expect(elements(root, 'Menu')).toHaveLength(0);
+    const brand = elements(root, 'Brand')[0];
+    expect(brand.props.onLogoPress).toBeUndefined();
+    expect(elements(root, 'Modal')).toHaveLength(0);
   });
 
   it('places chat beside notifications and opens the chat screen', () => {
@@ -131,20 +119,12 @@ describe('account profile controls', () => {
     const root = HeaderToolbar(props);
     const chat = elements(root, 'Pressable').find((item) => item.props.accessibilityLabel === 'Open chat');
     expect(chat?.props.style).toEqual(expect.arrayContaining([expect.objectContaining({ width: 48, height: 48 })]));
-    const header = elements(root, 'Brand').find((item) => typeof item.props.onLogoPress === 'function');
+    const header = elements(root, 'Brand')[0];
     expect(header?.props.showCaption).toBe(false);
     const menu = elements(root, 'PaperMenu').find((item) => item.props.visible);
     const menuStyles = (menu?.props.contentStyle as unknown[]).flat(Infinity).filter(Boolean);
     expect(Object.assign({}, ...menuStyles)).toMatchObject({ width: 244 });
     expect(menu?.props.anchorPosition).toBe('bottom');
-  });
-
-  it('does not offer calibration in administrator navigation', () => {
-    state.role = 'admin';
-    state.panel = 'navigation';
-    const root = HeaderToolbar(props);
-    expect(elements(root, 'Text').some((item) => item.props.children === 'Calibration')).toBe(false);
-    expect(elements(root, 'Text').some((item) => item.props.children === 'Activity logs')).toBe(true);
   });
 
   it('shows connection status without dashboard or tank selection controls', () => {
@@ -162,7 +142,7 @@ describe('account profile controls', () => {
     const accountMenu = elements(root, 'PaperMenu').find((item) => item.props.visible);
     expect(accountMenu?.props.anchorPosition).toBe('bottom');
     expect(elements(accountMenu?.props.anchor as ReactNode, 'Pressable')[0].props.accessibilityLabel).toBe('Account menu for Test User');
-    expect(elements(root, 'Modal')[0].props.visible).toBe(false);
+    expect(elements(root, 'Modal')).toHaveLength(0);
   });
 
   it('offers the hatchery filter only in the administrator account menu', () => {
@@ -172,7 +152,7 @@ describe('account profile controls', () => {
     expect(elements(root, 'HatcheryPicker')).toHaveLength(1);
     const markers = elementMarkers(root);
     expect(markers.indexOf('connection')).toBeLessThan(markers.indexOf('hatchery'));
-    state.panel = 'navigation';
+    state.panel = null;
     expect(elements(HeaderToolbar(props), 'HatcheryPicker')).toHaveLength(0);
   });
 
@@ -196,7 +176,7 @@ describe('account profile controls', () => {
     const menu = elements(root, 'PaperMenu').find((item) => item.props.visible);
     expect(menu?.props.anchorPosition).toBe('bottom');
     expect(String(elements(menu?.props.anchor as ReactNode, 'Pressable')[0].props.accessibilityLabel)).toContain('open alerts');
-    expect(elements(root, 'Modal')[0].props.visible).toBe(false);
+    expect(elements(root, 'Modal')).toHaveLength(0);
     (menu?.props.onDismiss as () => void)();
     expect(state.setPanel).toHaveBeenCalledWith(null);
     expect(elements(root, 'Text').some((item) => item.props.children === 'View all')).toBe(true);
@@ -286,25 +266,4 @@ describe('account profile controls', () => {
     }
   });
 
-  it.each([
-    ['admin', 'light', '#d9e4f6', '#c4d6ef', '#31548c'],
-    ['manager', 'light', '#d9e4f6', '#c4d6ef', '#31548c'],
-    ['operator', 'light', '#d9e4f6', '#c4d6ef', '#31548c'],
-    ['admin', 'dark', '#132440', '#263d60', '#a6c4ff'],
-    ['manager', 'dark', '#132440', '#263d60', '#a6c4ff'],
-    ['operator', 'dark', '#132440', '#263d60', '#a6c4ff'],
-  ] as const)('uses the consistent blue sidebar for %s users in %s mode', (role, mode, background, highlight, accent) => {
-    state.role = role;
-    state.mode = mode;
-    state.panel = 'navigation';
-    const root = HeaderToolbar(props);
-    const drawer = elements(root, 'SafeAreaView').find((item) => {
-      const style = item.props.style as object[];
-      return Array.isArray(style) && style.some((entry) => entry && typeof entry === 'object' && 'width' in entry);
-    });
-    expect(Object.assign({}, ...(drawer?.props.style as object[]))).toMatchObject({ backgroundColor: background });
-    const selected = elements(root, 'Pressable').find((item) => (item.props.accessibilityState as { selected?: boolean } | undefined)?.selected);
-    expect(Object.assign({}, ...(selected?.props.style as object[]))).toMatchObject({ backgroundColor: highlight });
-    expect(elements(selected, 'LayoutDashboard')[0].props.color).toBe(accent);
-  });
 });

@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Dialog, Portal } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ClipboardList, Database, Droplets, Eye, FileDown, FileText, ListFilter, Maximize2, MessageCircle, MoreHorizontal, Plus, Printer, Trash2, UserRound, Waves, Wifi } from 'lucide-react-native';
+import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ClipboardList, Database, Droplets, Eye, FileDown, FileText, ListFilter, Maximize2, MessageCircle, MoreHorizontal, Plus, Printer, Trash2, UserRound, Users, Waves, Wifi } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { fromByteArray } from 'base64-js';
@@ -42,8 +42,9 @@ import {
 } from '@hydrosense/shared';
 import type { ActivityLog, ActivityLogKind, AlertItem, CalibrationLog, MeasuredParameter, Reading, ReportSection, Threshold } from '@hydrosense/shared';
 import type { MainTabParamList, RootStackParamList } from './navigation';
-import { api, getConfiguredThreshold, listConfiguredThresholds, listPendingAccounts } from './services/client';
+import { api, getAccountProfile, getConfiguredThreshold, listConfiguredThresholds } from './services/client';
 import { canAccess } from './access';
+import { hatcheryLabel } from './management';
 import { useSession, useTankSelection } from './state';
 import { Button, CalendarFilterField, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, GlassDialog, Page, RedesignedContext, StateMessage, Title } from './components/ui';
 import { AlertFilters } from './components/AlertFilters';
@@ -217,6 +218,14 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
   const [rearingStartDate, setRearingStartDate] = useState(() => getManilaDateString());
   const [deviceId, setDeviceId] = useState('');
   const [tankToRemove, setTankToRemove] = useState<{ id: string; name: string } | null>(null);
+  const profile = useQuery({
+    queryKey: ['profile', user?.id],
+    queryFn: () => {
+      if (!user) throw new Error('Sign in to load your profile.');
+      return getAccountProfile(user.id);
+    },
+    enabled: formOpen && user?.role === 'manager',
+  });
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['tanks'] }),
@@ -226,9 +235,11 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
   const register = useMutation({
     mutationFn: async () => {
       if (!canRegisterTank) throw new Error('You do not have permission to register a tank.');
-      if (!name.trim() || !site.trim() || !deviceId.trim()) throw new Error('Enter a tank name, hatchery and hardware ID.');
+      const tankSite = user?.role === 'manager' ? profile.data?.site?.trim() : site.trim();
+      if (user?.role === 'manager' && !tankSite) throw new Error('Your account has no assigned hatchery. Contact an administrator.');
+      if (!name.trim() || !tankSite || !deviceId.trim()) throw new Error('Enter a tank name, hatchery and hardware ID.');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(rearingStartDate) || !Number.isFinite(Date.parse(`${rearingStartDate}T00:00:00Z`)) || new Date(`${rearingStartDate}T00:00:00Z`).toISOString().slice(0, 10) !== rearingStartDate) throw new Error('Enter a valid rearing start date in YYYY-MM-DD format.');
-      return api.createTank({ name: name.trim(), site: site.trim(), rearingStartDate, deviceId: deviceId.trim() }, user?.name ?? '');
+      return api.createTank({ name: name.trim(), site: tankSite, rearingStartDate, deviceId: deviceId.trim() }, user?.name ?? '');
     },
     onSuccess: async (tank) => {
       setName(''); setSite(''); setDeviceId(''); setFormOpen(false);
@@ -248,7 +259,7 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
   }
   return <Page>
     <Title icon={<Waves size={23} color={colors.teal} />} detail="Select a tank to view its live readings">Tanks</Title>
-    {can(user?.role, 'registerTank') && <Button label="Register tank" icon={<Plus size={18} color="white" />} onPress={() => { register.reset(); setFormOpen(true); }} />}
+    {canRegisterTank && <Button label="Register tank" icon={<Plus size={18} color="white" />} onPress={() => { register.reset(); setFormOpen(true); }} />}
     {remove.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>Could not remove tank: {remove.error.message}</Text>}
     {isLoading ? <StateMessage message="Loading tanks…" loading /> : error ? <Card><StateMessage message={`Could not load tanks: ${error.message}`} /><Button label="Retry" secondary onPress={refetch} /></Card> : tanks.length ? tanks.map((tank) => <TankSummaryCard key={tank.id} tank={tank} onOpen={() => { setTankId(tank.id); navigation.navigate('Home'); }} onRemove={can(user?.role, 'removeTank') ? () => confirmRemove(tank) : undefined} removeDisabled={allTanks.length <= 1} />) : <StateMessage message="No tanks are available." />}
     <Modal visible={formOpen && canRegisterTank} animationType="slide" onRequestClose={() => setFormOpen(false)}>
@@ -256,11 +267,11 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
         <Page>
           <Title icon={<Waves size={23} color={colors.teal} />} detail="Link monitoring hardware to a tank">Register Tank</Title>
           <Field label="Tank name" value={name} onChangeText={setName} />
-          <Field label="Hatchery" value={site} onChangeText={setSite} />
+          {user?.role === 'manager' ? profile.isLoading ? <StateMessage message="Loading assigned hatchery…" loading /> : profile.isError ? <><StateMessage message={`Could not load assigned hatchery: ${profile.error.message}`} /><Button label="Retry hatchery" secondary onPress={() => void profile.refetch()} /></> : <DataRow label="Hatchery" value={hatcheryLabel(profile.data?.site)} /> : <Field label="Hatchery" value={site} onChangeText={setSite} />}
           <Field label="Rearing start date (YYYY-MM-DD)" value={rearingStartDate} onChangeText={setRearingStartDate} />
           <Field label="Hardware ID" value={deviceId} onChangeText={setDeviceId} />
           {register.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>{register.error.message}</Text>}
-          <Button label={register.isPending ? 'Registering…' : 'Register tank'} disabled={register.isPending} onPress={() => register.mutate()} />
+          <Button label={register.isPending ? 'Registering…' : 'Register tank'} disabled={register.isPending || (user?.role === 'manager' && (profile.isLoading || profile.isError))} onPress={() => register.mutate()} />
           <Button label="Cancel" secondary onPress={() => setFormOpen(false)} disabled={register.isPending} />
         </Page>
       </SafeAreaView>
@@ -294,6 +305,8 @@ export function MoreScreen({ navigation }: Props<'More'>) {
       ...(can(user?.role, 'validation') ? [{ label: 'Validation', icon: ClipboardList, open: () => navigation.navigate('Review') }] : []),
     ] },
     { title: 'Account', items: [
+      ...(canAccess(user?.role ?? null, 'users') ? [{ label: 'Users & Roles', icon: Users, open: () => navigation.navigate('Users') }] : []),
+      ...(canAccess(user?.role ?? null, 'admin') ? [{ label: 'Audit & System Logs', icon: ClipboardList, open: () => navigation.navigate('AuditLogs') }] : []),
       { label: 'Chat', icon: MessageCircle, open: () => navigation.navigate('Chat') },
       { label: 'My Profile', icon: UserRound, open: () => navigation.navigate('Profile') },
     ] },
@@ -338,7 +351,6 @@ export function AlertsScreen({ navigation }: Props<'Alerts'>) {
   const [parameterFilter, setParameterFilter] = useState<'temperature' | 'do' | 'ph' | null>(null);
   const [page, setPage] = useState(1);
   const query = useQuery({ queryKey: ['alerts', 'all'], queryFn: () => api.listAlerts(), refetchInterval: 5000 });
-  const pending = useQuery({ queryKey: ['pending-accounts', user?.id], queryFn: listPendingAccounts, enabled: user?.role === 'admin', refetchInterval: 5000 });
   const rows = [...(query.data ?? [])]
     .filter((alert) => tanks.some((tank) => tank.id === alert.tankId))
     .filter((alert) => statusFilter === 'all' || alert.status === statusFilter)
@@ -354,9 +366,6 @@ export function AlertsScreen({ navigation }: Props<'Alerts'>) {
   }, [pageCount]);
   return <Page>
     <Title icon={<AlertTriangle size={23} color={colors.teal} />} detail="Review alerts and responses">Alerts</Title>
-    {user?.role === 'admin' &&     <Card title="Account Requests">
-      {pending.isLoading ? <StateMessage message="Loading account requests..." loading /> : pending.isError ? <><StateMessage message={`Could not load requests: ${pending.error.message}`} /><Button label="Retry requests" secondary onPress={() => void pending.refetch()} /></> : <Button label={`${pending.data?.length ?? 0} pending requests · Review`} secondary onPress={() => navigation.navigate('Users')} />}
-    </Card>}
     <Card title="Alert List">
       <AlertFilters status={statusFilter} severity={severityFilter} parameter={parameterFilter}
         onStatusChange={(value) => { if (statusFilter !== value) { setStatusFilter(value); setPage(1); } }}

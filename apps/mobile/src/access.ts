@@ -8,7 +8,7 @@ const access: Record<'history' | 'validation' | 'users' | 'admin' | 'canEditThre
   canEditThresholds: ['manager', 'admin'],
   canExport: ['manager', 'admin'],
   canCalibrate: ['manager', 'admin'],
-  registerTank: ['manager'],
+  registerTank: ['manager', 'admin'],
 };
 
 export function canAccess(role: Role | null, feature: keyof typeof access): boolean {
