@@ -1,6 +1,6 @@
 import { Workbook } from 'exceljs/dist/exceljs.bare';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { toCsv } from '@hydrosense/shared';
+import { formatMeasuredParameterLabel, toCsv } from '@hydrosense/shared';
 import type { ReportModel } from '@hydrosense/shared';
 
 type ReportRow = [string, string, string];
@@ -11,13 +11,13 @@ export function reportDatasetRows(model: ReportModel, dataset: ReportDataset): u
     case 'readings':
       return [['Timestamp (ISO)', 'Tank', 'Temperature °C', 'DO mg/L', 'pH'], ...model.rawReadings.map((row) => [row.timestamp, row.tankId, row.temperature, row.doMgL, row.ph])];
     case 'alerts':
-      return [['Created (ISO)', 'Tank', 'Parameter', 'Value', 'Threshold', 'Severity', 'Status', 'Acknowledged by', 'Response note'], ...model.alerts.map((row) => [row.createdAt, row.tankId, row.parameter, row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? ''])];
+      return [['Created (ISO)', 'Tank', 'Parameter', 'Value', 'Threshold', 'Severity', 'Status', 'Acknowledged by', 'Response note'], ...model.alerts.map((row) => [row.createdAt, row.tankId, formatMeasuredParameterLabel(row.parameter), row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? ''])];
     case 'activity':
       return [['Occurred (ISO)', 'Kind', 'Type', 'Tank / scope', 'Details', 'Operator'], ...model.activityLogs.map((row) => [row.occurredAt, row.kind, row.type, row.tankId, row.notes, row.operator])];
     case 'calibration':
-      return [['Date (ISO)', 'Tank', 'Parameter', 'Standard', 'Before', 'After', 'User', 'Next due (ISO)'], ...model.calibrationLogs.map((row) => [row.date, row.tankId, row.parameter, row.standard, row.before, row.after, row.user, row.nextDue])];
+      return [['Date (ISO)', 'Tank', 'Parameter', 'Standard', 'Before', 'After', 'User', 'Next due (ISO)'], ...model.calibrationLogs.map((row) => [row.date, row.tankId, formatMeasuredParameterLabel(row.parameter), row.standard, row.before, row.after, row.user, row.nextDue])];
     case 'validation':
-      return [['Parameter', 'HydroSense mean', 'Reference', 'Error', '% error', 'Tolerance', 'Result'], ...model.validationRows.map((row) => [row.parameter, row.hydrosenseMean, row.reference, row.error, row.pctError, row.tolerance, row.pass ? 'pass' : 'fail'])];
+      return [['Parameter', 'HydroSense mean', 'Reference', 'Error', '% error', 'Tolerance', 'Result'], ...model.validationRows.map((row) => [formatMeasuredParameterLabel(row.parameter), row.hydrosenseMean, row.reference, row.error, row.pctError, row.tolerance, row.pass ? 'pass' : 'fail'])];
   }
 }
 
@@ -32,12 +32,12 @@ export function reportRows(report: ReportModel): ReportRow[] {
   if (report.sections.includes('summary')) rows.push(['Summary', 'Overview', report.summary]);
   if (report.sections.includes('statistics')) {
     for (const stat of report.statistics) {
-      rows.push(['Statistics', stat.parameter, `Min: ${stat.min?.toFixed(2) ?? 'N/A'}; max: ${stat.max?.toFixed(2) ?? 'N/A'}; mean: ${stat.mean?.toFixed(2) ?? 'N/A'} ${stat.unit}; standard deviation: ${stat.standardDeviation?.toFixed(2) ?? 'N/A'}; in range: ${stat.percentInRange?.toFixed(1) ?? 'N/A'}%; excursions: ${stat.excursions}; longest excursion: ${stat.longestExcursionHours.toFixed(1)} hours; valid: ${stat.readings}; invalid excluded: ${stat.invalidReadings}`]);
+      rows.push(['Statistics', formatMeasuredParameterLabel(stat.parameter), `Min: ${stat.min?.toFixed(2) ?? 'N/A'}; max: ${stat.max?.toFixed(2) ?? 'N/A'}; mean: ${stat.mean?.toFixed(2) ?? 'N/A'} ${stat.unit}; standard deviation: ${stat.standardDeviation?.toFixed(2) ?? 'N/A'}; in range: ${stat.percentInRange?.toFixed(1) ?? 'N/A'}%; excursions: ${stat.excursions}; longest excursion: ${stat.longestExcursionHours.toFixed(1)} hours; valid: ${stat.readings}; invalid excluded: ${stat.invalidReadings}`]);
     }
   }
   if (report.sections.includes('alerts')) {
     for (const alert of report.alerts) {
-      rows.push(['Alerts', `${alert.createdAt} ${alert.tankId}`, `${alert.parameter}: ${alert.value}; ${alert.severity}; ${alert.status}; ${alert.note ?? ''}`]);
+      rows.push(['Alerts', `${alert.createdAt} ${alert.tankId}`, `${formatMeasuredParameterLabel(alert.parameter)}: ${alert.value}; ${alert.severity}; ${alert.status}; ${alert.note ?? ''}`]);
     }
   }
   if (report.sections.includes('raw-readings')) {
@@ -105,7 +105,7 @@ export async function createReportFile(report: ReportModel): Promise<{ bytes: Ui
     page.drawText('Readings in range (% of valid readings)', { x: 48, y, size: 12, font });
     y -= 24;
     for (const stat of report.statistics) {
-      const label = stat.parameter === 'temperature' ? 'Temperature' : stat.parameter === 'do' ? 'DO' : 'pH';
+      const label = formatMeasuredParameterLabel(stat.parameter);
       page.drawText(label, { x: 48, y, size: 10, font });
       page.drawRectangle({ x: 150, y: y - 2, width: 300, height: 12, color: rgb(0.90, 0.94, 0.94), borderColor: rgb(0.53, 0.60, 0.60), borderWidth: 0.5 });
       if (stat.percentInRange !== null && stat.percentInRange > 0) {

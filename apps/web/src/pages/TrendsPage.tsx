@@ -32,7 +32,7 @@ interface ChartZoomState {
 
 const defaultParameters: ChartParameter[] = [
   { key: 'temperature', title: 'Temperature', unit: '°C', color: 'var(--accent)', safeMin: 26, safeMax: 30 },
-  { key: 'do', title: 'Dissolved oxygen', unit: 'mg/L', color: 'var(--chart-do)', safeMin: 4 },
+  { key: 'do', title: 'DO', unit: 'mg/L', color: 'var(--chart-do)', safeMin: 4 },
   { key: 'ph', title: 'pH', unit: 'pH', color: 'var(--chart-ph)', safeMin: 6, safeMax: 8 },
 ] as const;
 const TREND_READING_LIMIT = 2000;
@@ -385,7 +385,7 @@ export default function TrendsPage() {
       </div>}
       <StaleQueryState updatedAt={readingsQuery.dataUpdatedAt} />
       {exportMessage && <p className="trends-export-message" role="status">{exportMessage}</p>}
-      {!tierConfig.analytics ? <section className="card glass"><h2 className="card-title">Analytics requires an upgrade</h2><p className="muted">Trend charts are available on premium and enterprise tiers.</p></section> :
+      {!tierConfig.analytics ? <section className="card glass"><h2 className="card-title">Analytics Requires an Upgrade</h2><p className="muted">Trend charts are available on premium and enterprise tiers.</p></section> :
         loading ? <LoadingState /> : errorQuery ? <ErrorState error={errorQuery.error} onRetry={() => {
           void Promise.all([readingsQuery.refetch(), alertsQuery.refetch(), tanksQuery.refetch(), manualEntriesQuery.refetch(), thresholdsQuery.refetch()]);
         }} /> : !tankId ? <EmptyState>No tanks are available for the selected hatchery.</EmptyState> : (
@@ -412,7 +412,7 @@ export default function TrendsPage() {
             </section>
 
             <section className="card glass trends-statistics-card">
-              <div className="trends-section-heading"><h2 className="card-title">Range statistics</h2><p>Last {range === '24h' ? '24 hours' : range === '7d' ? '7 days' : range === 'cycle' ? 'full cycle' : 'custom range'} · {invalidReadings} invalid readings excluded</p></div>
+              <div className="trends-section-heading"><h2 className="card-title">Range Statistics</h2><p>Last {range === '24h' ? '24 hours' : range === '7d' ? '7 days' : range === 'cycle' ? 'full cycle' : 'custom range'} · {invalidReadings} invalid readings excluded</p></div>
               <div className="table-wrap"><table className="trends-statistics-table"><thead><tr>
                 <th scope="col">Parameter</th><th scope="col">Latest</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Mean</th><th scope="col">Std dev</th><th scope="col">Readings in range</th><th scope="col">Excursions</th><th scope="col">Longest (h)</th><th scope="col">Safe range</th>
               </tr></thead><tbody>
@@ -491,7 +491,7 @@ export default function TrendsPage() {
                 </article>;
               })}
               <article className="card glass trends-overnight-panel">
-                <h2 className="card-title">Overnight vs daytime</h2>
+                <h2 className="card-title">Overnight vs Daytime</h2>
                 <p className="small muted">Day 06:00–22:00 · night 22:00–06:00 PHT · change = night mean − day mean</p>
                 <div className="table-wrap"><table className="trends-overnight-table"><thead><tr><th scope="col">Parameter</th><th scope="col">Day mean</th><th scope="col">Day min</th><th scope="col">Night mean</th><th scope="col">Night min</th><th scope="col">Change</th></tr></thead><tbody>
                   {parameters.map((parameter) => {
@@ -506,7 +506,7 @@ export default function TrendsPage() {
                   })}
                 </tbody></table></div>
                 <div className="trends-rearing">
-                  <div className="trends-rearing-heading"><h3>Rearing day view</h3><span>{currentDay === null ? 'Start date unavailable' : currentDay < 0 ? `Starts in ${-currentDay} days` : currentDay > 21 ? `Day ${currentDay} · cycle ended` : `Day ${currentDay} of 21`}</span></div>
+                  <div className="trends-rearing-heading"><h3>Rearing Day View</h3><span>{currentDay === null ? 'Start date unavailable' : currentDay < 0 ? `Starts in ${-currentDay} days` : currentDay > 21 ? `Day ${currentDay} · cycle ended` : `Day ${currentDay} of 21`}</span></div>
                   <div className="trends-rearing-track" role="img" aria-label={currentDay === null ? 'Rearing start date unavailable' : `Rearing day ${currentDay}; harvest window begins on day 21`}>
                     {Array.from({ length: 22 }, (_, index) => <i key={index} className={currentDay !== null && index === currentDay ? 'is-current' : currentDay !== null && index < currentDay ? 'is-complete' : ''} />)}
                   </div>
@@ -519,7 +519,7 @@ export default function TrendsPage() {
             <section className="trends-secondary-grid">
               <article className="card glass trends-alert-frequency-card">
                 <header className="trends-section-heading">
-                  <div><h2 className="card-title">Alert frequency</h2><p>Alerts per day · selected range</p></div>
+                  <div><h2 className="card-title">Alert Frequency</h2><p>Alerts per day · selected range</p></div>
                   {canExport && <div className="trends-inline-actions"><button type="button" className="icon-button trends-chart-export" aria-label="Download alert frequency PNG" title="Download alert frequency PNG" disabled={!alertFrequency.length} onClick={() => void exportChart('alert-frequency')}><FileImage size={18} aria-hidden="true" /></button><button type="button" className="icon-button trends-chart-export" aria-label="Download alert frequency CSV" title="Download alert frequency CSV" disabled={!alertFrequency.length} onClick={exportAlertCsv}><FileSpreadsheet size={18} aria-hidden="true" /></button></div>}
                 </header>
                 {!alertFrequency.length ? <EmptyState>No alerts occurred in this range.</EmptyState> :

@@ -19,7 +19,7 @@ function manualReadingsText(log: ActivityLog) {
   const readings = log.manualReadings;
   if (!readings) return '';
   return [
-    ['Dissolved oxygen', readings.dissolvedOxygen, 'mg/L'],
+    ['DO', readings.dissolvedOxygen, 'mg/L'],
     ['Temperature', readings.temperature, '°C'],
     ['pH', readings.ph, ''],
     ['Salinity', readings.salinity, 'ppt'],

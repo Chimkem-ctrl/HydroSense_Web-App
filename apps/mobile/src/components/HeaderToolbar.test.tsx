@@ -264,9 +264,9 @@ describe('account profile controls', () => {
   });
 
   it.each([
-    ['admin', 'light', 'rgba(255,255,255,0.82)'], ['manager', 'light', '#d7e6ed'], ['operator', 'light', '#d9e4f6'],
-    ['admin', 'dark', '#122040'], ['manager', 'dark', '#152a38'], ['operator', 'dark', '#132440'],
-  ] as const)('uses the %s %s theme for both menus', (role, mode, background) => {
+    ['admin', 'light', '#d9e4f6', '#31548c'], ['manager', 'light', '#d9e4f6', '#31548c'], ['operator', 'light', '#d9e4f6', '#31548c'],
+    ['admin', 'dark', '#132440', '#a6c4ff'], ['manager', 'dark', '#132440', '#a6c4ff'], ['operator', 'dark', '#132440', '#a6c4ff'],
+  ] as const)('uses the blue theme for %s %s header menus and icons', (role, mode, background, accent) => {
     state.role = role;
     state.mode = mode;
     for (const panel of ['account', 'notifications']) {
@@ -274,9 +274,37 @@ describe('account profile controls', () => {
       const root = HeaderToolbar(props);
       const menu = elements(root, 'PaperMenu').find((item) => item.props.visible);
       expect(Object.assign({}, ...(menu?.props.contentStyle as object[]))).toMatchObject({ backgroundColor: background });
+      if (panel === 'notifications') {
+        expect(elements(root, 'Bell')[0].props.color).toBe(accent);
+      } else {
+        const accountAnchor = elements(menu?.props.anchor as ReactNode, 'Pressable')[0];
+        expect(elements(accountAnchor, 'UserRound')[0].props.color).toBe(accent);
+      }
       if (role === 'admin' && panel === 'account') {
         expect(elements(root, 'HatcheryPicker')[0].props.colors).toMatchObject({ surface: background });
       }
     }
+  });
+
+  it.each([
+    ['admin', 'light', '#d9e4f6', '#c4d6ef', '#31548c'],
+    ['manager', 'light', '#d9e4f6', '#c4d6ef', '#31548c'],
+    ['operator', 'light', '#d9e4f6', '#c4d6ef', '#31548c'],
+    ['admin', 'dark', '#132440', '#263d60', '#a6c4ff'],
+    ['manager', 'dark', '#132440', '#263d60', '#a6c4ff'],
+    ['operator', 'dark', '#132440', '#263d60', '#a6c4ff'],
+  ] as const)('uses the consistent blue sidebar for %s users in %s mode', (role, mode, background, highlight, accent) => {
+    state.role = role;
+    state.mode = mode;
+    state.panel = 'navigation';
+    const root = HeaderToolbar(props);
+    const drawer = elements(root, 'SafeAreaView').find((item) => {
+      const style = item.props.style as object[];
+      return Array.isArray(style) && style.some((entry) => entry && typeof entry === 'object' && 'width' in entry);
+    });
+    expect(Object.assign({}, ...(drawer?.props.style as object[]))).toMatchObject({ backgroundColor: background });
+    const selected = elements(root, 'Pressable').find((item) => (item.props.accessibilityState as { selected?: boolean } | undefined)?.selected);
+    expect(Object.assign({}, ...(selected?.props.style as object[]))).toMatchObject({ backgroundColor: highlight });
+    expect(elements(selected, 'LayoutDashboard')[0].props.color).toBe(accent);
   });
 });

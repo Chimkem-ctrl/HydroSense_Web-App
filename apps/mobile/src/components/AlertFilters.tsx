@@ -11,7 +11,7 @@ type Parameter = 'temperature' | 'do' | 'ph' | null;
 
 const statuses = [{ value: 'all', label: 'All statuses' }, { value: 'open', label: 'New' }, { value: 'acknowledged', label: 'Acknowledged' }, { value: 'resolved', label: 'Resolved' }] as const;
 const severities = [{ value: 'all', label: 'All severities' }, { value: 'critical', label: 'Critical' }, { value: 'warning', label: 'Warning' }] as const;
-const parameters = [{ value: 'all', label: 'All parameters' }, { value: 'temperature', label: 'Temperature' }, { value: 'do', label: 'Dissolved oxygen' }, { value: 'ph', label: 'pH' }] as const;
+const parameters = [{ value: 'all', label: 'All parameters' }, { value: 'temperature', label: 'Temperature' }, { value: 'do', label: 'DO' }, { value: 'ph', label: 'pH' }] as const;
 
 export function AlertFilters({ status, severity, parameter, onStatusChange, onSeverityChange, onParameterChange }: {
   status: Status;

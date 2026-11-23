@@ -58,7 +58,7 @@ function ProtectedAppShell({ splashSeen }: { splashSeen: boolean }) {
 export default function AppRoutes() {
   const location = useLocation();
   const user = useAuth();
-  const [splashSeen, setSplashSeen] = useState(() => Boolean(user?.role && location.pathname !== '/' && location.pathname !== '/splash'));
+  const [splashSeen, setSplashSeen] = useState(() => Boolean(user?.role && location.pathname !== '/splash'));
   const markSplashSeen = useCallback(() => setSplashSeen(true), []);
 
   if (!splashSeen && !user?.role && location.pathname !== '/splash') {

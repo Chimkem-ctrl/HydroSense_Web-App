@@ -35,7 +35,7 @@ export default function ForgotPasswordPage() {
       <div className="auth-page page-enter">
         <AuthHeader size={52} showBrand />
         <GlassPanel className="auth-panel forgot-panel">
-          <h1>Reset your password</h1>
+          <h1>Reset Your Password</h1>
           <p className="panel-description">
             Enter your email address and we&apos;ll help you get back in.
           </p>

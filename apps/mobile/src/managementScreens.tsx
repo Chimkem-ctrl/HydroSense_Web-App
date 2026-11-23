@@ -1,16 +1,19 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Dialog } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import { formatManilaDateTime, hatcheryId, tankInHatchery, validatePasswordChange } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
-import { Check, ClipboardList, MapPin, Search, UserRound, Users, X } from 'lucide-react-native';
+import { Camera, Check, ClipboardList, Droplets, Eye, EyeOff, MapPin, Search, UserRound, Users, X } from 'lucide-react-native';
 import { canAccess } from './access';
 import { Button, Card, GlassDialog, Page, StateMessage, Title } from './components/ui';
+import { FilterDropdown } from './components/FilterDropdown';
 import { AlertPreferenceControls, DeviceMaintenanceControls } from './components/ProfileControls';
 import { AppearanceOptions } from './components/AppearanceOptions';
 import { groupByHatchery, hatcheryLabel } from './management';
-import { api, changePassword, getAccountProfile, listPendingAccounts, removeAccount, reviewPendingAccount } from './services/client';
+import { api, changePassword, getAccountProfile, getProfileAvatarUrl, listPendingAccounts, removeAccount, reviewPendingAccount, saveProfileAvatar } from './services/client';
 import { useSession, useTankSelection } from './state';
 import { uiScale, useTheme } from './theme';
 import type { Palette } from './theme';
@@ -38,16 +41,19 @@ function ChangePasswordRow({ userId, email }: { userId: string; email: string })
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNext, setShowNext] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const mutation = useMutation({
     mutationFn: () => changePassword(userId, email, current, next, confirmation),
-    onSuccess: () => { setOpen(false); setCurrent(''); setNext(''); setConfirmation(''); setError(''); setSuccess(true); },
+    onSuccess: () => { setOpen(false); setCurrent(''); setNext(''); setConfirmation(''); setShowCurrent(false); setShowNext(false); setShowConfirmation(false); setError(''); setSuccess(true); },
     onError: (cause) => setError(cause instanceof Error ? cause.message : 'Could not change your password. Please try again.'),
   });
   const close = () => {
     if (mutation.isPending) return;
-    setOpen(false); setCurrent(''); setNext(''); setConfirmation(''); setError('');
+    setOpen(false); setCurrent(''); setNext(''); setConfirmation(''); setShowCurrent(false); setShowNext(false); setShowConfirmation(false); setError('');
   };
   const submit = () => {
     const issue = validatePasswordChange(current, next, confirmation);
@@ -58,29 +64,47 @@ function ChangePasswordRow({ userId, email }: { userId: string; email: string })
   const inputStyle = { borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, minHeight: 44, color: colors.ink, backgroundColor: colors.surface };
   return <View style={{ paddingVertical: 6, gap: 3 }}>
     <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18, fontWeight: '600' }}>Change Password</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel="Change password" onPress={() => { setSuccess(false); setOpen(true); }} style={{ minHeight: 40, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: '#c84d55', backgroundColor: 'rgba(200, 77, 85, 0.12)' }}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Change password" onPress={() => { setShowCurrent(false); setShowNext(false); setShowConfirmation(false); setSuccess(false); setOpen(true); }} style={{ minHeight: 40, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: '#c84d55', backgroundColor: 'rgba(200, 77, 85, 0.12)' }}>
       <Text style={{ color: colors.ink, fontSize: 12, lineHeight: 16, fontWeight: '600' }}>Change password</Text>
     </Pressable>
     {success && <Text accessibilityLiveRegion="polite" style={{ color: colors.ink }}>Password changed successfully.</Text>}
     <GlassDialog solid visible={open} onDismiss={close}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Dialog.Title style={{ color: colors.ink, flex: 1 }}>Change Password</Dialog.Title>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close change password dialog" accessibilityState={{ disabled: mutation.isPending }} onPress={close} disabled={mutation.isPending} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+          <X size={20} color={colors.ink} />
+        </Pressable>
+      </View>
       <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: height * 0.8 }} contentContainerStyle={{ paddingBottom: 16 }}>
-        <Dialog.Title style={{ color: colors.ink }}>Change password</Dialog.Title>
         <Dialog.Content>
           <View style={{ gap: 10 }}>
-            <Text style={{ color: colors.ink }}>Are you sure you want to change your password? Enter your current password and choose a new one.</Text>
             <Text style={{ color: colors.ink }}>Current password</Text>
-            <TextInput accessibilityLabel="Current password" value={current} onChangeText={(text) => { setCurrent(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" editable={!mutation.isPending} style={inputStyle} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface }}>
+              <TextInput accessibilityLabel="Current password" value={current} onChangeText={(text) => { setCurrent(text); setError(''); }} secureTextEntry={!showCurrent} autoCapitalize="none" autoCorrect={false} autoComplete="current-password" editable={!mutation.isPending} style={[inputStyle, { flex: 1, minWidth: 0, borderWidth: 0, backgroundColor: 'transparent' }]} />
+              <Pressable accessibilityRole="button" accessibilityLabel={`${showCurrent ? 'Hide' : 'Show'} current password`} accessibilityState={{ disabled: mutation.isPending, selected: showCurrent }} onPress={() => setShowCurrent((visible) => !visible)} disabled={mutation.isPending} style={{ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+                {showCurrent ? <EyeOff size={18} color={colors.muted} /> : <Eye size={18} color={colors.muted} />}
+              </Pressable>
+            </View>
             <Text style={{ color: colors.ink }}>New password</Text>
-            <TextInput accessibilityLabel="New password" value={next} onChangeText={(text) => { setNext(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="new-password" editable={!mutation.isPending} style={inputStyle} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface }}>
+              <TextInput accessibilityLabel="New password" value={next} onChangeText={(text) => { setNext(text); setError(''); }} secureTextEntry={!showNext} autoCapitalize="none" autoCorrect={false} autoComplete="new-password" editable={!mutation.isPending} style={[inputStyle, { flex: 1, minWidth: 0, borderWidth: 0, backgroundColor: 'transparent' }]} />
+              <Pressable accessibilityRole="button" accessibilityLabel={`${showNext ? 'Hide' : 'Show'} new password`} accessibilityState={{ disabled: mutation.isPending, selected: showNext }} onPress={() => setShowNext((visible) => !visible)} disabled={mutation.isPending} style={{ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+                {showNext ? <EyeOff size={18} color={colors.muted} /> : <Eye size={18} color={colors.muted} />}
+              </Pressable>
+            </View>
             <Text style={{ color: colors.ink }}>Confirm new password</Text>
-            <TextInput accessibilityLabel="Confirm new password" value={confirmation} onChangeText={(text) => { setConfirmation(text); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="new-password" editable={!mutation.isPending} style={inputStyle} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface }}>
+              <TextInput accessibilityLabel="Confirm new password" value={confirmation} onChangeText={(text) => { setConfirmation(text); setError(''); }} secureTextEntry={!showConfirmation} autoCapitalize="none" autoCorrect={false} autoComplete="new-password" editable={!mutation.isPending} style={[inputStyle, { flex: 1, minWidth: 0, borderWidth: 0, backgroundColor: 'transparent' }]} />
+              <Pressable accessibilityRole="button" accessibilityLabel={`${showConfirmation ? 'Hide' : 'Show'} confirm new password`} accessibilityState={{ disabled: mutation.isPending, selected: showConfirmation }} onPress={() => setShowConfirmation((visible) => !visible)} disabled={mutation.isPending} style={{ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+                {showConfirmation ? <EyeOff size={18} color={colors.muted} /> : <Eye size={18} color={colors.muted} />}
+              </Pressable>
+            </View>
             <Text style={{ color: colors.muted }}>Use at least 8 characters.</Text>
             {error ? <Text accessibilityRole="alert" style={{ color: colors.critical }}>{error}</Text> : null}
           </View>
         </Dialog.Content>
         <Dialog.Actions style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8, paddingHorizontal: 24 }}>
           <Button label={mutation.isPending ? 'Changing...' : 'Confirm change'} disabled={mutation.isPending} onPress={submit} />
-          <Button label="Cancel" secondary disabled={mutation.isPending} onPress={close} />
         </Dialog.Actions>
       </ScrollView>
     </GlassDialog>
@@ -100,25 +124,99 @@ export function ProfileScreen() {
   const { user } = useSession();
   const { colors } = useTheme();
   const styles = createManagementStyles(colors);
+  const queryClient = useQueryClient();
   const { allTanks, tankId, isLoading, error, refetch } = useTankSelection();
   const profile = useProfile();
   const [maintenanceHatchery, setMaintenanceHatchery] = useState('');
   const [maintenanceTankId, setMaintenanceTankId] = useState('');
+  const [expandedMaintenanceFilter, setExpandedMaintenanceFilter] = useState<'hatchery' | 'tank' | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string>();
+  const [avatarPickerError, setAvatarPickerError] = useState('');
+  const avatar = useQuery({
+    queryKey: ['profile-avatar', user?.id],
+    queryFn: async () => (await getProfileAvatarUrl()) ?? null,
+    enabled: Boolean(user),
+  });
+  const saveAvatar = useMutation({
+    mutationFn: ({ uri, mimeType }: { uri: string; mimeType: string }) => saveProfileAvatar(uri, mimeType),
+    onSuccess: (url) => {
+      setAvatarUrl(url);
+      queryClient.setQueryData(['profile-avatar', user?.id], url);
+      setAvatarPickerError('');
+    },
+  });
   const hatcheries = [...new Map(allTanks.filter((item) => item.site.trim()).map((item) => [hatcheryId(item.site), item.site])).values()];
   const assignedHatchery = profile.data?.site || allTanks.find((item) => item.id === tankId)?.site || '';
   const selectedHatchery = user?.role === 'admin' ? maintenanceHatchery : assignedHatchery;
   const maintenanceTanks = selectedHatchery
     ? allTanks.filter((item) => tankInHatchery(item, hatcheryId(selectedHatchery)))
     : [];
+  const hatcheryOptions = hatcheries.map((site) => ({ value: site, label: hatcheryLabel(site) }));
+  const tankOptions = maintenanceTanks.map((item) => ({ value: item.id, label: item.name }));
+  const displayedAvatar = avatarUrl ?? avatar.data;
+  const profileName = value(profile.data?.name ?? user?.name);
+  const profileRole = value(profile.data?.role ?? user?.role);
+  async function chooseAvatar() {
+    setAvatarPickerError('');
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setAvatarPickerError('Allow photo library access to choose a profile picture.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (result.canceled) return;
+      const image = result.assets[0];
+      if (!image) throw new Error('No profile picture was selected.');
+      const mimeType = image.mimeType ?? ({
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        webp: 'image/webp',
+      }[image.uri.split('.').pop()?.toLowerCase() ?? '']);
+      if (!mimeType || !['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) {
+        throw new Error('Choose a JPG, PNG, or WebP image.');
+      }
+      if (image.fileSize !== undefined && image.fileSize > 10 * 1024 * 1024) {
+        throw new Error('Choose an image no larger than 10 MB.');
+      }
+      const resized = await ImageManipulator.ImageManipulator.manipulate(image.uri, { maxWidth: 512, maxHeight: 512 }).renderAsync();
+      const optimized = await resized.saveAsync({ format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 });
+      saveAvatar.mutate({ uri: optimized.uri, mimeType: 'image/jpeg' });
+    } catch (failure) {
+      setAvatarPickerError(failure instanceof Error ? failure.message : 'Could not open the photo library.');
+    }
+  }
   return <Page maxWidth={680}>
-    <Title icon={<UserRound size={23} color={colors.teal} />} detail="View your account, role, hatchery, and alert preferences.">My profile</Title>
+    <Title icon={<UserRound size={23} color={colors.teal} />} detail="View your account, role, hatchery, and alert preferences.">My Profile</Title>
     {profile.isLoading ? <Card><StateMessage message="Loading profile..." loading /></Card> :
       profile.isError ? <Card><StateMessage message={`Could not load profile: ${profile.error.message}`} /><Button label="Retry profile" secondary onPress={() => void profile.refetch()} /></Card> : <>
-        <Card title="Contact details & assignment">
-          <View style={styles.profilePair}>
-            <View style={styles.profileColumn}><ProfileRow label="Name" text={value(profile.data?.name ?? user?.name)} /></View>
-            <View style={styles.profileColumn}><ProfileRow label="Role" text={value(profile.data?.role ?? user?.role)} /></View>
+        <Card>
+          <View style={styles.profileHero}>
+            <View style={styles.profileAvatarWrap}>
+              {displayedAvatar
+                ? <Image accessibilityLabel={`${profileName} profile picture`} source={{ uri: displayedAvatar }} style={styles.profileAvatar} />
+                : <View accessibilityLabel={`${profileName} profile picture`} style={[styles.profileAvatar, styles.profileAvatarFallback]}><Text style={styles.profileInitials}>{profileName.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</Text></View>}
+              <Pressable accessibilityRole="button" accessibilityLabel="Upload profile picture" accessibilityState={{ disabled: saveAvatar.isPending }} disabled={saveAvatar.isPending} onPress={() => void chooseAvatar()} style={styles.profileAvatarUpload}>
+                {saveAvatar.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Camera size={17} color="#fff" />}
+              </Pressable>
+            </View>
+            <View style={styles.profileIdentity}>
+              <Text style={styles.profileName}>{profileName}</Text>
+              <Text style={styles.profileRole}>{profileRole}</Text>
+            </View>
+            {avatarPickerError ? <Text accessibilityRole="alert" style={styles.profileAvatarError}>{avatarPickerError}</Text> : null}
+            {avatar.isError ? <Text accessibilityRole="alert" style={styles.profileAvatarError}>Could not load profile picture: {avatar.error.message}</Text> : null}
+            {saveAvatar.isError ? <Text accessibilityRole="alert" style={styles.profileAvatarError}>{saveAvatar.error.message}</Text> : null}
+            {saveAvatar.isSuccess ? <Text accessibilityLiveRegion="polite" style={styles.profileAvatarSuccess}>Profile picture updated.</Text> : null}
           </View>
+        </Card>
+        <Card title="Contact Details & Assignment">
           <View style={styles.profilePair}>
             <View style={styles.profileColumn}><ProfileRow label="Employee ID" text={value(profile.data?.employeeId)} /></View>
             <View style={styles.profileColumn}><ProfileRow label="Position" text={value(profile.data?.position)} /></View>
@@ -131,7 +229,7 @@ export function ProfileScreen() {
           <ProfileRow label="Address" text={value(profile.data?.address)} />
           {user && profile.data && <ChangePasswordRow userId={user.id} email={profile.data.email} />}
         </Card>
-        <Card title="Emergency contact">
+        <Card title="Emergency Contact">
           <ProfileRow label="Name" text={value(profile.data?.emergencyContactName)} />
           <ProfileRow label="Phone" text={value(profile.data?.emergencyContactPhone)} />
         </Card>
@@ -140,25 +238,26 @@ export function ProfileScreen() {
           <ProfileRow label="Account created" text={profile.data?.createdAt ? `${formatManilaDateTime(profile.data.createdAt)} PHT` : 'Not provided'} />
         </Card>
       </>}
-    <Card title="Alert notifications"><AlertPreferenceControls /></Card>
+    <Card title="Alert Notifications"><AlertPreferenceControls /></Card>
     <Card title="Appearance"><AppearanceOptions /></Card>
-    <Card title="Device maintenance">
+    <Card title="Device Maintenance">
       {isLoading ? <StateMessage message="Loading selected tank..." loading /> : error ? <><StateMessage message={`Could not load tank: ${error.message}`} /><Button label="Retry" secondary onPress={refetch} /></> : <>
         {user?.role === 'admin' && <View style={{ gap: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><MapPin size={16} color={colors.teal} /><Text style={{ color: colors.ink, fontSize: 14, fontWeight: '700' }}>Hatchery</Text></View>
-          {hatcheries.length ? hatcheries.map((site) => <Pressable key={site} accessibilityRole="radio" accessibilityState={{ checked: maintenanceHatchery === site }} onPress={() => {
+          <FilterDropdown label="Hatchery" summary={hatcheryOptions.find((option) => option.value === maintenanceHatchery)?.label ?? 'Select a hatchery'} icon={<MapPin size={16} color={colors.teal} />} options={hatcheryOptions} value={maintenanceHatchery} expanded={expandedMaintenanceFilter === 'hatchery'} onToggle={() => setExpandedMaintenanceFilter((current) => current === 'hatchery' ? null : 'hatchery')} onChange={(site) => {
             setMaintenanceHatchery(site);
             setMaintenanceTankId('');
-          }} style={[styles.roleOption, maintenanceHatchery === site && styles.roleSelected]}>
-            <Text style={[styles.roleText, maintenanceHatchery === site && styles.roleTextSelected]}>{hatcheryLabel(site)}</Text>
-          </Pressable>) : <Text style={styles.detail}>N/A</Text>}
+            setExpandedMaintenanceFilter(null);
+          }} />
         </View>}
         <View style={{ gap: 8 }}>
-          <Text style={styles.label}>Tank</Text>
-          {user?.role === 'admin' && !maintenanceHatchery ? <Text style={styles.detail}>Select a hatchery first.</Text> :
-            maintenanceTanks.length ? maintenanceTanks.map((item) => <Pressable key={item.id} accessibilityRole="radio" accessibilityLabel={item.name} accessibilityState={{ checked: maintenanceTankId === item.id }} onPress={() => setMaintenanceTankId(item.id)} style={[styles.roleOption, maintenanceTankId === item.id && styles.roleSelected]}>
-              <Text style={[styles.roleText, maintenanceTankId === item.id && styles.roleTextSelected]}>{item.name}</Text>
-            </Pressable>) : <Text style={styles.detail}>{selectedHatchery ? 'No tanks are available for this hatchery.' : 'Hatchery assignment is not available.'}</Text>}
+          {user?.role === 'admin' && !maintenanceHatchery
+            ? <Text style={styles.detail}>Select a hatchery first.</Text>
+            : maintenanceTanks.length
+              ? <FilterDropdown label="Tank" summary={tankOptions.find((option) => option.value === maintenanceTankId)?.label ?? 'Select a tank'} icon={<Droplets size={16} color={colors.teal} />} options={tankOptions} value={maintenanceTankId} expanded={expandedMaintenanceFilter === 'tank'} onToggle={() => setExpandedMaintenanceFilter((current) => current === 'tank' ? null : 'tank')} onChange={(id) => {
+                setMaintenanceTankId(id);
+                setExpandedMaintenanceFilter(null);
+              }} />
+              : <Text style={styles.detail}>{selectedHatchery ? 'No tanks are available for this hatchery.' : 'Hatchery assignment is not available.'}</Text>}
         </View>
       </>}
       {user && <DeviceMaintenanceControls role={user.role} />}
@@ -213,11 +312,11 @@ export function UsersScreen() {
   };
   const filteredPending = (pending.data ?? []).filter((account) => matches(requestSearch, [account.firstName, account.lastName, ` ${account.lastName}`, account.email, account.phone, account.requestedRole, account.site, account.createdAt ? formatManilaDateTime(account.createdAt) : '']));
   return <Page maxWidth={680}>
-    <Title icon={<Users size={23} color={colors.teal} />} detail={admin ? 'Manage team accounts and review requests.' : 'Review accounts for your hatchery.'}>Users & roles</Title>
+    <Title icon={<Users size={23} color={colors.teal} />} detail={admin ? 'Manage team accounts and review requests.' : 'Review accounts for your hatchery.'}>Users & Roles</Title>
     {!admin && profile.isLoading ? <StateMessage message="Loading hatchery assignment..." loading /> :
       !admin && profile.isError ? <Card><StateMessage message={`Could not load hatchery: ${profile.error.message}`} /><Button label="Retry" secondary onPress={() => void profile.refetch()} /></Card> :
       !admin && !profile.data?.site?.trim() ? <StateMessage message="No hatchery is assigned to your account. Contact an administrator." /> : <>
-      {admin && <Card title="Pending requests" action={pending.data && <View style={{ flex: 1, minWidth: 150, maxWidth: 260, gap: 6, alignItems: 'stretch' }}>
+      {admin && <Card title="Pending Requests" action={pending.data && <View style={{ flex: 1, minWidth: 150, maxWidth: 260, gap: 6, alignItems: 'stretch' }}>
         {pending.data.length > 0 && <SearchBox label="Search pending requests" value={requestSearch} onChange={setRequestSearch} colors={colors} />}
         <Text style={styles.pendingCount}>{pending.data.length} pending</Text>
       </View>}>
@@ -252,7 +351,7 @@ export function UsersScreen() {
           </View>; })}
         {review.isError && <StateMessage message={`Could not review request: ${review.error.message}`} />}
       </Card>}
-      {admin && <Card title="Admin accounts">
+      {admin && <Card title="Admin Accounts">
         <Text style={styles.intro}>Administrator accounts with system-wide access.</Text>
         {users.isLoading ? <StateMessage message="Loading accounts..." loading /> : users.isError ? <StateMessage message={`Could not load accounts: ${users.error.message}`} /> :
           !visibleAdminUsers.length ? <StateMessage message="No administrator accounts are registered." /> :
@@ -263,7 +362,7 @@ export function UsersScreen() {
             <Text style={styles.detail}>Phone number: {value(account.phone)}</Text>
           </View>)}
       </Card>}
-      <Card title="Team accounts">
+      <Card title="Team Accounts">
         <Text style={styles.intro}>View team accounts grouped by hatchery.</Text>
         {users.isLoading ? <StateMessage message="Loading accounts..." loading /> : users.isError ? <><StateMessage message={`Could not load accounts: ${users.error.message}`} /><Button label="Retry accounts" secondary onPress={() => void users.refetch()} /></> :
           !visibleUsers.length ? <StateMessage message="No team users are registered." /> :
@@ -310,6 +409,17 @@ type UserConfirmation =
   | { action: 'reject' | 'remove'; id: string; name: string };
 
 const createManagementStyles = (colors: Palette) => StyleSheet.create({
+  profileHero: { alignItems: 'center', gap: 10, paddingVertical: 8 },
+  profileAvatarWrap: { width: 112, height: 112, position: 'relative' },
+  profileAvatar: { width: 112, height: 112, borderRadius: 56, borderWidth: 2, borderColor: colors.border },
+  profileAvatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.selected },
+  profileInitials: { color: colors.teal, fontSize: 30, fontWeight: '800' },
+  profileAvatarUpload: { position: 'absolute', right: 0, bottom: 0, width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20, borderWidth: 2, borderColor: colors.surface, backgroundColor: colors.teal },
+  profileIdentity: { alignItems: 'center', gap: 4 },
+  profileName: { color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: '800', textAlign: 'center' },
+  profileRole: { color: colors.teal, fontSize: 13, lineHeight: 20, fontWeight: '700', textTransform: 'capitalize', textAlign: 'center' },
+  profileAvatarError: { color: colors.critical, fontSize: 13, lineHeight: 18, textAlign: 'center' },
+  profileAvatarSuccess: { color: colors.normal, fontSize: 13, lineHeight: 18, textAlign: 'center' },
   profilePair: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   profileColumn: { flexGrow: 1, flexShrink: 1, flexBasis: 120, minWidth: 0 },
   profileEmail: { flexBasis: 190 },
@@ -352,7 +462,7 @@ export function AuditLogsScreen() {
   const allowed = canAccess(user?.role ?? null, 'admin');
   const logs = useQuery({ queryKey: ['audit-logs', user?.id], queryFn: () => api.listAuditLogs(), enabled: allowed });
   if (!allowed) return <Page><StateMessage message="You do not have access to audit logs." /></Page>;
-  return <Page maxWidth={680}><Title icon={<ClipboardList size={23} color={colors.teal} />} detail="Review admin actions and operational events.">Audit & system logs</Title><Card>
+  return <Page maxWidth={680}><Title icon={<ClipboardList size={23} color={colors.teal} />} detail="Review admin actions and operational events.">Audit & System Logs</Title><Card>
     {logs.isLoading ? <StateMessage message="Loading audit events..." loading /> : logs.isError ? <><StateMessage message={`Could not load audit events: ${logs.error.message}`} /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> :
       !logs.data?.length ? <StateMessage message="No audit or system logs are available." /> : logs.data.map((log) => <View key={log.id} style={{ gap: 4, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{log.action} · {log.user}</Text><Text style={{ color: colors.muted }}>{formatManilaDateTime(log.timestamp)} PHT · {log.detail}</Text></View>)}
   </Card></Page>;

@@ -6,7 +6,7 @@ import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
 import { Activity, AlertTriangle, ArrowLeft, Bell, ClipboardList, Database, FileText, LayoutDashboard, LogOut, MessageCircle, UserRound, Users, Wifi, WifiOff, X } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Menu } from 'react-native-paper';
-import type { Role } from '@hydrosense/shared';
+import { formatMeasuredParameterLabel } from '@hydrosense/shared';
 import { isBottomBarRoute } from '../navigation';
 import type { MainTabParamList } from '../navigation';
 import { canAccess } from '../access';
@@ -26,15 +26,9 @@ const headerTopPadding = 8;
 const headerBottomPadding = 10;
 const headerButtonSize = 48;
 const headerButtonGap = 10;
-const menuTones: Record<Exclude<Role, 'admin'>, Record<ThemeMode, Pick<Palette, 'surface' | 'border' | 'teal' | 'selected'>>> = {
-  manager: {
-    light: { surface: '#d7e6ed', border: '#8eb8c9', teal: '#23617a', selected: '#bdd8e3' },
-    dark: { surface: '#152a38', border: '#5bb8e0', teal: '#7dd3fc', selected: '#254758' },
-  },
-  operator: {
-    light: { surface: '#d9e4f6', border: '#9ab4d9', teal: '#31548c', selected: '#c4d6ef' },
-    dark: { surface: '#132440', border: '#6b9dff', teal: '#a6c4ff', selected: '#263d60' },
-  },
+const sidebarTones: Record<ThemeMode, Pick<Palette, 'surface' | 'border' | 'teal' | 'selected'>> = {
+  light: { surface: '#d9e4f6', border: '#9ab4d9', teal: '#31548c', selected: '#c4d6ef' },
+  dark: { surface: '#132440', border: '#6b9dff', teal: '#a6c4ff', selected: '#263d60' },
 };
 
 export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
@@ -43,10 +37,10 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
   const insets = useSafeAreaInsets();
   const styles = createStyles(colors);
   const { user, signOut } = useSession();
-  const menuColors = user?.role === 'admin'
-    ? { ...colors, surface: colors.card }
-    : user ? { ...colors, ...menuTones[user.role][mode] } : colors;
-  const menuStyles = createStyles(menuColors);
+  const sidebarColors = { ...colors, ...sidebarTones[mode] };
+  const sidebarStyles = createStyles(sidebarColors);
+  const menuColors = sidebarColors;
+  const menuStyles = sidebarStyles;
   const { tankId, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const [headerLayout, setHeaderLayout] = useState({ height: headerTopPadding + headerButtonSize + headerBottomPadding + 1, rowY: headerTopPadding, rowHeight: headerButtonSize });
   const [panel, setPanel] = useState<Panel>(null);
@@ -116,18 +110,18 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
           <MessageCircle size={20} color={route.name === 'Chat' ? colors.teal : colors.ink} />
         </Pressable>
         <Menu visible={panel === 'notifications'} onDismiss={() => setPanel(null)} anchorPosition="bottom" style={{ marginTop: menuOffset }} contentStyle={[menuStyles.popover, { width: notificationMenuWidth, backgroundColor: menuColors.surface }]} anchor={<Pressable accessibilityRole="button" accessibilityLabel={alerts.isError ? 'Alerts unavailable; open alerts' : alertCount === undefined ? 'Loading alerts; open alerts' : `${alertCount} open alerts and pending requests${pending.isError ? ', account requests unavailable' : ''}`} accessibilityState={{ expanded: panel === 'notifications' }} onPress={() => setPanel(panel === 'notifications' ? null : 'notifications')} style={styles.iconButton}>
-          <Bell size={20} color={colors.ink} />
+          <Bell size={20} color={menuColors.teal} />
           {alertCount !== undefined && alertCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{alertCount > 99 ? '99+' : alertCount}</Text></View>}
         </Pressable>}>
           {panel === 'notifications' && <ScrollView style={{ maxHeight: menuMaxHeight }} contentContainerStyle={menuStyles.popoverContent}>
             <Text style={menuStyles.panelTitle}>Notifications</Text>
             {pending.data && pending.data.length > 0 && <Pressable accessibilityRole="button" onPress={() => goTo('Users')} style={menuStyles.notification}><View style={[menuStyles.dot, { backgroundColor: menuColors.teal }]} /><View style={{ flex: 1 }}><Text style={menuStyles.itemText}>{pending.data.length} pending account {pending.data.length === 1 ? 'request' : 'requests'}</Text><Text style={menuStyles.description}>Review in Users & roles</Text></View></Pressable>}
-            {openAlertItems.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => goTo('Alerts')} style={menuStyles.notification}><View style={[menuStyles.dot, { backgroundColor: item.severity === 'critical' ? colors.critical : colors.warning }]} /><View style={{ flex: 1 }}><Text style={menuStyles.itemText}>{item.parameter} {item.severity}</Text><Text style={menuStyles.description}>{item.value} · {item.threshold}</Text></View></Pressable>)}
+            {openAlertItems.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => goTo('Alerts')} style={menuStyles.notification}><View style={[menuStyles.dot, { backgroundColor: item.severity === 'critical' ? colors.critical : colors.warning }]} /><View style={{ flex: 1 }}><Text style={menuStyles.itemText}>{formatMeasuredParameterLabel(item.parameter)} {item.severity}</Text><Text style={menuStyles.description}>{item.value} · {item.threshold}</Text></View></Pressable>)}
             {!alertCount && <Text style={menuStyles.description}>No current notifications.</Text>}
             <Pressable accessibilityRole="button" onPress={() => goTo('Alerts')} style={menuStyles.viewAll}><Text style={menuStyles.viewAllText}>View all</Text></Pressable>
           </ScrollView>}
         </Menu>
-        <Menu visible={panel === 'account'} onDismiss={() => setPanel(null)} anchorPosition="bottom" style={{ marginTop: menuOffset }} contentStyle={[menuStyles.popover, { width: accountMenuWidth, backgroundColor: menuColors.surface }]} anchor={<Pressable accessibilityRole="button" accessibilityLabel={`Account menu for ${user?.name ?? 'user'}`} accessibilityState={{ expanded: panel === 'account' }} onPress={() => setPanel(panel === 'account' ? null : 'account')} style={styles.avatar}><UserRound size={21} color={colors.teal} /></Pressable>}>
+        <Menu visible={panel === 'account'} onDismiss={() => setPanel(null)} anchorPosition="bottom" style={{ marginTop: menuOffset }} contentStyle={[menuStyles.popover, { width: accountMenuWidth, backgroundColor: menuColors.surface }]} anchor={<Pressable accessibilityRole="button" accessibilityLabel={`Account menu for ${user?.name ?? 'user'}`} accessibilityState={{ expanded: panel === 'account' }} onPress={() => setPanel(panel === 'account' ? null : 'account')} style={styles.avatar}><UserRound size={21} color={menuColors.teal} /></Pressable>}>
           {panel === 'account' && <ScrollView style={{ maxHeight: menuMaxHeight }} contentContainerStyle={menuStyles.popoverContent}>
             <View style={menuStyles.accountIdentity}><Text style={menuStyles.panelTitle}>{user?.name}</Text><Text style={menuStyles.description}>{user?.role}</Text></View>
             <View accessibilityLabel={`Connection ${connectionLabel}`} style={menuStyles.connection}>
@@ -151,22 +145,22 @@ export function HeaderToolbar({ navigation, route }: BottomTabHeaderProps) {
     <Modal visible={panel === 'navigation'} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setPanel(null)}>
       <View style={styles.overlay}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={StyleSheet.absoluteFill} />
-        <SafeAreaView edges={['top', 'bottom']} style={[styles.panel, { backgroundColor: mode === 'dark' ? '#181818' : colors.surface }]}>
-          <View style={styles.panelHeader}><View style={styles.panelBrand}><Brand compact showCaption /></View><Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={styles.close}><X size={20} color={colors.ink} /></Pressable></View>
-          <ScrollView contentContainerStyle={styles.panelContent} indicatorStyle={mode === 'dark' ? 'white' : 'black'}>
+        <SafeAreaView edges={['top', 'bottom']} style={[sidebarStyles.panel, { backgroundColor: sidebarColors.surface }]}>
+          <View style={[sidebarStyles.panelHeader, { borderBottomColor: sidebarColors.border }]}><View style={sidebarStyles.panelBrand}><Brand compact showCaption /></View><Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setPanel(null)} style={sidebarStyles.close}><X size={20} color={sidebarColors.ink} /></Pressable></View>
+          <ScrollView contentContainerStyle={sidebarStyles.panelContent} indicatorStyle={mode === 'dark' ? 'white' : 'black'}>
             {panel === 'navigation' && <>
               {(['Monitor', 'Records', 'Manage'] as const).map((group) => {
                 const items = destinations.filter((item) => item.group === group);
-                return items.length ? <View key={group} style={styles.group}>
-                  <Text style={styles.groupLabel}>{group.toUpperCase()}</Text>
-                  {items.map((item) => <Pressable key={item.name} accessibilityRole="button" accessibilityState={{ selected: route.name === item.name }} onPress={() => goTo(item.name)} style={[styles.menuItem, route.name === item.name && styles.selected]}>
-                    <item.icon size={19} color={route.name === item.name ? colors.teal : colors.muted} /><Text style={[styles.itemText, route.name === item.name && styles.selectedText]}>{item.label}</Text>
+                return items.length ? <View key={group} style={sidebarStyles.group}>
+                  <Text style={sidebarStyles.groupLabel}>{group.toUpperCase()}</Text>
+                  {items.map((item) => <Pressable key={item.name} accessibilityRole="button" accessibilityState={{ selected: route.name === item.name }} onPress={() => goTo(item.name)} style={[sidebarStyles.menuItem, route.name === item.name && sidebarStyles.selected]}>
+                    <item.icon size={19} color={route.name === item.name ? sidebarColors.teal : sidebarColors.muted} /><Text style={[sidebarStyles.itemText, route.name === item.name && sidebarStyles.selectedText]}>{item.label}</Text>
                   </Pressable>)}
                 </View> : null;
               })}
-              <View style={styles.navigationFooter}>
-                {user?.role && <Text style={styles.copyright}>{user.role.toUpperCase()} Workspace</Text>}
-                <Text style={styles.copyright}>© 2026 HydroSense</Text>
+              <View style={sidebarStyles.navigationFooter}>
+                {user?.role && <Text style={sidebarStyles.copyright}>{user.role.toUpperCase()} Workspace</Text>}
+                <Text style={sidebarStyles.copyright}>© 2026 HydroSense</Text>
               </View>
             </>}
           </ScrollView>

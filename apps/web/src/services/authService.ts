@@ -64,6 +64,7 @@ const DUMMY_SALT = 'hydrosense-auth-invalid-account-v2';
 const AUTH_CHANGE_EVENT = 'hydrosense:auth-change';
 const API_TOKEN_KEY = 'hydrosense.auth.access-token';
 const API_USER_KEY = 'hydrosense.auth.user';
+const API_REFRESH_TOKEN_KEY = 'hydrosense.auth.refresh-token';
 const PROFILE_AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const PROFILE_AVATAR_INPUT_MAX_BYTES = 10 * 1024 * 1024;
 const PROFILE_AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -80,13 +81,11 @@ function clearSession() {
   window.sessionStorage.removeItem(SESSION_KEY);
   window.sessionStorage.removeItem(API_TOKEN_KEY);
   window.sessionStorage.removeItem(API_USER_KEY);
+  window.sessionStorage.removeItem(API_REFRESH_TOKEN_KEY);
   window.localStorage.removeItem(SESSION_KEY);
   window.localStorage.removeItem(API_TOKEN_KEY);
   window.localStorage.removeItem(API_USER_KEY);
-}
-
-export function resetSessionOnLaunch() {
-  clearSession();
+  window.localStorage.removeItem(API_REFRESH_TOKEN_KEY);
 }
 
 function tokenExpiry(token: string, userId: string): number | null {
@@ -102,13 +101,159 @@ function tokenExpiry(token: string, userId: string): number | null {
   }
 }
 
+type RenewedToken = { token: string; expiresAt: number };
+let renewal: { token: string; refreshToken: string; request: Promise<RenewedToken | null> } | null = null;
+
+async function renewApiToken(token: string, userId: string): Promise<RenewedToken | null> {
+  const refreshToken = window.sessionStorage.getItem(API_REFRESH_TOKEN_KEY);
+  if (!refreshToken) return null;
+  if (renewal?.token === token && renewal.refreshToken === refreshToken) return renewal.request;
+  const request = (async () => {
+    const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { apikey: API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (window.sessionStorage.getItem(API_TOKEN_KEY) !== token ||
+        window.sessionStorage.getItem(API_REFRESH_TOKEN_KEY) !== refreshToken) return null;
+    if (response.status === 400 || response.status === 401 || response.status === 403) {
+      signOut();
+      return null;
+    }
+    if (!response.ok) throw new Error(`Could not renew your session (HTTP ${response.status}).`);
+    const result: unknown = await response.json();
+    if (typeof result !== 'object' || result === null || !('access_token' in result) ||
+        typeof result.access_token !== 'string' || !('refresh_token' in result) ||
+        typeof result.refresh_token !== 'string' || !result.refresh_token) {
+      throw new Error('The server returned an invalid session renewal.');
+    }
+    const expiresAt = tokenExpiry(result.access_token, userId);
+    if (expiresAt === null || expiresAt <= Date.now()) throw new Error('The renewed session is invalid or expired.');
+    if (window.sessionStorage.getItem(API_TOKEN_KEY) !== token ||
+        window.sessionStorage.getItem(API_REFRESH_TOKEN_KEY) !== refreshToken) return null;
+    window.sessionStorage.setItem(API_TOKEN_KEY, result.access_token);
+    window.sessionStorage.setItem(API_REFRESH_TOKEN_KEY, result.refresh_token);
+    if (activeApiToken === token) activeApiToken = result.access_token;
+    return { token: result.access_token, expiresAt };
+  })();
+  renewal = { token, refreshToken, request };
+  try {
+    return await request;
+  } finally {
+    if (renewal?.request === request) renewal = null;
+  }
+}
+
 function scheduleExpiry(token: string, expiresAt: number) {
   if (expiryTimer !== undefined) clearTimeout(expiryTimer);
+  const canRenew = Boolean(window.sessionStorage.getItem(API_REFRESH_TOKEN_KEY));
+  const remaining = expiresAt - Date.now();
+  const renewEarly = canRenew ? Math.min(60_000, Math.max(0, remaining / 2)) : 0;
   expiryTimer = setTimeout(() => {
     if (activeApiToken !== token) return;
-    if (expiresAt > Date.now()) scheduleExpiry(token, expiresAt);
-    else signOut();
-  }, Math.min(Math.max(0, expiresAt - Date.now()), 2_147_483_647));
+    if (!canRenew) {
+      if (expiresAt > Date.now()) scheduleExpiry(token, expiresAt);
+      else signOut();
+      return;
+    }
+    const user = activeApiUser;
+    if (!user) return;
+    void renewApiToken(token, user.id).then((result) => {
+      if (!result || activeApiToken !== result.token) return;
+      scheduleExpiry(result.token, result.expiresAt);
+      notifyAuthChanged();
+    }).catch((error: unknown) => {
+      console.error('Could not renew the session; retrying.', error);
+      if (activeApiToken === token) expiryTimer = setTimeout(() => scheduleExpiry(token, expiresAt), 15_000);
+    });
+  }, Math.min(Math.max(0, remaining - renewEarly), 2_147_483_647));
+}
+
+function apiProfileUser(profile: Record<string, unknown>, userId: string): AuthUser {
+  if (profile.id !== userId) throw new Error('Your account profile was not found.');
+  if (profile.active === false) throw new Error('Account is inactive.');
+  if (profile.status === 'rejected') throw new Error('Request not approved.');
+  if (profile.status !== 'approved' || (profile.role !== 'operator' && profile.role !== 'manager' && profile.role !== 'admin')) {
+    throw new Error('This account does not have a valid approved role.');
+  }
+  if (typeof profile.email !== 'string' || typeof profile.created_at !== 'string') {
+    throw new Error('Your account profile is invalid.');
+  }
+  const optionalString = (value: unknown) => typeof value === 'string' ? value : undefined;
+  return {
+    id: userId, firstName: optionalString(profile.first_name) ?? '', lastName: optionalString(profile.last_name) ?? '',
+    email: profile.email, role: profile.role, requestedRole: isRequestedRole(profile.requested_role) ? profile.requested_role : null,
+    status: 'approved', position: optionalString(profile.position), employeeId: optionalString(profile.employee_id),
+    phone: optionalString(profile.phone), address: optionalString(profile.address),
+    emergencyContactName: optionalString(profile.emergency_contact_name), emergencyContactPhone: optionalString(profile.emergency_contact_phone),
+    hatcheryId: optionalString(profile.site), createdAt: profile.created_at,
+  };
+}
+
+export async function restoreSessionOnLaunch(): Promise<void> {
+  if (DATA_MODE !== 'api') return;
+  let token = window.sessionStorage.getItem(API_TOKEN_KEY);
+  const stored = window.sessionStorage.getItem(API_USER_KEY);
+  if (!token && !stored) return;
+  let userId: unknown;
+  try {
+    const user: unknown = stored ? JSON.parse(stored) : null;
+    userId = typeof user === 'object' && user !== null && 'id' in user ? user.id : null;
+  } catch {
+    clearSession();
+    return;
+  }
+  let expiry = token && typeof userId === 'string' ? tokenExpiry(token, userId) : null;
+  if (!token || typeof userId !== 'string' || expiry === null) {
+    clearSession();
+    return;
+  }
+  if (expiry <= Date.now()) {
+    const refreshed = await renewApiToken(token, userId);
+    if (!refreshed) {
+      if (window.sessionStorage.getItem(API_TOKEN_KEY) === token) clearSession();
+      return;
+    }
+    token = refreshed.token;
+    expiry = refreshed.expiresAt;
+  }
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`, {
+    headers: { apikey: API_KEY, Authorization: `Bearer ${token}` },
+  });
+  if (window.sessionStorage.getItem(API_TOKEN_KEY) !== token || window.sessionStorage.getItem(API_USER_KEY) !== stored) return;
+  if (response.status === 401 || response.status === 403) {
+    if (expiry <= Date.now() && window.sessionStorage.getItem(API_REFRESH_TOKEN_KEY)) {
+      throw new Error('Your session expired while it was being restored. Please retry.');
+    }
+    clearSession();
+    return;
+  }
+  if (!response.ok) throw new Error(`Could not restore your session (HTTP ${response.status}).`);
+  const profiles: unknown = await response.json();
+  if (window.sessionStorage.getItem(API_TOKEN_KEY) !== token || window.sessionStorage.getItem(API_USER_KEY) !== stored) return;
+  if (!Array.isArray(profiles) || profiles.length !== 1 || typeof profiles[0] !== 'object' || profiles[0] === null) {
+    clearSession();
+    return;
+  }
+  let user: AuthUser;
+  try {
+    user = apiProfileUser(profiles[0], userId);
+  } catch {
+    clearSession();
+    return;
+  }
+  if (window.sessionStorage.getItem(API_TOKEN_KEY) !== token || window.sessionStorage.getItem(API_USER_KEY) !== stored) return;
+  if (expiry <= Date.now()) {
+    if (window.sessionStorage.getItem(API_REFRESH_TOKEN_KEY)) {
+      throw new Error('Your session expired while it was being restored. Please retry.');
+    }
+    clearSession();
+    return;
+  }
+  window.sessionStorage.setItem(API_USER_KEY, JSON.stringify(user));
+  activeApiToken = token;
+  activeApiUser = user;
+  scheduleExpiry(token, expiry);
 }
 
 type ReviewRole = Exclude<Role, 'admin'>;
@@ -418,7 +563,7 @@ export function getCurrentUser(): AuthUser | null {
     const token = window.sessionStorage.getItem(API_TOKEN_KEY);
     if (activeApiUser && stored === JSON.stringify(activeApiUser) && token && token === activeApiToken) {
       const expiry = tokenExpiry(token, activeApiUser.id);
-      if (expiry !== null && expiry > Date.now()) return { ...activeApiUser };
+      if (expiry !== null && (expiry > Date.now() || window.sessionStorage.getItem(API_REFRESH_TOKEN_KEY))) return { ...activeApiUser };
     }
     if (stored || token || activeApiToken) clearSession();
     return null;
@@ -442,11 +587,17 @@ export function signOut() {
 }
 
 export function getApiAccessToken(): string | null {
-  return getCurrentUser() && DATA_MODE === 'api' ? activeApiToken : null;
+  const user = getCurrentUser();
+  if (!user || DATA_MODE !== 'api' || !activeApiToken) return null;
+  const expiry = tokenExpiry(activeApiToken, user.id);
+  return expiry !== null && expiry > Date.now() ? activeApiToken : null;
 }
 
 export function signOutIfTokenMatches(token: string) {
-  if (activeApiToken === token) signOut();
+  if (activeApiToken !== token) return;
+  const expiry = activeApiUser && tokenExpiry(token, activeApiUser.id);
+  if (expiry !== null && expiry <= Date.now() && window.sessionStorage.getItem(API_REFRESH_TOKEN_KEY)) return;
+  signOut();
 }
 
 export const authService = {
@@ -620,25 +771,14 @@ export const authService = {
         throw new Error('This account does not have a valid approved role.');
       }
 
-      const user: AuthUser = {
-        id: profile.id,
-        firstName: profile.first_name ?? '',
-        lastName: profile.last_name ?? '',
-        email: profile.email,
-        role: profile.role,
-        requestedRole: profile.requested_role,
-        status: profile.status,
-        position: profile.position ?? undefined,
-        employeeId: profile.employee_id ?? undefined,
-        phone: profile.phone ?? undefined,
-        address: profile.address ?? undefined,
-        emergencyContactName: profile.emergency_contact_name ?? undefined,
-        emergencyContactPhone: profile.emergency_contact_phone ?? undefined,
-        hatcheryId: profile.site ?? undefined,
-        createdAt: profile.created_at,
-      };
+      const user = apiProfileUser(profile, authResult.user.id);
       window.sessionStorage.setItem(API_TOKEN_KEY, authResult.access_token);
       window.sessionStorage.setItem(API_USER_KEY, JSON.stringify(user));
+      if (typeof authResult.refresh_token === 'string' && authResult.refresh_token) {
+        window.sessionStorage.setItem(API_REFRESH_TOKEN_KEY, authResult.refresh_token);
+      } else {
+        window.sessionStorage.removeItem(API_REFRESH_TOKEN_KEY);
+      }
       activeApiToken = authResult.access_token;
       activeApiUser = user;
       scheduleExpiry(authResult.access_token, expiresAt);

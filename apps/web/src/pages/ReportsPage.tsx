@@ -1,7 +1,7 @@
 import { ChevronDown, FileDown, Printer } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { activityHatcheryName, activityInHatchery, buildReport, can, formatManilaDateTime, getManilaDateString, tankInHatchery, toCsv } from '@hydrosense/shared';
+import { activityHatcheryName, activityInHatchery, buildReport, can, formatManilaDateTime, formatMeasuredParameterLabel, getManilaDateString, tankInHatchery, toCsv } from '@hydrosense/shared';
 import type { Reading, ReportData, ReportSection } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
 import { tierConfig } from '../app/config';
@@ -17,15 +17,15 @@ type ExportType = 'readings' | 'alerts' | 'activity' | 'calibration' | 'validati
 type FilterPopoverPosition = { top: number; left: number; width: number; maxHeight: number };
 
 const reportSections: Array<{ value: ReportSection; label: string }> = [
-  { value: 'summary', label: 'Executive summary' },
+  { value: 'summary', label: 'Executive Summary' },
   { value: 'statistics', label: 'Statistics' },
-  { value: 'activity', label: 'Activity logs' },
+  { value: 'activity', label: 'Activity Logs' },
   { value: 'validation', label: 'Validation' },
-  { value: 'raw-readings', label: 'Raw readings' },
+  { value: 'raw-readings', label: 'Raw Readings' },
   { value: 'thresholds', label: 'Thresholds' },
   { value: 'alerts', label: 'Alerts' },
   { value: 'calibration', label: 'Calibration' },
-  { value: 'data-quality', label: 'Data quality' },
+  { value: 'data-quality', label: 'Data Quality' },
 ];
 
 const reportParameterLabels = { temperature: 'Temperature', do: 'DO', ph: 'pH' } as const;
@@ -241,10 +241,10 @@ export default function ReportsPage() {
     if (!model) return [];
     const site = (id: string) => model.tanks.find((tank) => tank.id === id)?.site ?? '';
     if (type === 'readings') return model.rawReadings.map((row) => [site(row.tankId), row.timestamp, row.tankId, row.temperature, row.doMgL, row.ph]);
-    if (type === 'alerts') return model.alerts.map((row) => [site(row.tankId), row.createdAt, row.tankId, row.parameter, row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? '']);
+    if (type === 'alerts') return model.alerts.map((row) => [site(row.tankId), row.createdAt, row.tankId, formatMeasuredParameterLabel(row.parameter), row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? '']);
     if (type === 'activity') return model.activityLogs.map((row) => [activityHatcheryName(row, model.tanks), row.occurredAt, row.kind, row.type, row.tankId, row.notes, row.operator]);
-    if (type === 'calibration') return model.calibrationLogs.map((row) => [site(row.tankId), row.date, row.tankId, row.parameter, row.standard, row.before, row.after, row.user, row.nextDue]);
-    return model.validationRows.map((row) => [row.tankId ? site(row.tankId) : '', row.parameter, row.hydrosenseMean, row.reference, row.error, row.pctError, row.tolerance, row.pass ? 'pass' : 'fail']);
+    if (type === 'calibration') return model.calibrationLogs.map((row) => [site(row.tankId), row.date, row.tankId, formatMeasuredParameterLabel(row.parameter), row.standard, row.before, row.after, row.user, row.nextDue]);
+    return model.validationRows.map((row) => [row.tankId ? site(row.tankId) : '', formatMeasuredParameterLabel(row.parameter), row.hydrosenseMean, row.reference, row.error, row.pctError, row.tolerance, row.pass ? 'pass' : 'fail']);
   }, [model, type]);
   const headers: Record<ExportType, string[]> = {
     readings: ['Timestamp (ISO)', 'Tank', 'Temperature °C', 'DO mg/L', 'pH'],
@@ -285,7 +285,7 @@ export default function ReportsPage() {
         </div>
         <section className="card stack dash-card dash-report-settings">
           <header className="dash-card-header">
-            <h2 className="card-title">Export settings</h2>
+            <h2 className="card-title">Export Settings</h2>
             <StaleQueryState updatedAt={dataQuery.dataUpdatedAt} />
           </header>
           <div className={`dash-report-controls${canExport ? '' : ' without-dataset'}`}>
@@ -329,7 +329,7 @@ export default function ReportsPage() {
         </section>
         <section className="card stack dash-card dash-report-preview print-preview" aria-labelledby="report-preview-title">
           <div className="dash-report-preview-header">
-            <h2 id="report-preview-title" className="card-title">Report preview</h2>
+            <h2 id="report-preview-title" className="card-title">Report Preview</h2>
             {canExport && model && <button className="button button-primary button-soft-action" type="button" onClick={() => window.print()}><Printer size={18} aria-hidden="true" />Print / Save PDF</button>}
           </div>
           {dataQuery.isLoading ? <LoadingState label="Preparing report..." /> : dataQuery.isError ? <ErrorState error={dataQuery.error} onRetry={() => void dataQuery.refetch()} /> : !model ? <EmptyState>No tanks are available for the selected hatchery.</EmptyState> : (
@@ -351,7 +351,7 @@ export default function ReportsPage() {
                 <section className="dash-report-section" aria-label="Report statistics">
                   <h2 className="report-print-only report-print-section-title">Water Quality Statistics</h2>
                   <div className="report-bar-chart" role="img" aria-label={`Readings in range: ${model.statistics.map((row) => `${reportParameterLabels[row.parameter]} ${row.percentInRange === null ? 'no data' : `${row.percentInRange.toFixed(1)}%`}`).join(', ')}`}>
-                    <h3>Readings in range</h3>
+                    <h3>Readings in Range</h3>
                     <p>Percentage of valid readings within the configured thresholds</p>
                     <div className="report-bar-axis" aria-hidden="true">
                       <div><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>

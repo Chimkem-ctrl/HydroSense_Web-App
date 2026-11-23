@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildReport, calculateParameterStatistics } from './reports';
+import { formatMeasuredParameterLabel } from './rules/status';
 import type { ReportData, ReportSpec } from './reports';
 
 const spec: ReportSpec = {
@@ -30,6 +31,15 @@ const data: ReportData = {
   deviceStatuses: [],
 };
 
+describe('formatMeasuredParameterLabel', () => {
+  it('uses the conventional casing for water-quality parameters', () => {
+    expect(formatMeasuredParameterLabel('do')).toBe('DO');
+    expect(formatMeasuredParameterLabel('PH')).toBe('pH');
+    expect(formatMeasuredParameterLabel('temperature')).toBe('Temperature');
+    expect(formatMeasuredParameterLabel('custom')).toBe('custom');
+  });
+});
+
 describe('buildReport', () => {
   it('filters data to the selected tanks and range and calculates report statistics', () => {
     const report = buildReport(spec, data, '2026-01-01T08:00:00.000Z');
@@ -51,6 +61,10 @@ describe('buildReport', () => {
     expect(report.generatedBy).toEqual(spec.generatedBy);
     expect(report.sections).toEqual(spec.sections);
     expect(report.id).toContain('HS-20260101080000');
+    expect(report.summary).toContain('DO');
+    expect(report.summary).toContain('pH');
+    expect(report.summary).not.toContain(' do ');
+    expect(report.summary).not.toContain(' ph ');
   });
 
   it('rejects invalid date ranges and unknown tanks', () => {

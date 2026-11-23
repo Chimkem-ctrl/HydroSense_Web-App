@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
-import { Camera, LoaderCircle, X } from 'lucide-react';
+import { Camera, Eye, EyeOff, LoaderCircle, X } from 'lucide-react';
 import { formatManilaDateTime, validatePasswordChange } from '@hydrosense/shared';
 import { useAuth, useRole } from '../app/auth/RoleContext';
 import { ROLE_LABELS } from '../app/config';
@@ -29,6 +29,9 @@ export default function ProfilePage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const avatarInput = useRef<HTMLInputElement>(null);
@@ -47,6 +50,9 @@ export default function ProfilePage() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setShowCurrentPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
       setPasswordError('');
       setPasswordSuccess(true);
     },
@@ -59,6 +65,9 @@ export default function ProfilePage() {
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
+    setShowCurrentPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
     setPasswordError('');
   }
 
@@ -130,12 +139,12 @@ export default function ProfilePage() {
                   <div><dt>Position</dt><dd>{user.position || 'N/A'}</dd></div>
                   <div><dt>Email</dt><dd>{user.email || 'N/A'}</dd></div>
                   <div><dt>Address</dt><dd>{user.address || 'N/A'}</dd></div>
-                  <div id="security" className="profile-security"><dt>Change Password</dt><dd><button className="button" type="button" onClick={() => { setPasswordSuccess(false); setPasswordOpen(true); }}>Change password</button>{passwordSuccess && <p role="status">Password changed successfully.</p>}</dd></div>
+                  <div id="security" className="profile-security"><dt>Change Password</dt><dd><button className="button" type="button" onClick={() => { setShowCurrentPassword(false); setShowNewPassword(false); setShowConfirmPassword(false); setPasswordSuccess(false); setPasswordOpen(true); }}>Change password</button>{passwordSuccess && <p role="status">Password changed successfully.</p>}</dd></div>
                   <div><dt>Phone</dt><dd>{user.phone || 'N/A'}</dd></div>
                 </dl>
               </section>
               <section className="profile-group" aria-labelledby="profile-emergency">
-                <h3 id="profile-emergency">Emergency contact</h3>
+                <h3 id="profile-emergency">Emergency Contact</h3>
                 <dl className="profile-details">
                   <div><dt>Name</dt><dd>{user.emergencyContactName || 'N/A'}</dd></div>
                   <div><dt>Phone</dt><dd>{user.emergencyContactPhone || 'N/A'}</dd></div>
@@ -153,7 +162,7 @@ export default function ProfilePage() {
         </section>
 
         <section id="alerts" className="card profile-preferences" aria-labelledby="alerts-title">
-          <div className="profile-panel-heading"><h2 id="alerts-title">Alert notifications</h2></div>
+          <div className="profile-panel-heading"><h2 id="alerts-title">Alert Notifications</h2></div>
           <div className="profile-alert-row">
             <ToggleSwitch id="sms-alerts" label="SMS alerts" checked={false} onChange={() => {}} disabled />
           </div>
@@ -165,7 +174,7 @@ export default function ProfilePage() {
         <AppearancePanel />
 
         <section id="device-maintenance" className="card profile-preferences" aria-labelledby="device-maintenance-title">
-          <div className="profile-panel-heading"><h2 id="device-maintenance-title">Device maintenance</h2></div>
+          <div className="profile-panel-heading"><h2 id="device-maintenance-title">Device Maintenance</h2></div>
           <div className="profile-maintenance-fields">
           {tanks.isLoading || (role !== 'admin' && site.isLoading) ? <LoadingState label="Loading available tanks" /> : tanks.isError ? <ErrorState error={tanks.error} onRetry={() => void tanks.refetch()} /> : role !== 'admin' && site.isError ? <ErrorState error={site.error} onRetry={() => void site.refetch()} /> : <>
             <label className="field">Tank
@@ -190,8 +199,7 @@ export default function ProfilePage() {
       }}>
         <section className="dialog card stack profile-password-dialog" role="dialog" aria-modal="true" aria-labelledby="change-password-title" onKeyDown={(event) => { if (event.key === 'Escape') closePasswordDialog(); }}>
           {role === 'admin' && <button className="icon-button profile-password-close" type="button" aria-label="Close change password dialog" disabled={changePassword.isPending} onClick={closePasswordDialog}><X size={18} aria-hidden="true" /></button>}
-          <h2 id="change-password-title">Change password</h2>
-          <p>Are you sure you want to change your password?{role !== 'admin' && ' Enter your current password and choose a new one.'}</p>
+          <h2 id="change-password-title">Change Password</h2>
           <form className="stack" noValidate onSubmit={(event) => {
             event.preventDefault();
             const issue = validatePasswordChange(currentPassword, newPassword, confirmPassword);
@@ -199,9 +207,33 @@ export default function ProfilePage() {
             setPasswordError('');
             changePassword.mutate();
           }}>
-            <label className="field">Current password<input autoFocus type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
-            <label className="field">New password<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
-            <label className="field">Confirm new password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => { setConfirmPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} /></label>
+            <div className="field">
+              <label htmlFor="current-password">Current password</label>
+              <div className="password-control profile-password-control">
+                <input id="current-password" autoFocus type={showCurrentPassword ? 'text' : 'password'} autoComplete="current-password" value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} />
+                <button className="password-toggle" type="button" aria-label={`${showCurrentPassword ? 'Hide' : 'Show'} current password`} aria-pressed={showCurrentPassword} onClick={() => setShowCurrentPassword((visible) => !visible)} disabled={changePassword.isPending}>
+                  {showCurrentPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+                </button>
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="new-password">New password</label>
+              <div className="password-control profile-password-control">
+                <input id="new-password" type={showNewPassword ? 'text' : 'password'} autoComplete="new-password" value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} />
+                <button className="password-toggle" type="button" aria-label={`${showNewPassword ? 'Hide' : 'Show'} new password`} aria-pressed={showNewPassword} onClick={() => setShowNewPassword((visible) => !visible)} disabled={changePassword.isPending}>
+                  {showNewPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+                </button>
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="confirm-new-password">Confirm new password</label>
+              <div className="password-control profile-password-control">
+                <input id="confirm-new-password" type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" value={confirmPassword} onChange={(event) => { setConfirmPassword(event.target.value); setPasswordError(''); }} disabled={changePassword.isPending} />
+                <button className="password-toggle" type="button" aria-label={`${showConfirmPassword ? 'Hide' : 'Show'} confirm new password`} aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword((visible) => !visible)} disabled={changePassword.isPending}>
+                  {showConfirmPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+                </button>
+              </div>
+            </div>
             <p className="small muted">Use at least 8 characters.</p>
             {passwordError && <p className="profile-password-error" role="alert">{passwordError}</p>}
             <div className="profile-password-actions">

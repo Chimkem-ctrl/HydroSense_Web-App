@@ -108,9 +108,9 @@ function MainTabs() {
     <Tabs.Screen name="Status" component={StatusScreen} />
     {canAccess(user?.role ?? null, 'history') && <Tabs.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />}
     {canAccess(user?.role ?? null, 'validation') && <Tabs.Screen name="Review" component={ManagerReviewScreen} options={{ title: 'Validation' }} />}
-    <Tabs.Screen name="Profile" component={ProfileScreen} options={{ title: 'My profile' }} />
-    {canAccess(user?.role ?? null, 'users') && <Tabs.Screen name="Users" component={UsersScreen} options={{ title: 'Users & roles' }} />}
-    {canAccess(user?.role ?? null, 'admin') && <Tabs.Screen name="AuditLogs" component={AuditLogsScreen} options={{ title: 'Audit & system logs' }} />}
+    <Tabs.Screen name="Profile" component={ProfileScreen} options={{ title: 'My Profile' }} />
+    {canAccess(user?.role ?? null, 'users') && <Tabs.Screen name="Users" component={UsersScreen} options={{ title: 'Users & Roles' }} />}
+    {canAccess(user?.role ?? null, 'admin') && <Tabs.Screen name="AuditLogs" component={AuditLogsScreen} options={{ title: 'Audit & System Logs' }} />}
   </Tabs.Navigator></TabBarVisibleContext.Provider>;
 }
 
@@ -228,8 +228,8 @@ function AppNavigation() {
           <Stack.Screen name="PendingApproval" component={PendingApprovalScreen} options={{ headerShown: false }} />
         </> : <>
           <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-          <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert detail' }} />
-          {canAccess(user.role, 'validation') && <Stack.Screen name="ValidationReview" component={ManagerReviewScreen} options={{ title: 'Validation review' }} />}
+          <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert Detail' }} />
+          {canAccess(user.role, 'validation') && <Stack.Screen name="ValidationReview" component={ManagerReviewScreen} options={{ title: 'Validation Review' }} />}
         </>}
       </Stack.Navigator>
     </NavigationContainer>

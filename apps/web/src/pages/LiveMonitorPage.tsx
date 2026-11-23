@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Clock3, Wifi, WifiOff } from 'lucide-react';
-import { formatManilaDateTime, getReadingStatuses, isValidMeasurement, readingAge, readingFreshness } from '@hydrosense/shared';
+import { formatManilaDateTime, formatMeasuredParameterLabel, getReadingStatuses, isValidMeasurement, readingAge, readingFreshness } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -72,7 +72,7 @@ export default function LiveMonitorPage() {
       </section>}
       <section className="live-section" aria-labelledby="live-readings-title">
         <div className="live-section-heading">
-          <div><h2 id="live-readings-title">Current water quality</h2><p>Latest measured readings for the selected tank</p></div>
+          <div><h2 id="live-readings-title">Current Water Quality</h2><p>Latest measured readings for the selected tank</p></div>
         </div>
         <div className="readings-grid" aria-label="Current measured water quality">
           <ReadingCard parameter="temperature" reading={reading.data} threshold={thresholds.data?.find((item) => item.parameter === 'temperature')} showRangeMeter showUpdatedTimestamp={false} stale={freshness?.stale} />
@@ -82,7 +82,7 @@ export default function LiveMonitorPage() {
       </section>
       <div className="live-overview-grid">
       <section className="card live-panel" aria-labelledby="live-device-title">
-        <div className="live-section-heading"><div><h2 id="live-device-title">Device connection</h2><p>{tank.deviceId || 'Device ID unavailable'}</p></div></div>
+        <div className="live-section-heading"><div><h2 id="live-device-title">Device Connection</h2><p>{tank.deviceId || 'Device ID unavailable'}</p></div></div>
         {devices.isLoading ? <LoadingState label="Loading device status" /> : devices.isError ? <ErrorState error={devices.error} onRetry={() => void devices.refetch()} /> : device ? (
           <div className="live-device-metrics">
             <div><span>Connection</span><strong className={connectionStatus === 'Unavailable' ? undefined : deviceOnline ? 'status-online' : 'status-offline'}>{connectionStatus === 'Unavailable' ? null : deviceOnline ? <Wifi size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}{connectionStatus}</strong></div>
@@ -94,14 +94,14 @@ export default function LiveMonitorPage() {
       </section>
       <section className="card live-panel" aria-labelledby="live-alerts-title">
         <div className="live-section-heading">
-          <div><h2 id="live-alerts-title">Recent alerts</h2><p>Latest events for the selected tank</p></div>
+          <div><h2 id="live-alerts-title">Recent Alerts</h2><p>Latest events for the selected tank</p></div>
           <Link to="/alerts">View all</Link>
         </div>
         {alerts.isLoading ? <LoadingState label="Loading recent alerts" /> : alerts.isError ? <ErrorState error={alerts.error} onRetry={() => void alerts.refetch()} /> : recentAlerts.length ? (
           <div className="live-alert-list">{recentAlerts.map((alert) => (
             <article className="live-alert-row" key={alert.id}>
               <StatusBadge level={alert.severity === 'critical' ? 'critical' : 'warning'} label={alert.severity ?? 'Unknown'} />
-              <span className="live-alert-summary">{alert.parameter ?? 'Unknown parameter'} · {alert.value ?? '—'} · {alert.threshold ?? '—'}</span>
+              <span className="live-alert-summary">{alert.parameter ? formatMeasuredParameterLabel(alert.parameter) : 'Unknown parameter'} · {alert.value ?? '—'} · {alert.threshold ?? '—'}</span>
               <time className="small muted" dateTime={typeof alert.createdAt === 'string' ? alert.createdAt : undefined}>{alert.createdAt && Number.isFinite(Date.parse(alert.createdAt)) ? `${formatManilaDateTime(alert.createdAt)} PHT` : 'Unavailable time'}</time>
             </article>
           ))}</div>

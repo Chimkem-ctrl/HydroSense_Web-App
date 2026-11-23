@@ -150,7 +150,7 @@ export function AdminUsersPage() {
       <StaleQueryState updatedAt={users.dataUpdatedAt} />
       {!isManager && <section className="card admin-users-panel" aria-labelledby="pending-requests-title">
         <div className="admin-users-heading">
-          <div><h2 id="pending-requests-title">Pending requests</h2><p>Review new account requests and assign a role.</p></div>
+          <div><h2 id="pending-requests-title">Pending Requests</h2><p>Review new account requests and assign a role.</p></div>
           <div className="admin-users-heading-tools">
             {visibleRequests.length > 0 && <label className="admin-users-search"><Search size={16} aria-hidden="true" /><input type="search" aria-label="Search pending requests" placeholder="Search name, email, phone, role, date or hatchery" value={requestSearch} onChange={(event) => setRequestSearch(event.target.value)} /></label>}
             {!pendingRequests.isLoading && !pendingRequests.isError && pendingRequests.data && <span className="admin-users-count admin-users-count--pending">{visibleRequests.length} pending</span>}
@@ -201,7 +201,7 @@ export function AdminUsersPage() {
       </section>}
       {!isManager && <section className="card admin-users-panel" aria-labelledby="admin-accounts-title">
         <div className="admin-users-heading">
-          <div><h2 id="admin-accounts-title">Admin accounts</h2><p>Administrator accounts with system-wide access.</p></div>
+          <div><h2 id="admin-accounts-title">Admin Accounts</h2><p>Administrator accounts with system-wide access.</p></div>
           {tierConfig.teamAccounts && !users.isLoading && !users.isError && <span className="admin-users-count admin-users-count--accounts">{visibleAdminUsers.length} {visibleAdminUsers.length === 1 ? 'account' : 'accounts'}</span>}
         </div>
         {!tierConfig.teamAccounts ? null : users.isLoading ? <LoadingState /> : users.isError ? <ErrorState error={users.error} onRetry={() => void users.refetch()} /> : !visibleAdminUsers.length ? <EmptyState>No administrator accounts are registered.</EmptyState> :
@@ -211,7 +211,7 @@ export function AdminUsersPage() {
       </section>}
       <section className="card admin-users-panel" aria-labelledby="team-accounts-title">
         <div className="admin-users-heading">
-          <div><h2 id="team-accounts-title">Team accounts</h2><p>{selectedHatchery === 'all' ? 'View team members grouped by hatchery.' : 'View team members for the selected hatchery.'}</p></div>
+          <div><h2 id="team-accounts-title">Team Accounts</h2><p>{selectedHatchery === 'all' ? 'View team members grouped by hatchery.' : 'View team members for the selected hatchery.'}</p></div>
           <div className="admin-users-heading-tools">
             {visibleUsers.length > 0 && <label className="admin-users-search"><Search size={16} aria-hidden="true" /><input type="search" aria-label="Search team accounts" placeholder="Search name, ID, email, role or date" value={teamSearch} onChange={(event) => setTeamSearch(event.target.value)} /></label>}
             {tierConfig.teamAccounts && !users.isLoading && !users.isError && users.data && <span className="admin-users-count admin-users-count--accounts">{visibleUsers.length} {visibleUsers.length === 1 ? 'account' : 'accounts'}</span>}

@@ -9,7 +9,13 @@
     "backgroundColor": "#eaf3ff",
     "newArchEnabled": true,
     "plugins": [
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow HydroSense to use your photos for your profile picture."
+        }
+      ]
     ],
     "android": {
       "package": "com.hydrosense.mobile",

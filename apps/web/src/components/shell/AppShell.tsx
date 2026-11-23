@@ -31,7 +31,7 @@ import { useAuth, useRole } from '../../app/auth/RoleContext';
 import { signOut } from '../../services/authService';
 import { useSelectedTank } from '../../app/tank/TankContext';
 import { useLatestReading, useOpenAlerts, usePendingRequests, useProfileSite } from '../../app/data/hooks';
-import { formatManilaDateTime } from '@hydrosense/shared';
+import { formatManilaDateTime, formatMeasuredParameterLabel } from '@hydrosense/shared';
 import { CriticalAlertModal } from './CriticalAlertModal';
 import { HatcherySelect } from '../common/HatcherySelect';
 import { useChatThreads } from '../../hooks/useChatThreads';
@@ -250,7 +250,7 @@ export function AppShell() {
                   {openAlerts.map((alert) => (
                     <li key={alert.id}><Link to="/alerts" className="notification-item">
                       <AlertTriangle size={18} className={`notification-icon notification-icon-${alert.severity}`} aria-hidden="true" />
-                      <span><strong>{alert.parameter} {alert.severity}</strong><small>{alert.value} · {alert.threshold} · {formatManilaDateTime(alert.createdAt)}</small></span>
+                      <span><strong>{formatMeasuredParameterLabel(alert.parameter)} {alert.severity}</strong><small>{alert.value} · {alert.threshold} · {formatManilaDateTime(alert.createdAt)}</small></span>
                     </Link></li>
                   ))}
                   {notificationCount === 0 && <li className="notification-empty">No current notifications.</li>}

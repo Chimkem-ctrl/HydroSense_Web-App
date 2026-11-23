@@ -25,7 +25,7 @@ interface TankSummary {
 
 const dataQualityParameters: TrendParameter[] = [
   { key: 'temperature', title: 'Temperature', unit: '°C', safeMin: 26, safeMax: 30 },
-  { key: 'do', title: 'Dissolved oxygen', unit: 'mg/L', safeMin: 4 },
+  { key: 'do', title: 'DO', unit: 'mg/L', safeMin: 4 },
   { key: 'ph', title: 'pH', unit: 'pH', safeMin: 6, safeMax: 8 },
 ];
 
@@ -70,7 +70,7 @@ function TankDataQuality({ tankId, tankName }: { tankId: string; tankName: strin
 
   return (
     <section className="card glass trends-quality-panel" aria-label="Data quality">
-      <header className="trends-section-heading"><div><h2 className="card-title">Data quality · {tankName}</h2><p>Last {days} days</p></div><span className="trends-quality-coverage">{receivedSamples} of {expectedSamples} sample slots · {receivedPercent}% coverage</span></header>
+      <header className="trends-section-heading"><div><h2 className="card-title">Data Quality · {tankName}</h2><p>Last {days} days</p></div><span className="trends-quality-coverage">{receivedSamples} of {expectedSamples} sample slots · {receivedPercent}% coverage</span></header>
       {readingsQuery.isLoading ? <LoadingState /> : readingsQuery.isError ? <ErrorState error={readingsQuery.error} onRetry={() => void readingsQuery.refetch()} /> : <>
         <div className="trends-quality-slots" role="img" aria-label={`${receivedSamples} of ${expectedSamples} expected sample slots received`}>
           {qualitySlots.map((slot) => <span className={`trends-quality-slot is-${slot.status}`} key={slot.tick} title={`${formatManilaDateTime(new Date(slot.tick))}: ${slot.status}`} />)}
@@ -195,7 +195,7 @@ export default function TankOverviewPage() {
           <form className="stack tank-management-form" onSubmit={submitTank}>
             <div className="tank-management-header">
               <div className="tank-management-heading">
-                <h2 className="card-title">Tank and hardware management</h2>
+                <h2 className="card-title">Tank and Hardware Management</h2>
                 <span className="small muted">{query.data?.length ?? 0} / {tierConfig.nodeLimit} tanks</span>
               </div>
               <button type="submit" className="button button-primary tank-submit" disabled={createTank.isPending || (query.data?.length ?? 0) >= tierConfig.nodeLimit}><Plus size={18} aria-hidden="true" />Register tank and link hardware</button>

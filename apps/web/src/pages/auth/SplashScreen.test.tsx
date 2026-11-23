@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../../App';
-import { authService, resetSessionOnLaunch } from '../../services/authService';
+import { authService, restoreSessionOnLaunch } from '../../services/authService';
 import { queryClient } from '../../app/query';
 
 beforeEach(() => {
@@ -102,7 +102,7 @@ describe('splash routing', () => {
     };
     window.localStorage.setItem('hydrosense.auth.accounts.v2', JSON.stringify([{ user, passwordSalt: 'salt', passwordHash: 'hash' }]));
     window.sessionStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: user.id }));
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', '/splash');
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: 'HYDROSENSE' })).toBeInTheDocument();
@@ -111,16 +111,13 @@ describe('splash routing', () => {
     expect(window.location.pathname).toBe('/');
   });
 
-  it('does not restore an admin session after a fresh launch', async () => {
+  it('keeps a signed-in admin on the dashboard after a refresh', async () => {
     window.sessionStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: 'demo-admin' }));
-    window.localStorage.setItem('hydrosense.auth.session.v2', JSON.stringify({ userId: 'demo-admin' }));
-    resetSessionOnLaunch();
+    await restoreSessionOnLaunch();
     window.history.replaceState({}, '', '/');
     render(<App />);
-    expect(await screen.findByRole('heading', { name: 'HYDROSENSE' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Get Started' }));
-    expect(screen.getByRole('heading', { name: 'Welcome Back' })).toBeInTheDocument();
-    expect(window.location.pathname).toBe('/signin');
+    expect(await screen.findByRole('heading', { name: 'Live Monitor', level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
   });
 
   it.each([

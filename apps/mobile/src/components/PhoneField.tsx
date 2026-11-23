@@ -42,7 +42,7 @@ export function PhoneField({ label, value, country, onChange, onCountryChange, a
         placeholder="National number" placeholderTextColor={auth ? authColors.placeholder : colors.muted} keyboardType="phone-pad" autoComplete="tel-national" />
     </View>
       <GlassDialog visible={open} onDismiss={() => setOpen(false)}>
-        <Dialog.Title style={{ marginTop: 24 }}>Select country</Dialog.Title>
+        <Dialog.Title style={{ marginTop: 24 }}>Select Country</Dialog.Title>
         <Dialog.Content>
           <TextInput accessibilityLabel={`Search ${label.toLowerCase()} countries`} style={ui.input} value={search}
             onChangeText={setSearch} placeholder="Search country or calling code" placeholderTextColor={colors.muted} autoCorrect={false} />

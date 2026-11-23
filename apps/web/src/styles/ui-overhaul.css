@@ -214,7 +214,8 @@
 .glass-shell .trends-secondary-grid > .card > .card-title, .glass-shell .trends-secondary-grid .trends-section-heading { margin: 0; }
 .glass-shell .trends-secondary-grid .trends-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
 .glass-shell .trends-secondary-grid .trends-section-heading p, .glass-shell .trends-secondary-grid .small { margin: 4px 0 0; }
-.glass-shell .trends-secondary-grid .trends-alert-frequency-chart { flex: 1 1 auto; min-height: 180px; }
+.glass-shell .trends-secondary-grid > .trends-alert-frequency-card { width: 100%; max-width: 640px; }
+.glass-shell .trends-secondary-grid .trends-alert-frequency-chart { flex: none; height: 200px; }
 .glass-shell .trends-secondary-grid .trends-alert-frequency-chart svg { width: 100%; height: 100%; }
 @media (max-width: 760px) { .glass-shell .trends-kpis { grid-template-columns: 1fr; } }
 

@@ -810,7 +810,7 @@ export default function OperatorDashboardPage() {
       {message && <div className="operator-toast" role="status"><Check size={15} />{message}<button type="button" aria-label="Dismiss notification" onClick={() => setMessage('')}><X size={14} /></button></div>}
 
       {modal === 'log' && (
-        <OperatorModal title={activityKind === 'OPERATION' ? 'Log hatchery operation' : 'Log weather or event'} description="Entries are saved in this browser for shift handover." onClose={() => setModal(null)}>
+        <OperatorModal title={activityKind === 'OPERATION' ? 'Log Hatchery Operation' : 'Log Weather or Event'} description="Entries are saved in this browser for shift handover." onClose={() => setModal(null)}>
           <form className="operator-form" onSubmit={submitLog}>
             <div className="operator-form-tabs">
               <button type="button" className={activityKind === 'OPERATION' ? 'is-selected' : ''} onClick={() => { setActivityKind('OPERATION'); setEntryTankId(tankId); setActivityType(ACTIVITY_OPERATION_TYPES[0]); setFormError(''); }}>Operation</button>

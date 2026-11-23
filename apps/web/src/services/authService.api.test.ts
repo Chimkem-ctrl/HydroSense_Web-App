@@ -211,14 +211,153 @@ describe('API account review', () => {
     await expect(authService.signIn('jane@example.test', 'password')).rejects.toThrow('Request not approved.');
   });
 
-  it('clears stale persisted credentials on launch', async () => {
-    window.localStorage.setItem('hydrosense.auth.access-token', tokenFor('1'));
-    window.localStorage.setItem('hydrosense.auth.user', JSON.stringify({ id: '1', role: 'admin', status: 'approved' }));
-    const { resetSessionOnLaunch, getCurrentUser } = await import('./authService');
-    resetSessionOnLaunch();
+  it('restores a session after a reload using the server-verified profile', async () => {
+    await establishSession('1', 'operator');
+    window.sessionStorage.setItem('hydrosense.auth.user', JSON.stringify({ id: '1', role: 'admin' }));
+    vi.resetModules();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify([{
+      id: '1', first_name: 'Jane', last_name: 'Smith', email: 'jane@example.test',
+      status: 'approved', role: 'operator', created_at: '2026-01-01',
+    }]))));
+    const { restoreSessionOnLaunch, getCurrentUser, getApiAccessToken, signOut } = await import('./authService');
+    await restoreSessionOnLaunch();
+    expect(getCurrentUser()).toMatchObject({ id: '1', role: 'operator' });
+    expect(getApiAccessToken()).toBe(tokenFor('1'));
+    signOut();
+    await restoreSessionOnLaunch();
     expect(getCurrentUser()).toBeNull();
-    expect(window.localStorage.getItem('hydrosense.auth.access-token')).toBeNull();
-    expect(window.localStorage.getItem('hydrosense.auth.user')).toBeNull();
+  });
+
+  it('preserves saved credentials when session verification cannot reach the server', async () => {
+    await establishSession('1', 'operator');
+    vi.resetModules();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network unavailable')));
+    const { restoreSessionOnLaunch } = await import('./authService');
+    await expect(restoreSessionOnLaunch()).rejects.toThrow('Network unavailable');
+    expect(window.sessionStorage.getItem('hydrosense.auth.access-token')).not.toBeNull();
+  });
+
+  it('clears a session rejected by the server on reload', async () => {
+    await establishSession('1', 'operator');
+    vi.resetModules();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 401 })));
+    const { restoreSessionOnLaunch, getCurrentUser } = await import('./authService');
+    await restoreSessionOnLaunch();
+    expect(getCurrentUser()).toBeNull();
+    expect(window.sessionStorage.getItem('hydrosense.auth.access-token')).toBeNull();
+  });
+
+  it('renews an expired session before restoring it on reload', async () => {
+    window.sessionStorage.setItem('hydrosense.auth.access-token', tokenFor('1', 1));
+    window.sessionStorage.setItem('hydrosense.auth.refresh-token', 'old-refresh');
+    window.sessionStorage.setItem('hydrosense.auth.user', JSON.stringify({ id: '1' }));
+    const newToken = tokenFor('1');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: newToken, refresh_token: 'new-refresh' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{
+        id: '1', first_name: 'Jane', last_name: 'Smith', email: 'jane@example.test',
+        status: 'approved', role: 'operator', created_at: '2026-01-01',
+      }])));
+    vi.stubGlobal('fetch', fetchMock);
+    const { restoreSessionOnLaunch, getCurrentUser, getApiAccessToken } = await import('./authService');
+    await restoreSessionOnLaunch();
+    expect(fetchMock.mock.calls[0][0]).toContain('grant_type=refresh_token');
+    expect(getCurrentUser()).toMatchObject({ id: '1', role: 'operator' });
+    expect(getApiAccessToken()).toBe(newToken);
+    expect(window.sessionStorage.getItem('hydrosense.auth.refresh-token')).toBe('new-refresh');
+  });
+
+  it('renews the access token before it expires without signing out', async () => {
+    vi.useFakeTimers();
+    try {
+      const oldToken = tokenFor('1');
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: oldToken, refresh_token: 'old-refresh' })))
+        .mockResolvedValueOnce(new Response(JSON.stringify([{
+          id: '1', first_name: 'Jane', last_name: 'Smith', email: 'jane@example.test',
+          status: 'approved', role: 'operator', created_at: '2026-01-01',
+        }])));
+      vi.stubGlobal('fetch', fetchMock);
+      const { authService, getCurrentUser, getApiAccessToken, signOut } = await import('./authService');
+      await authService.signIn('jane@example.test', 'password');
+      const newToken = tokenFor('1', Math.floor(Date.now() / 1000) + 7200);
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ access_token: newToken, refresh_token: 'new-refresh' })));
+      await vi.advanceTimersByTimeAsync(3_540_000);
+      expect(getCurrentUser()?.id).toBe('1');
+      expect(getApiAccessToken()).toBe(newToken);
+      signOut();
+      expect(window.sessionStorage.getItem('hydrosense.auth.refresh-token')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not immediately loop when the server issues short-lived tokens', async () => {
+    vi.useFakeTimers();
+    try {
+      const shortToken = tokenFor('1', Math.floor(Date.now() / 1000) + 30);
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: shortToken, refresh_token: 'refresh' })))
+        .mockResolvedValueOnce(new Response(JSON.stringify([{
+          id: '1', first_name: 'Jane', last_name: 'Smith', email: 'jane@example.test',
+          status: 'approved', role: 'operator', created_at: '2026-01-01',
+        }])));
+      vi.stubGlobal('fetch', fetchMock);
+      const { authService, signOut } = await import('./authService');
+      await authService.signIn('jane@example.test', 'password');
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      signOut();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not restore a session if sign-out happens during renewal', async () => {
+    window.sessionStorage.setItem('hydrosense.auth.access-token', tokenFor('1', 1));
+    window.sessionStorage.setItem('hydrosense.auth.refresh-token', 'old-refresh');
+    window.sessionStorage.setItem('hydrosense.auth.user', JSON.stringify({ id: '1' }));
+    let respond!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { respond = resolve; })));
+    const { restoreSessionOnLaunch, getCurrentUser, signOut } = await import('./authService');
+    const restoring = restoreSessionOnLaunch();
+    signOut();
+    respond(new Response(JSON.stringify({ access_token: tokenFor('1'), refresh_token: 'new-refresh' })));
+    await restoring;
+    expect(getCurrentUser()).toBeNull();
+    expect(window.sessionStorage.getItem('hydrosense.auth.refresh-token')).toBeNull();
+  });
+
+  it('keeps the session and retries when renewal fails temporarily', async () => {
+    vi.useFakeTimers();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const oldToken = tokenFor('1');
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: '1' }, access_token: oldToken, refresh_token: 'old-refresh' })))
+        .mockResolvedValueOnce(new Response(JSON.stringify([{
+          id: '1', first_name: 'Jane', last_name: 'Smith', email: 'jane@example.test',
+          status: 'approved', role: 'operator', created_at: '2026-01-01',
+        }])))
+        .mockRejectedValueOnce(new Error('Network unavailable'));
+      vi.stubGlobal('fetch', fetchMock);
+      const { authService, getCurrentUser, getApiAccessToken, signOutIfTokenMatches, signOut } = await import('./authService');
+      await authService.signIn('jane@example.test', 'password');
+      await vi.advanceTimersByTimeAsync(3_600_000);
+      expect(getCurrentUser()?.id).toBe('1');
+      expect(getApiAccessToken()).toBeNull();
+      signOutIfTokenMatches(oldToken);
+      expect(getCurrentUser()?.id).toBe('1');
+      const newToken = tokenFor('1');
+      fetchMock.mockResolvedValue(new Response(JSON.stringify({ access_token: newToken, refresh_token: 'new-refresh' })));
+      await vi.advanceTimersByTimeAsync(15_001);
+      expect(getApiAccessToken()).toBe(newToken);
+      expect(consoleError).toHaveBeenCalled();
+      signOut();
+    } finally {
+      consoleError.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it.each(['invalid', tokenFor('1', 1)])('rejects a malformed or expired sign-in token', async (token) => {

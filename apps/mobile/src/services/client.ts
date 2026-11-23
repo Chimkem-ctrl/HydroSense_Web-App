@@ -6,6 +6,7 @@ import {
 } from '@hydrosense/shared';
 import type { LiveClient } from '@hydrosense/shared';
 import type { MeasuredParameter, Role, Threshold } from '@hydrosense/shared';
+import { toByteArray } from 'base64-js';
 
 if (process.env.EXPO_PUBLIC_DATA_MODE && process.env.EXPO_PUBLIC_DATA_MODE !== 'api') {
   throw new Error('Mobile sample data is no longer supported. Remove EXPO_PUBLIC_DATA_MODE or set it to api.');
@@ -145,6 +146,57 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile>
     phone: optionalString('phone'), position: optionalString('position'), address: optionalString('address'),
     emergencyContactName: optionalString('emergencyContactName'), emergencyContactPhone: optionalString('emergencyContactPhone'),
   };
+}
+
+export async function getProfileAvatarUrl(): Promise<string | undefined> {
+  const result = await authenticatedRequest('/v1/profile');
+  if (typeof result !== 'object' || result === null) {
+    throw new Error('The server returned an invalid profile picture URL.');
+  }
+  const avatarUrl = 'avatarUrl' in result ? result.avatarUrl : undefined;
+  if (avatarUrl !== null && avatarUrl !== undefined && typeof avatarUrl !== 'string') {
+    throw new Error('The server returned an invalid profile picture URL.');
+  }
+  return avatarUrl ?? undefined;
+}
+
+export async function saveProfileAvatar(uri: string, mimeType: string): Promise<string> {
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowedTypes.includes(mimeType)) throw new Error('Choose a JPG, PNG, or WebP image.');
+  if (!accessToken) throw new Error('Your session has expired. Sign in again.');
+
+  const FileSystem = await import('expo-file-system/legacy');
+  const encoded = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  if (!encoded) throw new Error('The selected profile picture could not be read.');
+  const bytes = toByteArray(encoded);
+  if (bytes.byteLength > 2 * 1024 * 1024) throw new Error('The optimized profile picture is larger than 2 MB. Choose a smaller image.');
+  const buffer = new ArrayBuffer(bytes.length);
+  new Uint8Array(buffer).set(bytes);
+
+  const response = await fetch(`${API_BASE_URL.replace(/\/$/, '')}/v1/profile/avatar`, {
+    method: 'PUT',
+    headers: {
+      ...(API_KEY ? { apikey: API_KEY } : {}),
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': mimeType,
+    },
+    body: new Blob([buffer], { type: mimeType }),
+  });
+  let result: unknown;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(`The profile picture server returned an invalid response (HTTP ${response.status}).`);
+  }
+  if (!response.ok) {
+    const message = typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string'
+      ? result.error : `HTTP ${response.status}`;
+    throw new Error(`Unable to save your profile picture: ${message}`);
+  }
+  if (typeof result !== 'object' || result === null || !('avatarUrl' in result) || typeof result.avatarUrl !== 'string') {
+    throw new Error('The saved profile picture URL is invalid.');
+  }
+  return result.avatarUrl;
 }
 
 export async function listPendingAccounts(): Promise<PendingAccount[]> {

@@ -20,6 +20,14 @@ const PARAMETER_UNITS: Record<MeasuredParameter, string> = {
   ph: 'pH',
 };
 
+export function formatMeasuredParameterLabel(parameter: string): string {
+  const normalized = parameter.trim().toLowerCase();
+  if (normalized === 'do' || normalized === 'dissolved oxygen') return 'DO';
+  if (normalized === 'ph') return 'pH';
+  if (normalized === 'temperature') return 'Temperature';
+  return parameter;
+}
+
 export function readingValue(reading: Reading, parameter: MeasuredParameter): number {
   if (parameter === 'do') return reading.doMgL;
   return reading[parameter];

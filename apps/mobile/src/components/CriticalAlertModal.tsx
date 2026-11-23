@@ -1,7 +1,7 @@
 import { Pressable, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react-native';
-import { formatManilaDateTime } from '@hydrosense/shared';
+import { formatManilaDateTime, formatMeasuredParameterLabel } from '@hydrosense/shared';
 import { api } from '../services/client';
 import { useSession } from '../state';
 import { useTheme } from '../theme';
@@ -40,7 +40,7 @@ export function CriticalAlertModal() {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <AlertTriangle size={19} color={colors.critical} />
       <View style={{ flex: 1 }}>
-        <Text style={{ color: colors.critical, fontWeight: '800' }}>Critical alert · {alert.parameter} {alert.value}</Text>
+        <Text style={{ color: colors.critical, fontWeight: '800' }}>Critical Alert · {formatMeasuredParameterLabel(alert.parameter)} {alert.value}</Text>
         <Text style={{ color: colors.muted, fontSize: 12 }}>{alert.tankId} · {formatManilaDateTime(alert.createdAt)} PHT{critical.length > 1 ? ` · ${critical.length - 1} more` : ''}</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Acknowledge critical alert" disabled={mutation.isPending} onPress={() => mutation.mutate(alert.id)} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.critical }}>

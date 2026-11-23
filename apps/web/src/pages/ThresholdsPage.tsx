@@ -6,7 +6,7 @@ import { api } from '../app/api';
 import { useRole } from '../app/auth/RoleContext';
 import { ErrorState, LoadingState } from '../components/common/States';
 
-const parameterNames: Record<MeasuredParameter, string> = { temperature: 'Temperature (°C)', do: 'Dissolved oxygen (mg/L)', ph: 'pH' };
+const parameterNames: Record<MeasuredParameter, string> = { temperature: 'Temperature (°C)', do: 'DO (mg/L)', ph: 'pH' };
 const parameterUnits: Record<MeasuredParameter, string> = { temperature: '°C', do: 'mg/L', ph: 'pH' };
 const parameters: MeasuredParameter[] = ['temperature', 'do', 'ph'];
 
@@ -105,7 +105,7 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
     <>
       <section className="card stack dash-threshold-card">
         <header className="dash-card-header">
-          <h2 className="card-title">Measured parameter thresholds</h2>
+          <h2 className="card-title">Measured Parameter Thresholds</h2>
           {readOnly && <p className="small muted dash-subtitle">Reference values only. Calibration is logged above.</p>}
         </header>
         <div className={readOnly ? 'threshold-table-wrap' : undefined}>
@@ -130,7 +130,7 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
       </section>
       {!readOnly && <section className="card stack dash-threshold-advisories">
         <header className="dash-card-header">
-          <h2 className="card-title">Rule-based advisories (not sensor readings)</h2>
+          <h2 className="card-title">Rule-Based Advisories (Not Sensor Readings)</h2>
         </header>
         <div className="form-grid advisory-rules-grid">
           <label className="field">Salinity watch temperature (°C)<input type="number" value={rules.salinityWatchTemperatureC} onChange={(event) => setRules((current) => ({ ...current, salinityWatchTemperatureC: Number(event.target.value) }))} /></label>
@@ -143,7 +143,7 @@ export function ThresholdsPanel({ readOnly }: ThresholdsPanelProps) {
         {mutation.isError && <ErrorState error={mutation.error} />}
       </section>}
       {confirm && <div className="dialog-backdrop"><section className="dialog card stack" role="dialog" aria-modal="true" aria-labelledby="confirm-thresholds">
-        <h2 id="confirm-thresholds" className="card-title">Confirm rule changes</h2>
+        <h2 id="confirm-thresholds" className="card-title">Confirm Rule Changes</h2>
         <p>These thresholds change how measured data is labeled and alerts are evaluated. No equipment will be controlled.</p>
         {changes.length ? <ul>{changes.map((change) => <li key={change.label}>{change.label}: {change.before ?? 'Not set'} → {change.after ?? 'Not set'}</li>)}</ul> : <p>No changes to confirm.</p>}
         <div className="inline"><button className="button" type="button" onClick={() => setConfirm(false)}>Cancel</button><button className="button button-primary" type="button" disabled={mutation.isPending || !changes.length} onClick={() => mutation.mutate()}>Confirm changes</button></div>

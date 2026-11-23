@@ -36,7 +36,7 @@ describe('activity log CSV export', () => {
     expect(csv).toContain('"Sagay","Jan 2, 2025');
     expect(csv).toContain('"Water source"');
     expect(csv).toContain('"Manual readings"');
-    expect(csv).toContain('"Dissolved oxygen: 5.2 mg/L; Salinity: 30.2 ppt; Ammonia: 0.1 mg/L; Method: test kit"');
+    expect(csv).toContain('"DO: 5.2 mg/L; Salinity: 30.2 ppt; Ammonia: 0.1 mg/L; Method: test kit"');
     expect(csv).not.toContain('"Manual ammonia (mg/L)"');
   });
 

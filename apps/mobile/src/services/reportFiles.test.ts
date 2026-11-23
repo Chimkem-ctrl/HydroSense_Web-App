@@ -36,6 +36,11 @@ describe('mobile report files', () => {
     const alerts = reportDatasetRows(report, 'alerts');
     expect(alerts).toHaveLength(2);
     expect(toCsv(alerts)).toContain("\"'=unsafe\"");
+    const acronymReport = buildReport(spec, {
+      ...data,
+      alerts: [{ ...data.alerts[0], parameter: 'do' }],
+    });
+    expect(reportDatasetRows(acronymReport, 'alerts')[1][2]).toBe('DO');
     expect(reportDatasetRows(report, 'activity')).toHaveLength(1);
   });
   it('only includes selected sections and their actual data', () => {
@@ -43,7 +48,7 @@ describe('mobile report files', () => {
     const rows = reportRows(report);
     expect(rows.filter((row) => row[0] === 'Statistics')).toHaveLength(3);
     expect(rows.some((row) => row[0] === 'Readings' || row[0] === 'Alerts' || row[0] === 'Summary')).toBe(false);
-    expect(rows.find((row) => row[1] === 'temperature')?.[2]).toContain('mean: 28.00');
+    expect(rows.find((row) => row[1] === 'Temperature')?.[2]).toContain('mean: 28.00');
   });
 
   it('generates UTF-8 CSV with the selected content', async () => {

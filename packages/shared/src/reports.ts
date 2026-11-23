@@ -12,6 +12,7 @@ import type {
 } from './types';
 import { DEFAULT_THRESHOLDS } from './rules/status';
 import { isValidMeasurement } from './rules/reading';
+import { formatMeasuredParameterLabel } from './rules/status';
 import { activityInHatchery, hatcheryId } from './hatcheries';
 
 export type ReportSection =
@@ -198,7 +199,7 @@ export function buildReport(spec: ReportSpec, data: ReportData, generatedAt = ne
     acknowledged: alerts.filter((alert) => alert.status === 'acknowledged').length,
     resolved: alerts.filter((alert) => alert.status === 'resolved').length,
   };
-  const safePercentages = statisticsRows.filter((item) => item.percentInRange !== null).map((item) => `${item.parameter} ${item.percentInRange!.toFixed(1)}%`);
+  const safePercentages = statisticsRows.filter((item) => item.percentInRange !== null).map((item) => `${formatMeasuredParameterLabel(item.parameter)} ${item.percentInRange!.toFixed(1)}%`);
   const summary = `${readings.length} readings and ${alerts.length} alerts were recorded for ${tanks.map((tank) => tank.name).join(', ')}. ` +
     `${alertCounts.critical} critical and ${alertCounts.warning} warning alerts; in-range reading percentages: ${safePercentages.join(', ') || 'not available'}.`;
   return {

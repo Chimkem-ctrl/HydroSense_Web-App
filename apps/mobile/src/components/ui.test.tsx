@@ -25,7 +25,7 @@ vi.mock('react-native', () => ({
 }));
 vi.mock('expo-linear-gradient', () => ({ LinearGradient: 'LinearGradient' }));
 vi.mock('expo-blur', () => ({ BlurTargetView: 'blur-target', BlurView: 'blur-view' }));
-vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }));
+vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ top: 24, bottom: 34, left: 0, right: 0 }) }));
 vi.mock('react-native-paper', () => ({ Dialog: 'dialog', Portal: 'portal' }));
 vi.mock('lucide-react-native', () => ({ CalendarDays: 'CalendarDays', ChevronLeft: 'ChevronLeft', ChevronRight: 'ChevronRight' }));
 vi.mock('../theme', () => ({
@@ -67,6 +67,15 @@ describe('log filter controls', () => {
     expect(findElement(field, 'TextInput')?.props.accessibilityLabel).toBe('From date (PHT)');
     expect(findElement(field, 'CalendarDays')).toBeDefined();
     expect(findElement(field, 'Pressable')?.props.accessibilityLabel).toBe('Choose from date (pht)');
+  });
+
+  it('keeps the calendar modal within safe screen bounds with a padded, scrollable panel', () => {
+    const field = CalendarFilterField({ label: 'From date (PHT)', value: '', onChangeText: vi.fn() });
+    const modal = findElement(field, 'Modal');
+    const scroll = findElement(modal, 'ScrollView');
+    const panel = findElement(scroll, 'View');
+    expect(flattenStyle(scroll?.props.style).maxHeight).toBe(810);
+    expect(flattenStyle(panel?.props.style)).toMatchObject({ width: 408, padding: 16 });
   });
 
   it('exposes chip selection and forwards presses', () => {

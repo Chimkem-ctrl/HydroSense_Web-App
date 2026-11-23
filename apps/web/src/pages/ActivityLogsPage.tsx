@@ -149,7 +149,7 @@ export default function ActivityLogsPage() {
       <StaleQueryState updatedAt={logs.dataUpdatedAt} />
       <section className="card stack activity-log-records">
         <header className="activity-log-records-header">
-          <h2 className="card-title">Activity records</h2>
+          <h2 className="card-title">Activity Records</h2>
           {canExport && <button type="button" className="icon-button activity-log-export" aria-label="Export CSV" title="Export CSV" disabled={!filteredLogs.length || logs.isLoading || logs.isError || tanks.isLoading || tanks.isError} onClick={exportLogs}><FileDown size={18} aria-hidden="true" /></button>}
         </header>
         <div className="form-grid filter-row activity-log-filters">
@@ -183,7 +183,7 @@ export default function ActivityLogsPage() {
         <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setModalKind(null); }}>
           <section className="dialog card stack" role="dialog" aria-modal="true" aria-labelledby="activity-log-title">
             <header>
-              <h2 id="activity-log-title" className="card-title activity-log-dialog-title">{modalKind === 'OPERATION' ? <ClipboardList size={20} aria-hidden="true" /> : <CloudSun size={20} aria-hidden="true" />}{modalKind === 'OPERATION' ? 'Log hatchery operation' : 'Log weather or event'}</h2>
+              <h2 id="activity-log-title" className="card-title activity-log-dialog-title">{modalKind === 'OPERATION' ? <ClipboardList size={20} aria-hidden="true" /> : <CloudSun size={20} aria-hidden="true" />}{modalKind === 'OPERATION' ? 'Log Hatchery Operation' : 'Log Weather or Event'}</h2>
               <p className="small muted">Add an activity record for shift handover.</p>
             </header>
             <form className="stack activity-log-form" onSubmit={submitLog}>

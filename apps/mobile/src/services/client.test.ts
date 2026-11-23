@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('expo-file-system/legacy', () => ({
+  EncodingType: { Base64: 'base64' },
+  readAsStringAsync: vi.fn(),
+}));
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -58,6 +63,27 @@ describe('mobile pending account review', () => {
     expect(fetchMock).toHaveBeenCalledWith('https://example.test/rest/v1/profiles?id=eq.1&select=*', expect.objectContaining({
       headers: { apikey: 'public-key', Authorization: 'Bearer token' },
     }));
+  });
+
+  it('loads and uploads profile pictures through the authenticated avatar endpoints', async () => {
+    vi.stubEnv('EXPO_PUBLIC_API_URL', 'https://example.test/functions/v1/api');
+    vi.stubEnv('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'public-key');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ avatarUrl: 'https://example.test/old.webp' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ avatarUrl: 'https://example.test/new.webp' }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const fileSystem = await import('expo-file-system/legacy');
+    vi.mocked(fileSystem.readAsStringAsync).mockResolvedValueOnce('dGVzdA==');
+    const { getProfileAvatarUrl, saveProfileAvatar, setMobileAccessToken } = await import('./client');
+    setMobileAccessToken('token');
+    await expect(getProfileAvatarUrl()).resolves.toBe('https://example.test/old.webp');
+    await expect(saveProfileAvatar('file:///profile.webp', 'image/webp')).resolves.toBe('https://example.test/new.webp');
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://example.test/functions/v1/api/v1/profile/avatar', expect.objectContaining({
+      method: 'PUT',
+      headers: { apikey: 'public-key', Authorization: 'Bearer token', 'Content-Type': 'image/webp' },
+    }));
+    const body = fetchMock.mock.calls[1][1]?.body as Blob;
+    expect(Array.from(new Uint8Array(await body.arrayBuffer()))).toEqual([116, 101, 115, 116]);
   });
 
   it('reports Supabase authorization and missing profile errors without using a fallback', async () => {

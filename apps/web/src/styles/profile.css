@@ -51,6 +51,11 @@
 .profile-password-dialog form { gap: 14px; }
 .glass-shell .profile-password-dialog .field input { border-color: rgba(var(--overlay-accent), .5); background: rgba(var(--overlay-accent), .14); color: var(--text-primary); }
 .glass-shell .profile-password-dialog .field input:focus-visible { outline-color: rgb(var(--overlay-accent)); }
+.glass-shell .profile-password-dialog .profile-password-control { border-color: rgba(var(--overlay-accent), .5); background: rgba(var(--overlay-accent), .14); }
+.glass-shell .profile-password-dialog .profile-password-control:focus-within { border-color: rgb(var(--overlay-accent)); outline: none; box-shadow: 0 0 0 3px rgba(var(--overlay-accent), .14); }
+.glass-shell .profile-password-dialog .profile-password-control input { border: 0; background: transparent; color: var(--text-primary); }
+.glass-shell .profile-password-dialog .profile-password-control .password-toggle { color: var(--text-secondary); }
+.glass-shell .profile-password-dialog .profile-password-control .password-toggle:hover:not(:disabled) { color: var(--text-primary); background: rgba(var(--overlay-accent), .14); }
 .profile-password-dialog .profile-password-error { color: var(--critical); }
 .profile-password-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
 .profile-password-actions .button { min-width: 120px; }

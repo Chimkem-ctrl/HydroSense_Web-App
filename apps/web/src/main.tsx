@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import { resetSessionOnLaunch } from './services/authService';
+import { restoreSessionOnLaunch } from './services/authService';
 import './styles/tokens.css';
 import './styles/app.css';
 import './styles/auth-variables.css';
@@ -17,10 +17,19 @@ import './styles/ui-fixes.css';
 import './styles/dash-layout.css';
 import './styles/ui-overhaul.css';
 
-resetSessionOnLaunch();
+const root = ReactDOM.createRoot(document.getElementById('root')!);
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+async function start() {
+  root.render(<p role="status">Restoring session...</p>);
+  try {
+    await restoreSessionOnLaunch();
+    root.render(<React.StrictMode><App /></React.StrictMode>);
+  } catch (error) {
+    root.render(<div role="alert">
+      <p>Could not restore your session: {error instanceof Error ? error.message : 'Unexpected error.'}</p>
+      <button type="button" onClick={() => void start()}>Retry</button>
+    </div>);
+  }
+}
+
+void start();

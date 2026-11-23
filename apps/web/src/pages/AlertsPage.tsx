@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, UserRound, UsersRound } from 'lucide-react';
-import { can, formatManilaDateTime, hatcheryId, resolveAlertWithActivityLog, validateAcknowledgeNote } from '@hydrosense/shared';
+import { can, formatManilaDateTime, formatMeasuredParameterLabel, hatcheryId, resolveAlertWithActivityLog, validateAcknowledgeNote } from '@hydrosense/shared';
 import type { AlertItem } from '@hydrosense/shared';
 import { api } from '../app/api';
 import { useRole } from '../app/auth/RoleContext';
@@ -23,16 +23,13 @@ const tabs: Array<{ key: AlertTab; label: string }> = [
 ];
 
 function parameterName(parameter: string) {
-  const normalized = parameter.toLowerCase();
-  if (normalized === 'do' || normalized.includes('oxygen')) return 'Dissolved oxygen';
-  if (normalized === 'ph') return 'pH';
-  if (normalized.includes('temperature')) return 'Temperature';
-  return parameter;
+  const formatted = formatMeasuredParameterLabel(parameter);
+  return formatted;
 }
 
 function parameterUnit(parameter: string) {
   const name = parameterName(parameter);
-  return name === 'Temperature' ? '°C' : name === 'Dissolved oxygen' ? 'mg/L' : name === 'pH' ? 'pH' : '';
+  return name === 'Temperature' ? '°C' : name === 'DO' ? 'mg/L' : name === 'pH' ? 'pH' : '';
 }
 
 export default function AlertsPage() {
@@ -148,7 +145,7 @@ export default function AlertsPage() {
       {role === 'admin' && tab === 'open' && (pendingRequests.isLoading || pendingRequests.isError || visibleRequests.length > 0) && (
         <section className="card stack account-requests-card" aria-label="Pending account requests">
           <header className="account-requests-header">
-            <h2 className="card-title">Pending account requests</h2>
+            <h2 className="card-title">Pending Account Requests</h2>
             {!pendingRequests.isLoading && !pendingRequests.isError && <Link className="button" to="/admin/users"><UsersRound size={16} aria-hidden="true" />Review account requests</Link>}
           </header>
           {pendingRequests.isLoading ? <LoadingState label="Loading account requests" /> : pendingRequests.isError ? <ErrorState error={pendingRequests.error} onRetry={() => void pendingRequests.refetch()} /> : visibleRequests.map((request) => (
@@ -177,7 +174,7 @@ export default function AlertsPage() {
       <section className="card glass alerts-history-card" aria-labelledby="alerts-history-title">
         <header className="trends-section-heading">
           <div>
-            <h2 id="alerts-history-title" className="card-title">Alert history</h2>
+            <h2 id="alerts-history-title" className="card-title">Alert History</h2>
             <p>{tankNames.get(tankId) ?? 'Selected tank'} · {period === '7d' ? 'Last 7 days' : period === '30d' ? 'Last 30 days' : 'All dates'}</p>
           </div>
           <span className="alerts-history-count">Showing {items.length} alert{items.length === 1 ? '' : 's'}</span>
@@ -216,7 +213,7 @@ export default function AlertsPage() {
                     <tr key={alert.id}>
                       <td><time dateTime={alert.createdAt}>{formatManilaDateTime(new Date(alert.createdAt))}</time></td>
                       <td>{parameter === 'pH' ? `${alert.value} pH` : '—'}</td>
-                      <td>{parameter === 'Dissolved oxygen' ? `${alert.value} mg/L` : '—'}</td>
+                      <td>{parameter === 'DO' ? `${alert.value} mg/L` : '—'}</td>
                       <td>{parameter === 'Temperature' ? `${alert.value} °C` : '—'}</td>
                       <td><StatusBadge level={alert.severity === 'critical' ? 'critical' : 'warning'} label={alert.severity} /></td>
                       <td>{alert.acknowledgedBy ?? '—'}</td>
@@ -250,7 +247,7 @@ export default function AlertsPage() {
         <div className="dialog-backdrop alerts-response-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setSelected(null); setResolveDialog(false); } }}>
           <section className="dialog card stack alerts-response-dialog" role="dialog" aria-modal="true" aria-labelledby="alert-response-title">
             <header className="alerts-response-heading">
-              <div><h2 id="alert-response-title" className="card-title">Response history</h2><p>{parameterName(selected.parameter)} alert · {formatManilaDateTime(new Date(selected.createdAt))} PHT · {tankNames.get(selected.tankId) ?? 'Unknown tank'}</p></div>
+              <div><h2 id="alert-response-title" className="card-title">Response History</h2><p>{parameterName(selected.parameter)} alert · {formatManilaDateTime(new Date(selected.createdAt))} PHT · {tankNames.get(selected.tankId) ?? 'Unknown tank'}</p></div>
               <div className="alerts-response-actions">
                 {selected.status === 'acknowledged' && can(role, 'resolveAlert') && <button type="button" className="button button-primary button-soft-action" onClick={() => { setResolveDialog(true); setNote(''); setFormError(''); }}>Resolve alert</button>}
                 <button type="button" className="button" onClick={() => { setSelected(null); setResolveDialog(false); }}>Close history</button>

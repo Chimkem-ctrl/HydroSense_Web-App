@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Save } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatManilaDateTime, getManilaDateString } from '@hydrosense/shared';
+import { formatManilaDateTime, formatMeasuredParameterLabel, getManilaDateString } from '@hydrosense/shared';
 import type { CalibrationLog } from '@hydrosense/shared';
 import { api } from '../app/api';
 import { useRole } from '../app/auth/RoleContext';
@@ -85,7 +85,7 @@ export default function CalibrationPage() {
           <div className="dash-calibration-top">
             <form className="card stack dash-card dash-calibration-form" onSubmit={submit}>
               <header className="dash-card-header">
-                <h2 className="card-title">Log calibration</h2>
+                <h2 className="card-title">Log Calibration</h2>
                 <p className="small muted dash-subtitle">Record reference readings and the next scheduled calibration.</p>
               </header>
               {error && <p className="state-error" role="alert">{error}</p>}
@@ -106,7 +106,7 @@ export default function CalibrationPage() {
             </form>
             <section className="card stack dash-card dash-calibration-due">
               <header className="dash-card-header">
-                <h2 className="card-title">Calibration due dates</h2>
+                <h2 className="card-title">Calibration Due Dates</h2>
                 <p className="small muted dash-subtitle">Review scheduled calibration dates and overdue records.</p>
               </header>
               <div className="dash-calibration-due-content">
@@ -115,7 +115,7 @@ export default function CalibrationPage() {
                     {query.data.map((log) => {
                       const overdue = new Date(log.nextDue).getTime() < now;
                       return <tr key={log.id}>
-                        <td>{log.parameter.toUpperCase()}</td>
+                        <td>{formatMeasuredParameterLabel(log.parameter)}</td>
                         <td>{log.standard}</td>
                         <td className="table-numeric">{log.before}</td>
                         <td className="table-numeric">{log.after}</td>
@@ -131,7 +131,7 @@ export default function CalibrationPage() {
           </div>
           <section className="card dash-card dash-stat dash-calibration-summary">
             <header className="dash-card-header">
-              <h2 className="card-title">Calibration status</h2>
+              <h2 className="card-title">Calibration Status</h2>
               <p className="small muted dash-subtitle">Time until the soonest calibration is due.</p>
               <StaleQueryState updatedAt={query.dataUpdatedAt} />
             </header>
@@ -150,7 +150,7 @@ export default function CalibrationPage() {
           </div>
           <section className="card stack dash-card dash-calibration-checklist">
             <header className="dash-card-header">
-              <h2 className="card-title">Maintenance checklist</h2>
+              <h2 className="card-title">Maintenance Checklist</h2>
               <p className="small muted dash-subtitle">Complete these informational maintenance steps.</p>
             </header>
             <div className="dash-list">

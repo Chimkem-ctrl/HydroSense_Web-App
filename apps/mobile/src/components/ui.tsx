@@ -4,7 +4,7 @@ import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressa
 import type { StyleProp, ViewStyle } from 'react-native';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Dialog, Portal } from 'react-native-paper';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { authColors, uiScale, useTheme } from '../theme';
@@ -154,6 +154,8 @@ function calendarDateKey(year: number, month: number, day: number) {
 
 export function CalendarFilterField({ label, value, onChangeText, placeholder }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string }) {
   const { colors } = useTheme();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const styles = createStyles(colors);
   const [visible, setVisible] = useState(false);
   const [visibleMonth, setVisibleMonth] = useState(() => {
@@ -186,28 +188,34 @@ export function CalendarFilterField({ label, value, onChangeText, placeholder }:
       </Pressable>
     </View>
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
-      <View style={{ flex: 1, justifyContent: 'center', padding: uiScale.spacing[4], backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: uiScale.spacing[4], paddingTop: Math.max(uiScale.spacing[4], insets.top + uiScale.spacing[2]), paddingBottom: Math.max(uiScale.spacing[4], insets.bottom + uiScale.spacing[2]), backgroundColor: 'rgba(0,0,0,0.5)' }}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close calendar" onPress={() => setVisible(false)} style={StyleSheet.absoluteFill} />
-        <View style={{ gap: uiScale.spacing[3], borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.card, padding: uiScale.spacing[4], backgroundColor: colors.surface }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => moveMonth(-1)} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={20} color={colors.ink} /></Pressable>
-            <Text accessibilityRole="header" style={{ color: colors.ink, fontWeight: '700' }}>{monthLabel}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => moveMonth(1)} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={20} color={colors.ink} /></Pressable>
+        <ScrollView
+          style={{ width: '100%', maxHeight: Math.max(160, height - insets.top - insets.bottom - uiScale.spacing[4] * 2) }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: uiScale.spacing[2] }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={{ width: Math.min(width - uiScale.spacing[4] * 2, 440), alignSelf: 'center', gap: uiScale.spacing[3], borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.card, padding: uiScale.spacing[4], backgroundColor: colors.surface }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => moveMonth(-1)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={20} color={colors.ink} /></Pressable>
+              <Text accessibilityRole="header" style={{ color: colors.ink, fontWeight: '700' }}>{monthLabel}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => moveMonth(1)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={20} color={colors.ink} /></Pressable>
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((weekday) => <Text key={weekday} accessibilityLabel={weekday} style={{ width: '14.28%', paddingVertical: 8, color: colors.muted, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{weekday.slice(0, 1)}</Text>)}
+              {Array.from({ length: leadingDays }, (_, index) => <View key={`empty-${index}`} style={{ width: '14.28%', height: 40 }} />)}
+              {Array.from({ length: days }, (_, index) => {
+                const day = index + 1;
+                const dateKey = calendarDateKey(year, month, day);
+                const selected = dateKey === value;
+                const dateLabel = new Date(year, month, day).toLocaleDateString();
+                return <Pressable key={dateKey} accessibilityRole="button" accessibilityLabel={dateLabel} accessibilityState={{ selected }} onPress={() => { onChangeText(dateKey); setVisible(false); }} style={{ width: '14.28%', height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.pill, backgroundColor: selected ? colors.selected : 'transparent' }}>
+                  <Text style={{ color: selected ? colors.teal : colors.ink, fontWeight: selected ? '700' : '400' }}>{day}</Text>
+                </Pressable>;
+              })}
+            </View>
           </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((weekday) => <Text key={weekday} accessibilityLabel={weekday} style={{ width: '14.28%', paddingVertical: 8, color: colors.muted, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{weekday.slice(0, 1)}</Text>)}
-            {Array.from({ length: leadingDays }, (_, index) => <View key={`empty-${index}`} style={{ width: '14.28%', height: 40 }} />)}
-            {Array.from({ length: days }, (_, index) => {
-              const day = index + 1;
-              const dateKey = calendarDateKey(year, month, day);
-              const selected = dateKey === value;
-              const dateLabel = new Date(year, month, day).toLocaleDateString();
-              return <Pressable key={dateKey} accessibilityRole="button" accessibilityLabel={dateLabel} accessibilityState={{ selected }} onPress={() => { onChangeText(dateKey); setVisible(false); }} style={{ width: '14.28%', height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.pill, backgroundColor: selected ? colors.selected : 'transparent' }}>
-                <Text style={{ color: selected ? colors.teal : colors.ink, fontWeight: selected ? '700' : '400' }}>{day}</Text>
-              </Pressable>;
-            })}
-          </View>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   </View>;

@@ -6,7 +6,7 @@ import { StatusBadge } from './StatusBadge';
 
 const config: Record<MeasuredParameter, { title: string; unit: string }> = {
   temperature: { title: 'Temperature', unit: '°C' },
-  do: { title: 'Dissolved oxygen', unit: 'mg/L' },
+  do: { title: 'DO', unit: 'mg/L' },
   ph: { title: 'pH', unit: 'pH' },
 };
 
