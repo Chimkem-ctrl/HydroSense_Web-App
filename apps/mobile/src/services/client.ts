@@ -1,22 +1,40 @@
 import {
   HttpApiClient,
-  MockApiClient,
-  MockLiveClient,
   WebSocketLiveClient,
+  changeSupabasePassword,
+  validatePasswordChange,
 } from '@hydrosense/shared';
 import type { LiveClient } from '@hydrosense/shared';
-import type { Role } from '@hydrosense/shared';
+import type { MeasuredParameter, Role, Threshold } from '@hydrosense/shared';
+import { toByteArray } from 'base64-js';
 
-export const DATA_MODE: 'mock' | 'api' = process.env.EXPO_PUBLIC_DATA_MODE === 'mock' ? 'mock' : 'api';
+if (process.env.EXPO_PUBLIC_DATA_MODE && process.env.EXPO_PUBLIC_DATA_MODE !== 'api') {
+  throw new Error('Mobile sample data is no longer supported. Remove EXPO_PUBLIC_DATA_MODE or set it to api.');
+}
 const DEFAULT_API_URL = 'https://iafooterjwbihuzwakoc.supabase.co/functions/v1/api';
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim() || process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || DEFAULT_API_URL;
 export const API_KEY = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
   (API_BASE_URL.replace(/\/$/, '') === DEFAULT_API_URL ? 'sb_publishable_Dagoxgq2hOU3RFsE8RJGaA_jUtn8oJn' : undefined);
 const wsUrl = process.env.EXPO_PUBLIC_WS_URL?.trim();
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim().replace(/\/$/, '') ||
+  API_BASE_URL.match(/^(https?:\/\/[^/]+)\/functions\/v1\/api\/?$/)?.[1];
 
 let accessToken: string | null = null;
 export function setMobileAccessToken(token: string | null) {
   accessToken = token;
+}
+
+export async function changePassword(userId: string, email: string, current: string, next: string, confirmation: string): Promise<void> {
+  const issue = validatePasswordChange(current, next, confirmation);
+  if (issue) throw new Error(issue);
+  const token = accessToken;
+  if (!token) throw new Error('Your session has expired. Sign in again.');
+  if (!supabaseUrl) throw new Error('Password changes require a configured Supabase URL.');
+  if (!API_KEY) throw new Error('Supabase publishable key is not configured.');
+  await changeSupabasePassword({
+    url: supabaseUrl, apiKey: API_KEY, token, userId, email, current, next,
+    isCurrentSession: () => accessToken === token,
+  });
 }
 
 export interface PendingAccount {
@@ -24,18 +42,42 @@ export interface PendingAccount {
   firstName: string;
   lastName: string;
   email: string;
+  requestedRole: Role | null;
   employeeId: string | null;
   site: string | null;
+  phone: string | null;
+  createdAt: string;
 }
 
-async function reviewRequest(path: string, init?: RequestInit): Promise<unknown> {
-  if (DATA_MODE !== 'api') throw new Error('Account review is unavailable in mobile demo mode. Connect to the backend to review requests.');
-  if (!accessToken) throw new Error('Sign in again to review account requests.');
+export interface AccountProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  requestedRole: Role | null;
+  status: string;
+  site: string | null;
+  createdAt: string | null;
+  employeeId: string | null;
+  phone: string | null;
+  position: string | null;
+  address: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
+}
+
+export async function authenticatedRequest(path: string, init?: RequestInit): Promise<unknown> {
+  if (!accessToken) throw new Error('Your session has expired. Sign in again.');
   const response = await fetch(`${API_BASE_URL.replace(/\/$/, '')}${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(API_KEY ? { apikey: API_KEY } : {}), Authorization: `Bearer ${accessToken}` },
   });
-  const result: unknown = await response.json();
+  let result: unknown;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(`The server returned an invalid response (HTTP ${response.status}).`);
+  }
   if (!response.ok) {
     const message = typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string' ? result.error : `HTTP ${response.status}`;
     throw new Error(message);
@@ -43,21 +85,159 @@ async function reviewRequest(path: string, init?: RequestInit): Promise<unknown>
   return result;
 }
 
+export async function getAccountProfile(userId: string): Promise<AccountProfile> {
+  if (!userId.trim()) throw new Error('Sign in to load your profile.');
+  let result: unknown;
+  if (supabaseUrl) {
+    if (!accessToken) throw new Error('Your session has expired. Sign in again.');
+    if (!API_KEY) throw new Error('Supabase publishable key is not configured.');
+    const response = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`, {
+      headers: { apikey: API_KEY, Authorization: `Bearer ${accessToken}` },
+    });
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new Error(`The profile server returned an invalid response (HTTP ${response.status}).`);
+    }
+    if (!response.ok) {
+      const message = typeof body === 'object' && body !== null && 'message' in body && typeof body.message === 'string'
+        ? body.message : `HTTP ${response.status}`;
+      throw new Error(`Could not load your profile: ${message}`);
+    }
+    if (!Array.isArray(body) || body.length !== 1 || typeof body[0] !== 'object' || body[0] === null) {
+      throw new Error('Your account profile was not found or is invalid.');
+    }
+    const profile: Record<string, unknown> = body[0];
+    if (profile.id !== userId) throw new Error('The server returned a different account profile.');
+    if (typeof profile.first_name !== 'string' || typeof profile.last_name !== 'string') throw new Error('The profile name is invalid.');
+    result = {
+      id: profile.id, name: `${profile.first_name} ${profile.last_name}`.trim(), email: profile.email,
+      role: profile.role, requestedRole: profile.requested_role, status: profile.status, site: profile.site, createdAt: profile.created_at,
+      employeeId: profile.employee_id, phone: profile.phone, position: profile.position, address: profile.address,
+      emergencyContactName: profile.emergency_contact_name, emergencyContactPhone: profile.emergency_contact_phone,
+    };
+  } else {
+    result = await authenticatedRequest('/v1/profile');
+  }
+  if (typeof result !== 'object' || result === null || !('id' in result) || typeof result.id !== 'string' ||
+      !('role' in result) || (result.role !== 'operator' && result.role !== 'manager' && result.role !== 'admin') ||
+      !('name' in result) || typeof result.name !== 'string' || !('email' in result) || typeof result.email !== 'string' ||
+      !('status' in result) || typeof result.status !== 'string') {
+    throw new Error('The server returned an invalid account profile.');
+  }
+  if (result.id !== userId) throw new Error('The server returned a different account profile.');
+  const optionalString = (key: string) => {
+    if (!(key in result)) return null;
+    const field = result[key as keyof typeof result];
+    if (field === null || field === undefined) return null;
+    if (typeof field !== 'string') throw new Error(`The profile field ${key} is invalid.`);
+    return field;
+  };
+  const requestedRole = 'requestedRole' in result ? result.requestedRole : null;
+  if (requestedRole !== null && requestedRole !== undefined &&
+      requestedRole !== 'admin' && requestedRole !== 'manager' && requestedRole !== 'operator') {
+    throw new Error('The profile field requestedRole is invalid.');
+  }
+  return {
+    id: result.id, name: result.name, email: result.email, role: result.role, status: result.status,
+    requestedRole: requestedRole === 'admin' || requestedRole === 'manager' || requestedRole === 'operator' ? requestedRole : null,
+    site: optionalString('site'), createdAt: optionalString('createdAt'), employeeId: optionalString('employeeId'),
+    phone: optionalString('phone'), position: optionalString('position'), address: optionalString('address'),
+    emergencyContactName: optionalString('emergencyContactName'), emergencyContactPhone: optionalString('emergencyContactPhone'),
+  };
+}
+
+export async function getProfileAvatarUrl(): Promise<string | undefined> {
+  const result = await authenticatedRequest('/v1/profile');
+  if (typeof result !== 'object' || result === null) {
+    throw new Error('The server returned an invalid profile picture URL.');
+  }
+  const avatarUrl = 'avatarUrl' in result ? result.avatarUrl : undefined;
+  if (avatarUrl !== null && avatarUrl !== undefined && typeof avatarUrl !== 'string') {
+    throw new Error('The server returned an invalid profile picture URL.');
+  }
+  return avatarUrl ?? undefined;
+}
+
+export async function saveProfileAvatar(uri: string, mimeType: string): Promise<string> {
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowedTypes.includes(mimeType)) throw new Error('Choose a JPG, PNG, or WebP image.');
+  if (!accessToken) throw new Error('Your session has expired. Sign in again.');
+
+  const FileSystem = await import('expo-file-system/legacy');
+  const encoded = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  if (!encoded) throw new Error('The selected profile picture could not be read.');
+  const bytes = toByteArray(encoded);
+  if (bytes.byteLength > 2 * 1024 * 1024) throw new Error('The optimized profile picture is larger than 2 MB. Choose a smaller image.');
+  const buffer = new ArrayBuffer(bytes.length);
+  new Uint8Array(buffer).set(bytes);
+
+  const response = await fetch(`${API_BASE_URL.replace(/\/$/, '')}/v1/profile/avatar`, {
+    method: 'PUT',
+    headers: {
+      ...(API_KEY ? { apikey: API_KEY } : {}),
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': mimeType,
+    },
+    body: new Blob([buffer], { type: mimeType }),
+  });
+  let result: unknown;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(`The profile picture server returned an invalid response (HTTP ${response.status}).`);
+  }
+  if (!response.ok) {
+    const message = typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string'
+      ? result.error : `HTTP ${response.status}`;
+    throw new Error(`Unable to save your profile picture: ${message}`);
+  }
+  if (typeof result !== 'object' || result === null || !('avatarUrl' in result) || typeof result.avatarUrl !== 'string') {
+    throw new Error('The saved profile picture URL is invalid.');
+  }
+  return result.avatarUrl;
+}
+
 export async function listPendingAccounts(): Promise<PendingAccount[]> {
-  const result = await reviewRequest('/v1/admin/users?status=pending');
+  const result = await authenticatedRequest('/v1/admin/users?status=pending');
   if (!Array.isArray(result) || !result.every((item) => item && typeof item.id === 'string' && typeof item.firstName === 'string' && typeof item.lastName === 'string' && typeof item.email === 'string')) {
     throw new Error('The server returned an invalid account list.');
   }
-  return result;
+  return result.map((item) => ({
+    ...item,
+    requestedRole: item.requestedRole === 'admin' || item.requestedRole === 'manager' || item.requestedRole === 'operator' ? item.requestedRole : null,
+  }));
 }
 
 export async function reviewPendingAccount(id: string, role: Role | null): Promise<void> {
-  await reviewRequest(`/v1/admin/users/${encodeURIComponent(id)}`, {
+  await authenticatedRequest(`/v1/admin/users/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify({ status: role ? 'approved' : 'rejected', role }),
   });
 }
 
-export const api = DATA_MODE === 'api' ? new HttpApiClient(API_BASE_URL, () => accessToken, API_KEY) : new MockApiClient();
-export const liveClient: LiveClient | null = DATA_MODE === 'mock'
-  ? new MockLiveClient(10_000)
-  : wsUrl ? new WebSocketLiveClient(wsUrl) : null;
+export async function removeAccount(id: string): Promise<void> {
+  await authenticatedRequest(`/v1/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export const api = new HttpApiClient(API_BASE_URL, () => accessToken, API_KEY);
+export const liveClient: LiveClient | null = wsUrl ? new WebSocketLiveClient(wsUrl) : null;
+
+export function getConfiguredThreshold(thresholds: Threshold[], parameter: MeasuredParameter): Threshold {
+  const matches = thresholds.filter((item) => item.parameter === parameter);
+  const threshold = matches[0];
+  if (matches.length !== 1 || !threshold ||
+      (threshold.min === undefined && threshold.max === undefined) ||
+      (threshold.min !== undefined && !Number.isFinite(threshold.min)) ||
+      (threshold.max !== undefined && !Number.isFinite(threshold.max)) ||
+      (threshold.min !== undefined && threshold.max !== undefined && threshold.min > threshold.max)) {
+    throw new Error(`Threshold configuration is missing or invalid for ${parameter}.`);
+  }
+  return threshold;
+}
+
+export async function listConfiguredThresholds(): Promise<Threshold[]> {
+  const thresholds = await api.listThresholds();
+  for (const parameter of ['temperature', 'do', 'ph'] as const) getConfiguredThreshold(thresholds, parameter);
+  return thresholds;
+}

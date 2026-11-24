@@ -1,6 +1,10 @@
 import type { ActivityLog, Tank } from '@hydrosense/shared';
+import { activityHatcheryName, toCsv } from '@hydrosense/shared';
+import { tankLabel } from '../app/tank/tankLabel';
 
 function manilaTimestamp(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Unavailable';
   return new Intl.DateTimeFormat('en-PH', {
     timeZone: 'Asia/Manila',
     year: 'numeric',
@@ -9,43 +13,52 @@ function manilaTimestamp(value: string) {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
-  }).format(new Date(value));
+  }).format(date);
 }
 
-function csvCell(value: string) {
-  const safeValue = /^[\s]*[=+\-@]/.test(value) ? `'${value}` : value;
-  return `"${safeValue.replace(/"/g, '""')}"`;
+function manualReadingsText(log: ActivityLog) {
+  const readings = log.manualReadings;
+  if (!readings) return '';
+  return [
+    ['DO', readings.dissolvedOxygen, 'mg/L'],
+    ['Temperature', readings.temperature, '°C'],
+    ['pH', readings.ph, ''],
+    ['Salinity', readings.salinity, 'ppt'],
+    ['Ammonia', readings.ammonia, 'mg/L'],
+  ].flatMap(([label, value, unit]) => value === undefined ? [] : [`${label}: ${value}${unit ? ` ${unit}` : ''}`])
+    .concat(readings.method ? [`Method: ${readings.method}`] : [])
+    .join('; ');
 }
 
 export function activityLogCsv(logs: ActivityLog[], tanks: Tank[]) {
-  const rows: string[][] = [
-    ['Timestamp (PHT)', 'Tank', 'Type', 'Activity', 'Operator', 'Water change (%)', 'Manual salinity (ppt)', 'Manual DO (mg/L)', 'Manual temperature (°C)', 'Manual pH', 'Manual method', 'Impact', 'Notes'],
+  const rows: unknown[][] = [
+    ['Hatchery', 'Timestamp (PHT)', 'Tank/scope', 'Kind', 'Activity', 'Operator', 'Water change (%)', 'Water source', 'Manual readings', 'Impact', 'Notes'],
     ...logs.map((log) => [
+      activityHatcheryName(log, tanks),
       manilaTimestamp(log.occurredAt),
       log.tankId === 'hatchery'
         ? 'Hatchery-wide'
-        : tanks.find((tank) => tank.id === log.tankId)?.name ?? log.tankId,
+        : tankLabel(tanks.find((tank) => tank.id === log.tankId)?.name),
       log.kind,
       log.type,
       log.operator,
       log.waterChangePercent === undefined ? '' : String(log.waterChangePercent),
-      log.manualReadings?.salinity === undefined ? '' : String(log.manualReadings.salinity),
-      log.manualReadings?.dissolvedOxygen === undefined ? '' : String(log.manualReadings.dissolvedOxygen),
-      log.manualReadings?.temperature === undefined ? '' : String(log.manualReadings.temperature),
-      log.manualReadings?.ph === undefined ? '' : String(log.manualReadings.ph),
-      log.manualReadings?.method ?? '',
+      log.waterSource ?? '',
+      manualReadingsText(log),
       log.impact ?? '',
       log.notes,
     ]),
   ];
-  return rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
+  return toCsv(rows);
 }
 
 export function manilaDate(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Manila',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date(value));
+  }).format(date);
 }

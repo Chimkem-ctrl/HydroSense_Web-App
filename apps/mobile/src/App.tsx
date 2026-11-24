@@ -1,49 +1,72 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useContext, useEffect, useRef, useState } from 'react';
+import type { ComponentRef } from 'react';
+import { AppState, Image, Keyboard, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationLightTheme, NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import type { LinkingOptions } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { BottomTabBarHeightCallbackContext, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { onlineManager } from '@tanstack/react-query';
+import { defaultShouldDehydrateMutation, defaultShouldDehydrateQuery, focusManager, onlineManager } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import * as Notifications from 'expo-notifications';
+import * as SystemUI from 'expo-system-ui';
 import { StatusBar } from 'expo-status-bar';
-import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
-import { Activity, AlertTriangle, ClipboardList, Database, LayoutDashboard, Settings, Wifi } from 'lucide-react-native';
+import { BlurTargetView } from 'expo-blur';
+import { MD3DarkTheme, MD3LightTheme } from 'react-native-paper';
+import { Activity, AlertTriangle, LayoutDashboard, MoreHorizontal, Waves } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { MainTabParamList, RootStackParamList } from './navigation';
+import { enableScreens } from 'react-native-screens';
+import { isBottomBarRoute } from './navigation';
+import type { BottomBarRoute, MainTabParamList, RootStackParamList } from './navigation';
 import {
+  ActivityLogsScreen,
   AlertDetailScreen,
   AlertsScreen,
-  AppearanceScreen,
-  CalibrationScreen,
   ConnectionNotice,
-  ExportScreen,
-  FieldEntryScreen,
   HistoryScreen,
   HomeScreen,
-  AdminReviewScreen,
+  TanksScreen,
+  MoreScreen,
   ManagerReviewScreen,
-  SettingsScreen,
+  ReportsScreen,
   StatusScreen,
   TrendsScreen,
 } from './screens';
-import { LoginScreen, SignUpScreen, PendingApprovalScreen, ForgotPasswordScreen } from './authScreens';
-import { useSession, SessionProvider, TankProvider } from './state';
-import { ThemeProvider, useTheme } from './theme';
+import { LoginScreen, SignUpScreen, PendingApprovalScreen, ForgotPasswordScreen, VerifyEmailScreen } from './authScreens';
+import { useSession } from './state';
+import { ThemeProvider, uiScale, useTheme } from './theme';
 import { HeaderToolbar } from './components/HeaderToolbar';
+import { AppProviders } from './components/AppProviders';
+import { AuditLogsScreen, ProfileScreen, UsersScreen } from './managementScreens';
+import { CriticalAlertModal } from './components/CriticalAlertModal';
+import { BlurTargetContext, TabBarVisibleContext } from './components/ui';
+import { SplashGate } from './splashScreen';
+import { ChatScreen } from './ChatScreen';
 import { api, liveClient } from './services/client';
 import { queryClient, queryPersister } from './services/queryClient';
 import { canAccess } from './access';
+import type { ThemeMode } from './themePreference';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
+const authenticatedBackgrounds: Record<ThemeMode, number> = {
+  light: require('../../web/public/assets/images/manager bg light app (1).png'),
+  dark: require('../../web/public/assets/images/manager bg app.png'),
+};
+// Web needs screen detachment to hide inactive transparent tabs.
+if (Platform.OS === 'web') enableScreens(true);
 onlineManager.setEventListener((setOnline) => NetInfo.addEventListener((state) => {
   setOnline(Boolean(state.isConnected));
 }));
+if (Platform.OS !== 'web') {
+  focusManager.setEventListener((setFocused) => {
+    setFocused(AppState.currentState === 'active');
+    const subscription = AppState.addEventListener('change', (state) => setFocused(state === 'active'));
+    return () => subscription.remove();
+  });
+}
 
 if (Platform.OS !== 'web') Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -57,55 +80,71 @@ if (Platform.OS !== 'web') Notifications.setNotificationHandler({
 
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: ['hydrosense://'],
-  config: { screens: { AlertDetail: 'alerts/:alertId' } },
+  config: { screens: { AlertDetail: 'alerts/:alertId', Login: 'signin' } },
 };
 
 function MainTabs() {
   const { user } = useSession();
-  return <Tabs.Navigator tabBar={(props) => <MobileTabBar {...props} />} screenOptions={{ header: (props) => <HeaderToolbar {...props} /> }}>
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return <TabBarVisibleContext.Provider value={!keyboardVisible}><Tabs.Navigator tabBar={(props) => keyboardVisible ? null : <MobileTabBar {...props} />} screenOptions={{ sceneStyle: { backgroundColor: 'transparent' }, header: (props) => <HeaderToolbar {...props} /> }}>
     <Tabs.Screen name="Home" component={HomeScreen} />
+    <Tabs.Screen name="Tanks" component={TanksScreen} />
     <Tabs.Screen name="Alerts" component={AlertsScreen} />
     <Tabs.Screen name="Trends" component={TrendsScreen} />
-    {canAccess(user?.role ?? null, 'history') && <Tabs.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />}
+    <Tabs.Screen name="More" component={MoreScreen} />
+    <Tabs.Screen name="Chat" component={ChatScreen} />
+    <Tabs.Screen name="Activity" component={ActivityLogsScreen} />
+    <Tabs.Screen name="Reports" component={ReportsScreen} />
     <Tabs.Screen name="Status" component={StatusScreen} />
-    {user?.role === 'manager' && <Tabs.Screen name="Review" component={ManagerReviewScreen} options={{ title: 'Review' }} />}
-    {user?.role === 'admin' && <Tabs.Screen name="Review" component={AdminReviewScreen} options={{ title: 'Admin' }} />}
-    <Tabs.Screen name="Settings" component={SettingsScreen} />
-  </Tabs.Navigator>;
+    {canAccess(user?.role ?? null, 'history') && <Tabs.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />}
+    {canAccess(user?.role ?? null, 'validation') && <Tabs.Screen name="Review" component={ManagerReviewScreen} options={{ title: 'Validation' }} />}
+    <Tabs.Screen name="Profile" component={ProfileScreen} options={{ title: 'My Profile' }} />
+    {canAccess(user?.role ?? null, 'users') && <Tabs.Screen name="Users" component={UsersScreen} options={{ title: 'Users & Roles' }} />}
+    {canAccess(user?.role ?? null, 'admin') && <Tabs.Screen name="AuditLogs" component={AuditLogsScreen} options={{ title: 'Audit & System Logs' }} />}
+  </Tabs.Navigator></TabBarVisibleContext.Provider>;
 }
 
 const tabIcons = {
   Home: LayoutDashboard,
+  Tanks: Waves,
   Alerts: AlertTriangle,
   Trends: Activity,
-  History: Database,
-  Status: Wifi,
-  Review: ClipboardList,
-  Settings,
-};
+  More: MoreHorizontal,
+} satisfies Record<BottomBarRoute, typeof Activity>;
 
 function MobileTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  return <View style={{ backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }}>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 8, paddingTop: 6, gap: 2 }}>
+  const onHeightChange = useContext(BottomTabBarHeightCallbackContext);
+  return <View onLayout={(event) => onHeightChange?.(event.nativeEvent.layout.height)} style={{ backgroundColor: 'transparent', borderTopWidth: 1, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }}>
+    <View style={{ flexDirection: 'row', paddingHorizontal: 8, paddingTop: 6, gap: 2 }}>
       {state.routes.map((route, index) => {
-        const selected = state.index === index;
+        if (!isBottomBarRoute(route.name)) return null;
+        const selected = state.index === index || (route.name === 'More' && !isBottomBarRoute(state.routes[state.index].name));
         const options = descriptors[route.key].options;
         const label = typeof options.tabBarLabel === 'string' ? options.tabBarLabel : options.title ?? route.name;
-        const Icon = tabIcons[route.name as keyof typeof tabIcons];
+        const Icon = tabIcons[route.name];
         return <Pressable key={route.key} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={options.tabBarAccessibilityLabel ?? label}
           onPress={() => {
             const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-            if (!selected && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+            if (state.index !== index && !event.defaultPrevented) navigation.navigate(route.name, route.params);
           }}
           onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
-          style={{ minWidth: 74, minHeight: 55, alignItems: 'center', justifyContent: 'center', borderRadius: 16, gap: 3, backgroundColor: selected ? colors.selected : 'transparent' }}>
-          {Icon && <Icon size={20} color={selected ? colors.teal : colors.muted} strokeWidth={2} />}
-          <Text style={{ fontSize: 11, fontWeight: selected ? '700' : '500', color: selected ? colors.teal : colors.muted }}>{label}</Text>
+          style={{ flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.card, gap: 3, backgroundColor: selected ? colors.selected : 'transparent' }}>
+          <Icon size={20} color={selected ? colors.teal : colors.muted} strokeWidth={2} />
+          <Text style={{ fontSize: uiScale.type.caption, fontWeight: selected ? '700' : '500', color: selected ? colors.teal : colors.muted }}>{label}</Text>
         </Pressable>;
       })}
-    </ScrollView>
+    </View>
   </View>;
 }
 
@@ -124,7 +163,8 @@ function LiveSync() {
           if (event.type === 'reading') {
             queryClient.setQueryData(['latest-reading', tank.id], event.reading);
             void queryClient.invalidateQueries({ queryKey: ['mobile-trends', tank.id] });
-            void queryClient.invalidateQueries({ queryKey: ['mobile-history', tank.id] });
+            void queryClient.invalidateQueries({ queryKey: ['history', tank.id] });
+            void queryClient.invalidateQueries({ queryKey: ['alerts'] });
           } else {
             void queryClient.invalidateQueries({ queryKey: ['device-statuses'] });
           }
@@ -159,7 +199,8 @@ function NotificationNavigation() {
 
 function AppNavigation() {
   const { colors, mode } = useTheme();
-  const { user, ready } = useSession();
+  const { user, ready, signOut } = useSession();
+  const blurTarget = useRef<ComponentRef<typeof View> | null>(null);
   const [online, setOnline] = useState(true);
   useEffect(() => NetInfo.addEventListener((state) => setOnline(Boolean(state.isConnected))), []);
   useEffect(() => {
@@ -168,31 +209,41 @@ function AppNavigation() {
       console.error('Could not request notification permission.', error);
     });
   }, [user]);
-  if (!ready) return <View style={{ flex: 1, backgroundColor: colors.canvas, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.teal} /></View>;
-  return <>
-    <NavigationContainer ref={navigationRef} linking={linking} theme={{ ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme), colors: { ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme).colors, primary: colors.teal, background: colors.canvas, card: colors.surface, text: colors.ink, border: colors.border } }}>
+  async function handleGetStarted() {
+    if (!user) return;
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Could not fully clear the saved session before sign-in.', error);
+    }
+  }
+  return <SplashGate ready={ready} hasUser={Boolean(user)} onGetStarted={handleGetStarted}><View style={{ flex: 1, width: '100%', height: '100%', backgroundColor: colors.canvas }}>
+    <BlurTargetView ref={blurTarget} style={[StyleSheet.absoluteFill, { backgroundColor: colors.canvas }]} pointerEvents="none">
+      {user && <Image source={authenticatedBackgrounds[mode]} resizeMode="cover" style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.15 }] }]} accessible={false} />}
+    </BlurTargetView>
+    <BlurTargetContext.Provider value={blurTarget}>
+    <NavigationContainer ref={navigationRef} linking={linking} theme={{ ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme), colors: { ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme).colors, primary: colors.teal, background: user ? 'transparent' : colors.canvas, card: colors.surface, text: colors.ink, border: colors.border } }}>
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <LiveSync />
       <NotificationNavigation />
-      <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: colors.canvas }, headerTintColor: colors.ink, headerShadowVisible: false, headerTitleStyle: { fontWeight: '700' } }}>
+      <Stack.Navigator screenOptions={{ contentStyle: { backgroundColor: user ? 'transparent' : colors.canvas }, headerStyle: { backgroundColor: user ? 'transparent' : colors.canvas }, headerTintColor: colors.ink, headerShadowVisible: false, headerTitleStyle: { fontWeight: '700' } }}>
         {!user ? <>
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="SignUp" component={SignUpScreen} options={{ title: 'Request an account' }} />
-          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ title: 'Reset your password' }} />
-          <Stack.Screen name="PendingApproval" component={PendingApprovalScreen} options={{ title: 'Account request' }} />
+          <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="PendingApproval" component={PendingApprovalScreen} options={{ headerShown: false }} />
         </> : <>
           <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-          <Stack.Screen name="Appearance" component={AppearanceScreen} options={{ title: 'Appearance' }} />
-          <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert detail' }} />
-          <Stack.Screen name="Calibration" component={CalibrationScreen} options={{ title: 'Calibration' }} />
-          <Stack.Screen name="FieldEntry" component={FieldEntryScreen} options={{ title: 'Field entry' }} />
-          <Stack.Screen name="Export" component={ExportScreen} options={{ title: 'Export' }} />
-          {canAccess(user.role, 'validation') && <Stack.Screen name="ValidationReview" component={ManagerReviewScreen} options={{ title: 'Validation review' }} />}
+          <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert Detail' }} />
+          {canAccess(user.role, 'validation') && <Stack.Screen name="ValidationReview" component={ManagerReviewScreen} options={{ title: 'Validation Review' }} />}
         </>}
       </Stack.Navigator>
     </NavigationContainer>
     <ConnectionNotice online={online} />
-  </>;
+    {user && <CriticalAlertModal />}
+    </BlurTargetContext.Provider>
+  </View></SplashGate>;
 }
 
 export default function App() {
@@ -201,12 +252,19 @@ export default function App() {
 
 function ThemedApp() {
   const { colors, mode } = useTheme();
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    void SystemUI.setBackgroundColorAsync(colors.canvas).catch((error: unknown) => {
+      console.error('Could not update the system background color.', error);
+    });
+  }, [colors.canvas]);
   const paperTheme = mode === 'dark' ? MD3DarkTheme : MD3LightTheme;
-  return <PaperProvider theme={{ ...paperTheme, colors: { ...paperTheme.colors, primary: colors.teal, background: colors.canvas, surface: colors.surface, onSurface: colors.ink, onSurfaceVariant: colors.muted } }}><PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1000 }}>
-    <SessionProvider>
-      <TankProvider>
-        <AppNavigation />
-      </TankProvider>
-    </SessionProvider>
-  </PersistQueryClientProvider></PaperProvider>;
+  return <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1000, dehydrateOptions: {
+    shouldDehydrateQuery: (query) => query.queryKey[0] !== 'mobile-chat' && defaultShouldDehydrateQuery(query),
+    shouldDehydrateMutation: (mutation) => mutation.options.mutationKey?.[0] !== 'mobile-chat' && defaultShouldDehydrateMutation(mutation),
+  } }}>
+    <AppProviders theme={{ ...paperTheme, colors: { ...paperTheme.colors, primary: colors.teal, background: colors.canvas, surface: colors.surface, onSurface: colors.ink, onSurfaceVariant: colors.muted } }}>
+      <AppNavigation />
+    </AppProviders>
+  </PersistQueryClientProvider>;
 }

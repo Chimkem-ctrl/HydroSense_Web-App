@@ -1,0 +1,120 @@
+import { Workbook } from 'exceljs/dist/exceljs.bare';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { formatMeasuredParameterLabel, toCsv } from '@hydrosense/shared';
+import type { ReportModel } from '@hydrosense/shared';
+import { hatcheryLabel } from '../management';
+
+type ReportRow = [string, string, string];
+export type ReportDataset = 'readings' | 'alerts' | 'activity' | 'calibration' | 'validation';
+
+export function reportDatasetRows(model: ReportModel, dataset: ReportDataset): unknown[][] {
+  switch (dataset) {
+    case 'readings':
+      return [['Timestamp (ISO)', 'Tank', 'Temperature °C', 'DO mg/L', 'pH'], ...model.rawReadings.map((row) => [row.timestamp, model.tanks.find((tank) => tank.id === row.tankId)?.name ?? row.tankId, row.temperature, row.doMgL, row.ph])];
+    case 'alerts':
+      return [['Created (ISO)', 'Tank', 'Parameter', 'Value', 'Threshold', 'Severity', 'Status', 'Acknowledged by', 'Response note'], ...model.alerts.map((row) => [row.createdAt, row.tankId, formatMeasuredParameterLabel(row.parameter), row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? ''])];
+    case 'activity':
+      return [['Occurred (ISO)', 'Kind', 'Type', 'Tank / scope', 'Details', 'Operator'], ...model.activityLogs.map((row) => [row.occurredAt, row.kind, row.type, row.tankId, row.notes, row.operator])];
+    case 'calibration':
+      return [['Date (ISO)', 'Tank', 'Parameter', 'Standard', 'Before', 'After', 'User', 'Next due (ISO)'], ...model.calibrationLogs.map((row) => [row.date, row.tankId, formatMeasuredParameterLabel(row.parameter), row.standard, row.before, row.after, row.user, row.nextDue])];
+    case 'validation':
+      return [['Parameter', 'HydroSense mean', 'Reference', 'Error', '% error', 'Tolerance', 'Result'], ...model.validationRows.map((row) => [formatMeasuredParameterLabel(row.parameter), row.hydrosenseMean, row.reference, row.error, row.pctError, row.tolerance, row.pass ? 'pass' : 'fail'])];
+  }
+}
+
+export function reportRows(report: ReportModel): ReportRow[] {
+  const rows: ReportRow[] = [
+    ['Report', 'ID', report.id],
+    ['Report', 'Tanks', report.tanks.map((tank) => tank.name).join(', ')],
+    ['Report', 'Hatchery', [...new Set(report.tanks.map((tank) => hatcheryLabel(tank.site)))].join(', ')],
+    ['Report', 'Period', `${report.range.from} - ${report.range.to}`],
+    ['Report', 'Prepared by', `${report.generatedBy.name} (${report.generatedBy.role})`],
+  ];
+  if (report.sections.includes('summary')) rows.push(['Summary', 'Overview', report.summary]);
+  if (report.sections.includes('statistics')) {
+    for (const stat of report.statistics) {
+      rows.push(['Statistics', formatMeasuredParameterLabel(stat.parameter), `Min: ${stat.min?.toFixed(2) ?? 'N/A'}; max: ${stat.max?.toFixed(2) ?? 'N/A'}; mean: ${stat.mean?.toFixed(2) ?? 'N/A'} ${stat.unit}; standard deviation: ${stat.standardDeviation?.toFixed(2) ?? 'N/A'}; in range: ${stat.percentInRange?.toFixed(1) ?? 'N/A'}%; excursions: ${stat.excursions}; longest excursion: ${stat.longestExcursionHours.toFixed(1)} hours; valid: ${stat.readings}; invalid excluded: ${stat.invalidReadings}`]);
+    }
+  }
+  if (report.sections.includes('alerts')) {
+    for (const alert of report.alerts) {
+      rows.push(['Alerts', `${alert.createdAt} ${alert.tankId}`, `${formatMeasuredParameterLabel(alert.parameter)}: ${alert.value}; ${alert.severity}; ${alert.status}; ${alert.note ?? ''}`]);
+    }
+  }
+  if (report.sections.includes('raw-readings')) {
+    for (const reading of report.rawReadings) {
+      rows.push(['Readings', `${reading.timestamp} ${reading.tankId}`, `Temperature: ${reading.temperature} C; DO: ${reading.doMgL} mg/L; pH: ${reading.ph}`]);
+    }
+  }
+  return rows;
+}
+
+export async function createReportFile(report: ReportModel): Promise<{ bytes: Uint8Array; mimeType: string; extension: string }> {
+  const rows = reportRows(report);
+  if (report.format === 'csv') {
+    const encoded = encodeURIComponent(toCsv([['Section', 'Item', 'Details'], ...rows])).replace(/%([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+    return { bytes: Uint8Array.from(encoded, (character) => character.charCodeAt(0)), mimeType: 'text/csv', extension: 'csv' };
+  }
+  if (report.format === 'xlsx') {
+    const workbook = new Workbook();
+    const sheet = workbook.addWorksheet('HydroSense');
+    sheet.columns = [{ header: 'Section', key: 'section', width: 18 }, { header: 'Item', key: 'item', width: 38 }, { header: 'Details', key: 'details', width: 85 }];
+    rows.forEach((row) => sheet.addRow(row));
+    const data = await workbook.xlsx.writeBuffer();
+    return { bytes: new Uint8Array(data), mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', extension: 'xlsx' };
+  }
+  const document = await PDFDocument.create();
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  const supportedCharacters = new Set(font.getCharacterSet());
+  let page = document.addPage([595.28, 841.89]);
+  let y = page.getHeight() - 48;
+  for (const row of rows) {
+    const text = row.join(' | ').replace(/[\r\n\t]+/g, ' ');
+    if ([...text].some((character) => !supportedCharacters.has(character.codePointAt(0)!))) {
+      throw new Error('This report contains text that the PDF font cannot display. Choose CSV or XLSX instead.');
+    }
+    const words = text.split(' ');
+    let line = '';
+    const lines: string[] = [];
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (font.widthOfTextAtSize(next, 10) <= page.getWidth() - 96) {
+        line = next;
+        continue;
+      }
+      if (line) lines.push(line);
+      line = '';
+      for (const character of word) {
+        if (font.widthOfTextAtSize(line + character, 10) > page.getWidth() - 96 && line) {
+          lines.push(line);
+          line = '';
+        }
+        line += character;
+      }
+    }
+    if (line) lines.push(line);
+    for (const item of lines) {
+      if (y < 48) { page = document.addPage([595.28, 841.89]); y = page.getHeight() - 48; }
+      page.drawText(item, { x: 48, y, size: 10, font });
+      y -= 14;
+    }
+    y -= 4;
+  }
+  if (report.sections.includes('statistics')) {
+    const chartHeight = 120;
+    if (y - chartHeight < 48) { page = document.addPage([595.28, 841.89]); y = page.getHeight() - 48; }
+    page.drawText('Readings in range (% of valid readings)', { x: 48, y, size: 12, font });
+    y -= 24;
+    for (const stat of report.statistics) {
+      const label = formatMeasuredParameterLabel(stat.parameter);
+      page.drawText(label, { x: 48, y, size: 10, font });
+      page.drawRectangle({ x: 150, y: y - 2, width: 300, height: 12, color: rgb(0.90, 0.94, 0.94), borderColor: rgb(0.53, 0.60, 0.60), borderWidth: 0.5 });
+      if (stat.percentInRange !== null && stat.percentInRange > 0) {
+        page.drawRectangle({ x: 150, y: y - 2, width: 300 * Math.min(100, stat.percentInRange) / 100, height: 12, color: rgb(0.03, 0.49, 0.47) });
+      }
+      page.drawText(stat.percentInRange === null ? 'No data' : `${stat.percentInRange.toFixed(1)}%`, { x: 462, y, size: 10, font });
+      y -= 24;
+    }
+  }
+  return { bytes: await document.save(), mimeType: 'application/pdf', extension: 'pdf' };
+}

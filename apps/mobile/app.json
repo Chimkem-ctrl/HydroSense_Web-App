@@ -6,12 +6,20 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "backgroundColor": "#eaf3ff",
     "newArchEnabled": true,
     "plugins": [
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow HydroSense to use your photos for your profile picture."
+        }
+      ]
     ],
     "android": {
       "package": "com.hydrosense.mobile",
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"
       ]

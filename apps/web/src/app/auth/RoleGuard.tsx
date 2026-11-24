@@ -4,7 +4,7 @@ import type { Role } from '@hydrosense/shared';
 import { canAccessRole } from '@hydrosense/shared';
 import { useAuth } from './RoleContext';
 
-export function RoleGuard({ roles, children }: { roles: Role[]; children: ReactNode }) {
+export function RoleGuard({ roles, children }: { roles: readonly Role[]; children: ReactNode }) {
   const user = useAuth();
   const location = useLocation();
   return user?.role && canAccessRole(user.role, roles)

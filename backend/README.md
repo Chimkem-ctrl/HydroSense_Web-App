@@ -79,6 +79,7 @@ Important relationships:
 - Alert responses belong to an alert.
 - Deleting a tank cascades to readings, alerts, and calibration records associated with it.
 - Every Supabase Auth user is linked to a profile with the same UUID.
+- Hatchery-wide activity records carry a hatchery ID. Migration `20261120120000_activity_hatchery.sql` assigns existing unlabelled hatchery-wide records to Sagay; tank-scoped records use the tank's site. Apply this migration before deploying the updated API function.
 
 ## Authentication and authorization
 
@@ -97,6 +98,46 @@ Roles:
 - `admin`: receives all manager permissions plus audit-log access and account administration.
 
 Frontend route guards are not security controls. Authorization is enforced by the API and database policies.
+Managers can list approved non-admin profiles only for their own assigned site;
+administrators can manage profiles across sites. Apply the profile manager-scope
+migration alongside the updated API function.
+
+Account deletion removes the Supabase Auth user first; the profile is deleted
+by its cascading foreign key. To inspect accounts left without profiles by an
+earlier partial deletion, set `SUPABASE_DB_URL` locally and run
+`node backend\scripts\cleanup-orphaned-auth.mjs` from the repository root.
+Review each result: an absent profile alone does not establish that an account
+should be deleted. After confirming an individual UUID, delete it with
+`node backend\scripts\cleanup-orphaned-auth.mjs --delete USER_UUID`. This
+explicit operation deletes the Auth row and writes an audit entry in one
+transaction; it is not run automatically during migration.
+
+The role-matrix profile-access migration restricts direct profile listing to
+approved admins while preserving a user's access to their own profile. Profile
+changes must go through the API, which applies account-management checks. Apply
+the migration and deploy the updated Edge Function for existing installations;
+source changes alone do not change a deployed database or API.
+Profile pictures are stored in the private `profile-avatars` bucket. Apply the
+profile avatar migration and deploy the updated Edge Function; only the signed-in
+user can upload their own picture, and approved user lists return expiring signed
+image URLs to authorized admins and managers.
+The operational-table protection migration disables direct client access to
+settings, records, validation and audit tables; the API remains responsible
+for role checks. Any external integration using those tables directly must
+move to the API before that migration is applied.
+
+Device status includes invalid probe parameters and the sample time when a
+latest reading exists. This warning is derived from the latest stored reading,
+so it persists until a later valid sample and does not create a water-quality
+alert. No extra warning table or migration is required for it.
+Hardware ingestion accepts omitted battery readings after the optional-battery
+migration. If updating device status fails after a reading is stored, the API
+returns an error identifying the partial failure rather than reporting success.
+Apply the device reported-fields migration before deploying the updated API.
+It records which telemetry fields were actually supplied by a live device;
+older status records are unverified until the next live report. The API retains
+its existing status fields for compatibility and adds `reportedFields` for
+clients that must avoid displaying default values.
 
 Account approval flow:
 
@@ -104,6 +145,47 @@ Account approval flow:
 2. No active role is assigned during sign-up.
 3. An administrator approves the account and grants `operator` or `manager`.
 4. `POST /v1/auth/signin` returns a session only for approved accounts.
+
+### Chat
+
+The web chat supports direct conversations between approved active non-admin
+users across hatcheries. Conversations with administrators use shared
+HydroSense Team threads, which all approved active admins can read and answer;
+admins cannot read other users' direct conversations. Disabled chat blocks
+sending only. Pending, rejected and inactive accounts cannot access chat or
+appear as contacts. Sending is limited to 20 messages per minute per user.
+In the admin web view, team conversations appear in the list after their first
+message; admins can still start a conversation by searching for the user.
+
+The chat migration adds `profiles.chat_enabled`, `chat_threads`,
+`chat_messages`, and per-user `chat_read_receipts`. Participant and sender
+references are set to null on deletion, preserving messages as “Deleted user”.
+Thread and message reads are protected by RLS; mutations use authenticated
+database functions that enforce access, eligibility, the 600-character limit,
+rate limits, and atomic admin audit entries. The web client polls every ten
+seconds. Chat is not available in demo mode or the mobile app.
+
+Apply `20261122220000_chat.sql` once to the target database using the team's
+normal migration process, then deploy the updated Edge Function and web app.
+Do not run the migration on a shared database without authorization. The
+`POST /v1/chat/threads/:id/read` endpoint accepts `{ "messageId": "<uuid>" }`
+to mark messages through the last message actually displayed.
+
+To run the isolated SQL/RLS test from the repository root with Docker and the
+local Supabase Postgres image:
+
+```powershell
+docker run --name hydrosense-chat-test -e POSTGRES_PASSWORD=local-test-only -d public.ecr.aws/supabase/postgres:17.12.0.000
+docker exec hydrosense-chat-test pg_isready -U postgres
+docker cp backend\supabase\migrations\20261122220000_chat.sql hydrosense-chat-test:/tmp/hydrosense-chat-migration.sql
+Get-Content -Raw backend\tests\chat.integration.sql | docker exec -i hydrosense-chat-test psql -U postgres -d postgres
+docker stop hydrosense-chat-test
+docker rm hydrosense-chat-test
+```
+
+Wait until `pg_isready` reports that the new container is accepting connections
+before running the test. The test creates temporary fixtures in a transaction
+and rolls them back; never point it at an existing project database.
 
 Never expose the service-role/secret key in a browser, mobile application, or repository.
 
@@ -131,9 +213,22 @@ Sign-up body:
 }
 ```
 
-Only `operator` and `manager` may be requested.
+Signups may request `operator`, `manager`, or `admin`. Requests remain pending;
+only approved administrators can review and assign these roles. Apply migration
+`20261123000000_requested_signup_roles.sql` before deploying the updated signup API.
+Existing pending requests can be backfilled only when their authentication metadata
+contains the requested role; older signups that omitted it cannot be recovered.
 
 ### Tanks and readings
+
+`GET /v1/profile` returns the authenticated approved user's profile details,
+including the hatchery/site assignment.
+
+`POST /v1/hardware/heartbeat` uses the hardware API key and a registered
+`deviceId` to update connection status without storing a reading. Apply the
+heartbeat defaults, reported-fields and device-storage-status migrations before
+deploying the API and updated firmware. Current heartbeats report Wi-Fi signal
+and report a pending count only when SD storage can be read.
 
 The hardware API accepts timestamped buffered readings with a `sourceId`,
 `recordedAt` (UTC), and `historical` flag. The `(tank_id, source_id)` key
@@ -165,6 +260,11 @@ Tank creation body:
 ```
 
 ### Alerts
+
+Alerts are deduplicated per tank and parameter while open. After acknowledgement,
+another fresh out-of-range reading can create a new open alert; retries of the
+same reading do not. Apply the open-alert deduplication migration before
+deploying this API.
 
 New alerts queue SMS messages for distinct approved profile phone numbers in
 international E.164 format. The tank's provisioned ESP32 claims its messages
@@ -210,7 +310,7 @@ Threshold update body:
 ```json
 {
   "thresholds": [
-    { "parameter": "temperature", "min": 28, "max": 32 },
+    { "parameter": "temperature", "min": 26, "max": 30 },
     { "parameter": "do", "min": 5 },
     { "parameter": "ph", "min": 7.2, "max": 8.5 }
   ],
@@ -298,6 +398,20 @@ npm run db:migrate --workspace @hydrosense/backend
 ```
 
 This applies SQL files in `backend/supabase/migrations` to the configured hosted database. Never set `RESET_PUBLIC_SCHEMA=true` on the shared or production database; that option drops and recreates the public schema.
+
+Before applying `20261121000000_api_alert_integrity.sql`, check for active duplicates:
+
+```sql
+select tank_id, parameter, count(*)
+from public.alerts
+where status in ('open', 'acknowledged')
+group by tank_id, parameter
+having count(*) > 1;
+```
+
+Review and resolve duplicates through the normal alert workflow before applying the migration; the unique index intentionally fails rather than changing alert history. Apply this migration before deploying the matching API: it also creates the latest-reading RPC and activity-log compatibility view. The view requires PostgreSQL 15 or later.
+
+Critical alert margins are measured beyond the violated configured limit: temperature below minimum is immediately critical, temperature above maximum is critical at 2°C, dissolved oxygen at 1 mg/L, and pH at 0.5. Approval and role-update routes cannot assign the admin role.
 
 ### 5. Deploy the API (authorized maintainers only)
 

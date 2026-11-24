@@ -1,12 +1,34 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { PropsWithChildren } from 'react';
-import { useColorScheme } from 'react-native';
+import { AccessibilityInfo, Platform, useColorScheme } from 'react-native';
 import { parseThemeChoice, resolveTheme } from './themePreference';
 import type { ThemeChoice, ThemeMode } from './themePreference';
 
 export type { ThemeChoice } from './themePreference';
 export const THEME_KEY = 'hydrosense.mobile.theme';
+
+export const uiScale = {
+  spacing: { 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32 },
+  type: { caption: 12, body: 16, section: 18, title: 28 },
+  radius: { control: 12, card: 20, pill: 999 },
+} as const;
+
+export const authColors = {
+  ink: '#ffffff',
+  muted: 'rgba(255,255,255,0.85)',
+  caption: 'rgba(255,255,255,0.7)',
+  placeholder: 'rgba(255,255,255,0.55)',
+  border: 'rgba(255,255,255,0.28)',
+  panel: 'rgba(3,14,28,0.62)',
+  solidPanel: 'rgba(3,14,28,0.96)',
+  panelTop: 'rgba(3,14,28,0.42)',
+  accent: '#aacaff',
+  focus: '#2563eb',
+  background: '#0b1118',
+  scrimTop: 'rgba(0,0,0,0.15)',
+  scrimBottom: 'rgba(0,0,0,0.45)',
+} as const;
 
 export const palettes = {
   light: {
@@ -15,6 +37,7 @@ export const palettes = {
     offline: '#fff3d4', selected: '#e5eeff', card: 'rgba(255,255,255,0.82)',
     cardBorder: '#ffffff', backgroundVia: '#dfeafe', backgroundTo: '#f3eefe',
     normal: '#146b35', overlay: 'rgba(5,11,26,0.65)', onPrimary: '#ffffff',
+    glassControl: 'rgba(255,255,255,0.25)',
   },
   dark: {
     ink: '#eaf1ff', muted: '#b6c4e0', surface: '#182a54', canvas: '#050b1a',
@@ -22,6 +45,7 @@ export const palettes = {
     offline: '#493b1e', selected: '#243d6d', card: '#122040',
     cardBorder: '#43567c', backgroundVia: '#0a1a38', backgroundTo: '#0b1030',
     normal: '#86efac', overlay: 'rgba(0,0,0,0.75)', onPrimary: '#ffffff',
+    glassControl: 'rgba(255,255,255,0.04)',
   },
 } as const;
 
@@ -30,6 +54,8 @@ interface ThemeValue {
   choice: ThemeChoice;
   mode: ThemeMode;
   colors: Palette;
+  reduceMotion: boolean;
+  reduceTransparency: boolean;
   setChoice: (choice: ThemeChoice) => Promise<void>;
   error: string | null;
 }
@@ -40,6 +66,8 @@ export function ThemeProvider({ children }: PropsWithChildren) {
   const system = useColorScheme();
   const [choice, setChoiceState] = useState<ThemeChoice>('system');
   const [error, setError] = useState<string | null>(null);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [reduceTransparency, setReduceTransparency] = useState(false);
   const changed = useRef(false);
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
@@ -51,6 +79,36 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       if (active) setError('Could not load the saved appearance preference.');
     });
     return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    const motionSubscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch((failure: unknown) => {
+      console.error('Could not read the reduced-motion preference.', failure);
+    });
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const preference = window.matchMedia('(prefers-reduced-transparency: reduce)');
+      setReduceTransparency(preference.matches);
+      const update = (event: MediaQueryListEvent) => setReduceTransparency(event.matches);
+      preference.addEventListener('change', update);
+      return () => {
+        motionSubscription.remove();
+        preference.removeEventListener('change', update);
+      };
+    }
+
+    if (Platform.OS === 'ios') {
+      const transparencySubscription = AccessibilityInfo.addEventListener('reduceTransparencyChanged', setReduceTransparency);
+      AccessibilityInfo.isReduceTransparencyEnabled().then(setReduceTransparency).catch((failure: unknown) => {
+        console.error('Could not read the reduced-transparency preference.', failure);
+      });
+      return () => {
+        motionSubscription.remove();
+        transparencySubscription.remove();
+      };
+    }
+
+    return () => motionSubscription.remove();
   }, []);
   const setChoice = useCallback(async (next: ThemeChoice) => {
     changed.current = true;
@@ -66,7 +124,7 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     }
   }, []);
   const mode = resolveTheme(choice, system);
-  const value = useMemo(() => ({ choice, mode, colors: palettes[mode], setChoice, error }), [choice, mode, setChoice, error]);
+  const value = useMemo(() => ({ choice, mode, colors: palettes[mode], reduceMotion, reduceTransparency, setChoice, error }), [choice, mode, reduceMotion, reduceTransparency, setChoice, error]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 

@@ -9,7 +9,7 @@ export default function PendingApprovalPage() {
       <div className="auth-page page-enter">
         <AuthHeader />
         <GlassPanel className="auth-panel">
-          <h1 className="glass-title">Request submitted</h1>
+          <h1 className="glass-title">Request Submitted</h1>
           <p className="panel-description">
             Your account is awaiting administrator approval. You can sign in after your request is approved.
           </p>

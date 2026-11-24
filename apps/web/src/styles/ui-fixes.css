@@ -1,0 +1,29 @@
+/* 1. Light mode text + dropdowns */
+.auth-background {
+  color-scheme: dark;
+  --text-primary: #e8eff3;
+  --text-secondary: #c5d3eb;
+  --text-muted: #c5d3eb;
+}
+.auth-background select option,
+.auth-background select.form-control option,
+.operator-signup-panel select.form-control option,
+.signup-phone-country select option,
+.glass-shell select option {
+  color: #e8eff3;
+  background-color: #0e183c;
+}
+
+/* 2. Duplicate password reveal button */
+input[type='password']::-ms-reveal,
+input[type='password']::-ms-clear,
+.password-control input::-ms-reveal,
+.password-control input::-ms-clear {
+  display: none;
+}
+.password-control input::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+

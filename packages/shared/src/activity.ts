@@ -23,6 +23,32 @@ export const ACTIVITY_EVENT_TYPES = [
   'Other environmental event',
 ] as const;
 
+export function evaluateEventImpact(event: { type: string; scope: string }) {
+  switch (event.type) {
+    case 'Rainfall':
+    case 'Water change / exchange':
+    case 'Freshwater dosing (log only)':
+      return {
+        targetAdvisory: 'salinity',
+        riskAdjustment: 'Watch',
+        message: `Recent event (${event.type}) logged. Salinity check recommended.`,
+      } as const;
+
+    case 'Unusually hot weather':
+    case 'Feeding':
+    case 'Mortality observation':
+    case 'Power interruption':
+      return {
+        targetAdvisory: 'ammonia',
+        riskAdjustment: event.type === 'Power interruption' ? 'High' : 'Watch',
+        message: `Event (${event.type}) impacts organic load/temperature. Monitor TAN levels.`,
+      } as const;
+
+    default:
+      return null;
+  }
+}
+
 export interface ActivityLogValidationIssue {
   field: string;
   message: string;
@@ -92,11 +118,6 @@ export function validateActivityLog(entry: Partial<ActivityLog>): ActivityLogVal
     })) {
       issues.push({ field: 'manualReadings', message: 'Check that each manual reading is within its allowed numeric range.' });
     }
-    if (entry.kind === 'OPERATION' && entry.type === 'Manual water quality check' && entered.length === 0) {
-      issues.push({ field: 'manualReadings', message: 'Enter at least one water-quality measurement from a manual instrument.' });
-    }
-  } else if (entry.kind === 'OPERATION' && entry.type === 'Manual water quality check') {
-    issues.push({ field: 'manualReadings', message: 'Enter at least one water-quality measurement from a manual instrument.' });
   }
   return issues;
 }

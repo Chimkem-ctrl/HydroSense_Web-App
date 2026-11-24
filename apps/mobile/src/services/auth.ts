@@ -14,6 +14,7 @@ export interface SignUpValues {
   phone: string;
   email: string;
   hatcheryId: string;
+  requestedRole: Role;
   address: SignupAddress;
   emergencyContactName: string;
   emergencyContactPhone: string;
@@ -23,6 +24,10 @@ export interface SignUpValues {
 }
 
 export const HATCHERY = { id: 'camiguin-sagay', name: 'Camiguin, Sagay Multispecies Hatchery' } as const;
+export const HATCHERIES = [
+  HATCHERY,
+  { id: 'camiguin-benoni', name: 'Camiguin, Benoni Experimental Station' },
+] as const;
 
 function validateEmail(email: string): string | null {
   if (!email.trim()) return 'Email is required.';
@@ -41,12 +46,12 @@ export function validateSignUp(values: SignUpValues): string | null {
   const phone = /^[+()\d\s.-]{7,20}$/;
   if (!values.firstName.trim()) return 'First name is required.';
   if (!values.lastName.trim()) return 'Last name is required.';
-  if (!values.employeeId.trim()) return 'Staff or employee ID is required.';
+  if (!values.employeeId.trim()) return 'Employee / staff ID is required.';
   if (!values.phone.trim()) return 'Contact number is required.';
   if (!phone.test(values.phone.trim())) return 'Enter a valid contact number.';
   if (!values.email.trim()) return 'Email is required.';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) return 'Enter a valid email address.';
-  if (values.hatcheryId !== HATCHERY.id) return 'Select your subscribed hatchery.';
+  if (!HATCHERIES.some((hatchery) => hatchery.id === values.hatcheryId)) return 'Select your subscribed hatchery.';
   if (!formatSignupAddress(values.address)) return 'Select a valid country, province, city and barangay, and enter a street address.';
   if (!values.emergencyContactName.trim()) return 'Emergency contact name is required.';
   if (!values.emergencyContactPhone.trim()) return 'Emergency contact number is required.';
@@ -100,7 +105,7 @@ export async function authenticate(baseUrl: string, apiKey: string | undefined, 
   return { user: { id: user.id, name, role: user.role }, accessToken: result.accessToken };
 }
 
-export async function requestAccount(baseUrl: string, apiKey: string | undefined, values: SignUpValues): Promise<void> {
+export async function requestAccount(baseUrl: string, apiKey: string | undefined, values: SignUpValues): Promise<{ status: 'pending' } | { status: 'verify-email'; email: string }> {
   const validationError = validateSignUp(values);
   if (validationError) throw new Error(validationError);
   const result = await postAuth(baseUrl, apiKey, 'signup', {
@@ -114,9 +119,36 @@ export async function requestAccount(baseUrl: string, apiKey: string | undefined
     emergencyContactName: values.emergencyContactName.trim(),
     emergencyContactPhone: values.emergencyContactPhone.trim(),
     hatcheryId: values.hatcheryId,
+    requestedRole: values.requestedRole,
   });
-  if (typeof result !== 'object' || result === null || !('status' in result) || result.status !== 'pending') {
-    throw new Error('The server did not confirm a pending account request.');
+  if (typeof result === 'object' && result !== null && 'status' in result) {
+    if (result.status === 'pending') return { status: 'pending' };
+    if (result.status === 'verify-email' && 'email' in result && typeof result.email === 'string' && result.email.trim()) {
+      return { status: 'verify-email', email: result.email.trim() };
+    }
+  }
+  throw new Error('The server did not confirm the account request.');
+}
+
+export async function resendVerification(baseUrl: string, apiKey: string | undefined, email: string): Promise<void> {
+  const issue = validateEmail(email);
+  if (issue) throw new Error(issue);
+  if (!apiKey?.trim()) throw new Error('Supabase publishable key is not configured.');
+  const match = baseUrl.match(/^(https?:\/\/[^/]+)\/functions\/v1\/api\/?$/);
+  if (!match) throw new Error('Email verification requires a Supabase Edge Function API URL.');
+  const response = await fetch(`${match[1]}/auth/v1/resend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: apiKey },
+    body: JSON.stringify({ type: 'signup', email: email.trim().toLowerCase() }),
+  });
+  if (response.status === 429) throw new Error('Please wait before requesting another email.');
+  if (!response.ok) {
+    let result: unknown;
+    try { result = await response.json(); } catch { throw new Error(`Unable to resend verification email (HTTP ${response.status}).`); }
+    const message = typeof result === 'object' && result !== null && 'msg' in result && typeof result.msg === 'string'
+      ? result.msg : typeof result === 'object' && result !== null && 'message' in result && typeof result.message === 'string'
+        ? result.message : 'Unable to resend verification email.';
+    throw new Error(message);
   }
 }
 

@@ -1,4 +1,5 @@
 :root {
+  --c-50: #e8eff3;
   color-scheme: light;
   --page: #f3f7f8;
   --surface: #ffffff;
@@ -20,13 +21,66 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --space-12: 48px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --field-label-gap: 6px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
+  --radius-card: 20px;
+  --radius-control: 999px;
+  --font-body: 14px;
+  --font-h1: 28px;
+  --font-h2: 20px;
+  --font-h3: 20px;
+  --font-button: 14px;
+  --font-caption: 12px;
+  --font-kpi: 28px;
+  --page-padding: var(--space-6);
 }
+
+@media (max-width: 760px) {
+  :root { --page-padding: var(--space-4); }
+}
+
+/* Role themes: admin purple-navy, manager teal-slate, operator navy. Mapped onto the glass variables in design-system/tokens.css. */
+[data-theme='dark'] .glass-shell[data-role='admin'],
+[data-theme='dark'] .glass-shell[data-role='admin'] .glass-screen {
+  --bg-base: #1B1931;
+  --bg-gradient-from: #121122;
+  --bg-gradient-to: #2A2650;
+  --surface-glass: rgba(42, 38, 80, 0.45);
+  --surface-border: rgba(160, 155, 255, 0.20);
+  --accent: #7772B0;
+  --accent-soft: rgba(119, 114, 176, 0.20);
+  --glow: rgba(105, 100, 160, 0.26);
+}
+[data-theme='dark'] .glass-shell[data-role='manager'],
+[data-theme='dark'] .glass-shell[data-role='manager'] .glass-screen {
+  --bg-base: #152A38;
+  --bg-gradient-from: #0E1D27;
+  --bg-gradient-to: #1E3C50;
+  --surface-glass: rgba(30, 60, 80, 0.45);
+  --surface-border: rgba(140, 200, 230, 0.20);
+  --accent: #5BB8E0;
+  --accent-soft: rgba(91, 184, 224, 0.20);
+  --glow: rgba(80, 170, 220, 0.30);
+}
+[data-theme='dark'] .glass-shell[data-role='operator'],
+[data-theme='dark'] .glass-shell[data-role='operator'] .glass-screen {
+  --bg-base: #132440;
+  --bg-gradient-from: #0D1830;
+  --bg-gradient-to: #1C3660;
+  --surface-glass: rgba(28, 54, 96, 0.45);
+  --surface-border: rgba(140, 180, 255, 0.20);
+  --accent: #6B9DFF;
+  --accent-soft: rgba(107, 157, 255, 0.20);
+  --glow: rgba(90, 140, 255, 0.30);
+}
+
+[data-role='admin'] { --role-color: #1b1847; }
+[data-role='manager'] { --role-color: #16314a; }
+[data-role='operator'] { --role-color: #312048; }
 
 [data-theme='dark'] {
   color-scheme: dark;

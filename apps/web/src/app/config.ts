@@ -10,8 +10,6 @@ export interface TierConfig {
   analytics: boolean;
   teamAccounts: boolean;
   integrations: boolean;
-  fleetView: boolean;
-  batchTracking: boolean;
   pilotUnlocked: boolean;
 }
 
@@ -28,9 +26,9 @@ if (unlockSetting !== undefined && unlockSetting !== 'true' && unlockSetting !==
 }
 const pilotUnlocked = import.meta.env.VITE_PILOT_UNLOCK_ALL !== 'false';
 const tierFeatures: Record<Tier, Omit<TierConfig, 'tier' | 'pilotUnlocked'>> = {
-  free: { nodeLimit: 2, refreshIntervalMs: 30_000, retentionDays: 1, analytics: false, teamAccounts: false, integrations: false, fleetView: false, batchTracking: false },
-  premium: { nodeLimit: 20, refreshIntervalMs: 10_000, retentionDays: 30, analytics: true, teamAccounts: true, integrations: true, fleetView: false, batchTracking: false },
-  enterprise: { nodeLimit: 200, refreshIntervalMs: 5_000, retentionDays: 365, analytics: true, teamAccounts: true, integrations: true, fleetView: true, batchTracking: true },
+  free: { nodeLimit: 2, refreshIntervalMs: 30_000, retentionDays: 1, analytics: false, teamAccounts: false, integrations: false },
+  premium: { nodeLimit: 20, refreshIntervalMs: 10_000, retentionDays: 30, analytics: true, teamAccounts: true, integrations: true },
+  enterprise: { nodeLimit: 200, refreshIntervalMs: 5_000, retentionDays: 365, analytics: true, teamAccounts: true, integrations: true },
 };
 
 export const tierConfig: TierConfig = {
@@ -56,33 +54,29 @@ export const ROLE_ACCESS: Record<string, Role[]> = {
   tanks: ['operator', 'manager', 'admin'],
   health: ['operator', 'manager', 'admin'],
   trends: ['operator', 'manager', 'admin'],
-  history: ['manager', 'admin'],
+  history: ['operator', 'manager', 'admin'],
   alerts: ['operator', 'manager', 'admin'],
-  thresholds: ['manager', 'admin'],
   entries: ['operator', 'manager', 'admin'],
   reports: ['operator', 'manager', 'admin'],
-  calibration: ['operator', 'manager', 'admin'],
+  calibration: ['manager', 'admin'],
   validation: ['manager', 'admin'],
-  users: ['admin'],
+  users: ['manager', 'admin'],
   logs: ['admin'],
   profile: ['operator', 'manager', 'admin'],
-  enterpriseFeatures: ['manager', 'admin'],
+  chat: ['operator', 'manager', 'admin'],
 };
 
 export const NAV_ITEMS = [
-  { path: '/', label: 'Live monitor', group: 'Monitor', roles: ROLE_ACCESS.live },
-  { path: '/tanks', label: 'Tank overview', group: 'Monitor', roles: ROLE_ACCESS.tanks },
-  { path: '/health', label: 'System health', group: 'Monitor', roles: ROLE_ACCESS.health },
+  { path: '/', label: 'Live Monitor', group: 'Monitor', roles: ROLE_ACCESS.live },
+  { path: '/tanks', label: 'Tanks & System Health', group: 'Monitor', roles: ROLE_ACCESS.tanks },
   { path: '/trends', label: 'Trends', group: 'Monitor', roles: ROLE_ACCESS.trends },
-  { path: '/history', label: 'Historical logs', group: 'Records', roles: ROLE_ACCESS.history },
-  { path: '/alerts', label: 'Alerts center', group: 'Monitor', roles: ROLE_ACCESS.alerts },
-  { path: '/entries', label: 'Activity logs', group: 'Records', roles: ROLE_ACCESS.entries },
+  { path: '/history', label: 'Historical Logs', group: 'Records', roles: ROLE_ACCESS.history },
+  { path: '/alerts', label: 'Alerts Center', group: 'Monitor', roles: ROLE_ACCESS.alerts },
+  { path: '/entries', label: 'Activity Logs', group: 'Records', roles: ROLE_ACCESS.entries },
   { path: '/calibration', label: 'Calibration', group: 'Records', roles: ROLE_ACCESS.calibration },
-  { path: '/reports', label: 'Export', group: 'Records', roles: ROLE_ACCESS.reports },
+  { path: '/reports', label: 'Reports', group: 'Records', roles: ROLE_ACCESS.reports },
   { path: '/validation', label: 'Validation', group: 'Records', roles: ROLE_ACCESS.validation },
-  { path: '/settings/thresholds', label: 'Thresholds & rules', group: 'Manage', roles: ROLE_ACCESS.thresholds },
-  { path: '/admin/users', label: 'Users & roles', group: 'Manage', roles: ROLE_ACCESS.users },
-  { path: '/admin/logs', label: 'Audit & system logs', group: 'Manage', roles: ROLE_ACCESS.logs },
-  { path: '/profile', label: 'My profile', group: 'Manage', roles: ROLE_ACCESS.profile },
-  { path: '/settings', label: 'Account settings', group: 'Manage', roles: ROLE_ACCESS.profile },
+  { path: '/admin/users', label: 'Users & Roles', group: 'Manage', roles: ROLE_ACCESS.users },
+  { path: '/admin/logs', label: 'Audit & System Logs', group: 'Manage', roles: ROLE_ACCESS.logs },
+  { path: '/profile', label: 'My Profile', group: 'Manage', roles: ROLE_ACCESS.profile },
 ] as const;

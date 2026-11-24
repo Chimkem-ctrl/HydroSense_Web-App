@@ -1,107 +1,387 @@
-import type { PropsWithChildren, ReactNode } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import type { ComponentProps, ComponentRef, PropsWithChildren, ReactNode, RefObject } from 'react';
+import { ActivityIndicator, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import type { TextInputFocusEvent } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
+import { BlurTargetView, BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../theme';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Dialog, Portal } from 'react-native-paper';
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { authColors, uiScale, useTheme } from '../theme';
 import type { Palette } from '../theme';
+import logoImage from '../../assets/hydrosense-logo.png';
+import oceanImage from '../../../web/public/assets/images/deep-blue-ocean.jpg';
 
-export function Page({ children, auth = false }: PropsWithChildren<{ auth?: boolean }>) {
-  const { width } = useWindowDimensions();
-  const { colors } = useTheme();
-  const styles = createStyles(colors);
-  return <LinearGradient colors={[colors.canvas, colors.backgroundVia, colors.backgroundTo]} style={styles.background}>
-    <SafeAreaView style={styles.safe} edges={auth ? ['top', 'left', 'right', 'bottom'] : ['left', 'right', 'bottom']}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, auth && styles.authScroll]}>
-        <View style={[styles.page, { paddingHorizontal: width >= 600 ? 32 : 16 }, auth && styles.authPage]}>{children}</View>
-      </ScrollView>
-    </SafeAreaView>
-  </LinearGradient>;
+export const BlurTargetContext = createContext<RefObject<ComponentRef<typeof View> | null> | null>(null);
+export const TabBarVisibleContext = createContext(false);
+export const RedesignedContext = createContext(false);
+export const primaryButtonGradient = ['#1d4ed8', '#0369a1'] as const;
+const CardContext = createContext(false);
+// Android's default tint is 44% of intensity; 9 / 0.45 preserves a 20px blur with about 4% tint.
+const androidBlurIntensity = 9;
+const androidBlurReduction = 0.45;
+const webCardBlur = {
+  backgroundColor: 'transparent',
+  backdropFilter: 'blur(20px) saturate(120%)',
+  WebkitBackdropFilter: 'blur(20px) saturate(120%)',
+};
+const webAuthBlur = {
+  backgroundColor: 'transparent',
+  backdropFilter: 'blur(8px) saturate(120%)',
+  WebkitBackdropFilter: 'blur(8px) saturate(120%)',
+};
+const needsSolidFallback = (reduceTransparency: boolean) => reduceTransparency || (Platform.OS === 'web' && (typeof CSS === 'undefined' || !(CSS.supports('backdrop-filter', 'blur(1px)') || CSS.supports('-webkit-backdrop-filter', 'blur(1px)'))));
+
+function glassBlur(blurTarget: RefObject<ComponentRef<typeof View> | null> | null, styles: ReturnType<typeof createStyles>, auth = false) {
+  return Platform.OS === 'web'
+    ? <View style={[StyleSheet.absoluteFill, styles.cardBlur, auth ? webAuthBlur : webCardBlur]} pointerEvents="none" />
+    : <BlurView blurTarget={blurTarget ?? undefined} blurMethod="dimezisBlurView" tint={auth ? 'dark' : Platform.OS === 'ios' ? 'systemUltraThinMaterial' : 'default'} intensity={auth ? 8 : Platform.OS === 'android' ? androidBlurIntensity : 25} blurReductionFactor={auth ? 1 : androidBlurReduction} style={[StyleSheet.absoluteFill, styles.cardBlur]} pointerEvents="none" />;
 }
 
-export function Brand({ compact = false }: { compact?: boolean }) {
+export function scrollFocusedInputIntoView(scrollRef: RefObject<ComponentRef<typeof ScrollView> | null>, event: TextInputFocusEvent) {
+  if (Platform.OS === 'web') return;
+  scrollRef.current?.scrollResponderScrollNativeHandleToKeyboard(event.nativeEvent.target, uiScale.spacing[5], true);
+}
+
+export function Page({ children, auth = false, redesigned = false, bottomPadding, maxWidth }: PropsWithChildren<{ auth?: boolean; redesigned?: boolean; bottomPadding?: number; maxWidth?: number }>) {
+  const { width, height } = useWindowDimensions();
   const { colors } = useTheme();
+  const tabBarVisible = useContext(TabBarVisibleContext);
+  const authBlurTarget = useRef<ComponentRef<typeof View> | null>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const styles = createStyles(colors);
-  return <View style={compact ? styles.brandCompact : styles.brand}>
-    <Image source={require('../../assets/hydrosense-logo.png')} resizeMode="contain" accessibilityLabel="HydroSense logo" style={compact ? styles.logoSmall : styles.logo} />
-    <View style={compact ? styles.brandTextCompact : styles.brandText}>
-      <Text numberOfLines={compact ? 1 : undefined} style={compact ? styles.brandNameSmall : styles.brandName}>HydroSense</Text>
-      <Text numberOfLines={compact ? 1 : undefined} style={styles.brandCaption}>WATER QUALITY MONITORING</Text>
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    const show = Keyboard.addListener('keyboardDidShow', (event) => setKeyboardHeight(event.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  const content = <KeyboardAvoidingView style={styles.background} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
+      <SafeAreaView style={styles.safe} edges={auth ? ['top', 'left', 'right', 'bottom'] : tabBarVisible ? ['left', 'right'] : ['left', 'right', 'bottom']}>
+        <ScrollView ref={scrollRef} style={styles.background} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.scroll, auth && styles.authScroll, { paddingBottom: keyboardHeight }]} onFocusCapture={(event) => scrollFocusedInputIntoView(scrollRef, event)}>
+          <View style={[styles.page, redesigned && { gap: uiScale.spacing[2] }, { paddingHorizontal: width >= 600 ? uiScale.spacing[6] : uiScale.spacing[4] }, bottomPadding !== undefined && { paddingBottom: bottomPadding }, auth && styles.authPage, maxWidth !== undefined && { maxWidth }]}>{children}</View>
+        </ScrollView>
+      </SafeAreaView>
+    </KeyboardAvoidingView>;
+  return auth
+    ? <View style={[styles.background, styles.authBackground, { minHeight: height }]}>
+      <BlurTargetView ref={authBlurTarget} style={styles.authBackdrop} pointerEvents="none">
+        <Image source={oceanImage} resizeMode="cover" style={styles.authBackdropImage} accessible={false} />
+        <LinearGradient colors={[authColors.scrimTop, authColors.scrimBottom]} style={StyleSheet.absoluteFill} />
+      </BlurTargetView>
+      <BlurTargetContext.Provider value={authBlurTarget}>{content}</BlurTargetContext.Provider>
     </View>
-  </View>;
+    : <RedesignedContext.Provider value={redesigned}><View style={styles.background}>{content}</View></RedesignedContext.Provider>;
 }
 
-export function Title({ children, detail, centered = false }: { children: string; detail?: string; centered?: boolean }) {
+export function Brand({ compact = false, showCaption = !compact, onLogoPress, logoExpanded, auth = false }: { compact?: boolean; showCaption?: boolean; onLogoPress?: () => void; logoExpanded?: boolean; auth?: boolean }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  return <View style={[styles.heading, centered && styles.centered]}><Text style={[styles.title, centered && styles.centerText]}>{children}</Text>{detail ? <Text style={[styles.muted, centered && styles.centerText]}>{detail}</Text> : null}</View>;
+  const content = <>
+    <Image source={logoImage} resizeMode="contain" accessibilityLabel="HydroSense logo" style={auth ? styles.authLogo : compact ? styles.logoSmall : styles.logo} />
+    <View style={compact || auth ? styles.brandTextCompact : styles.brandText}>
+      <Text numberOfLines={compact || auth ? 1 : undefined} style={auth ? styles.authBrandName : compact ? styles.brandNameSmall : styles.brandName}>HydroSense</Text>
+      {showCaption && <Text numberOfLines={compact || auth ? 1 : undefined} style={[styles.brandCaption, compact && styles.brandCaptionCompact, auth && styles.authBrandCaption]}>WATER QUALITY MONITORING</Text>}
+    </View>
+  </>;
+  const style = compact || auth ? styles.brandCompact : styles.brand;
+  return onLogoPress
+    ? <Pressable accessibilityRole="button" accessibilityLabel="Open navigation menu" accessibilityState={{ expanded: logoExpanded }} onPress={onLogoPress} style={style}>{content}</Pressable>
+    : <View style={style}>{content}</View>;
 }
 
-export function Card({ children, title, action }: { children: ReactNode; title?: string; action?: ReactNode }) {
+export function Title({ children, detail, centered = false, icon }: { children: string; detail?: string; centered?: boolean; icon?: ReactNode }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  return <View style={styles.card}>{(title || action) && <View style={styles.cardHeading}>{title ? <Text style={styles.cardTitle}>{title}</Text> : <View />}{action}</View>}{children}</View>;
+  return <View style={[styles.heading, centered && styles.centered]}><View style={styles.titleRow}>{icon}<Text style={[styles.title, centered && styles.centerText]}>{children}</Text></View>{detail ? <Text style={[styles.muted, centered && styles.centerText]}>{detail}</Text> : null}</View>;
 }
 
-export function Button({ label, onPress, disabled, secondary }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
-  const { colors } = useTheme();
+export function Card({ children, title, action, auth = false, toneColor, style }: { children: ReactNode; title?: string; action?: ReactNode; auth?: boolean; toneColor?: string; style?: StyleProp<ViewStyle> }) {
+  const { colors, reduceTransparency } = useTheme();
+  const blurTarget = useContext(BlurTargetContext);
+  const nested = useContext(CardContext);
+  const redesigned = useContext(RedesignedContext);
   const styles = createStyles(colors);
-  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, secondary && styles.secondaryButton, disabled && styles.disabled, pressed && styles.pressed]}>
-    {secondary ? <Text style={styles.secondaryText}>{label}</Text> :
-      <LinearGradient colors={['#1d4ed8', '#0369a1']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.buttonGradient}><Text style={styles.buttonText}>{label}</Text></LinearGradient>}
+  const solidFallback = needsSolidFallback(reduceTransparency) || (Platform.OS === 'android' && !blurTarget && !nested);
+  return <CardContext.Provider value>
+    <View style={[styles.card, redesigned && { borderColor: colors.border }, nested && styles.nestedCard, solidFallback && !nested && { backgroundColor: colors.surface }, auth && styles.authCard, auth && solidFallback && { backgroundColor: authColors.solidPanel }, toneColor && { borderColor: toneColor }, style]}>
+      {!nested && !solidFallback && glassBlur(blurTarget, styles, auth)}
+      {auth && !solidFallback && <LinearGradient colors={[authColors.panelTop, authColors.panel]} style={[StyleSheet.absoluteFill, styles.cardBlur]} pointerEvents="none" />}
+      {toneColor && <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.cardBlur, { backgroundColor: `${toneColor}20` }]} />}
+      {(title || action) && <View style={styles.cardHeading}>{title ? <Text style={styles.cardTitle}>{title}</Text> : <View />}{action}</View>}{children}
+    </View>
+  </CardContext.Provider>;
+}
+
+export function GlassDialog({ children, visible, onDismiss, solid = false }: { children: ComponentProps<typeof Dialog>['children']; visible: boolean; onDismiss: () => void; solid?: boolean }) {
+  const { colors, reduceTransparency } = useTheme();
+  const blurTarget = useContext(BlurTargetContext);
+  const styles = createStyles(colors);
+  const solidFallback = solid || needsSolidFallback(reduceTransparency);
+  if (Platform.OS === 'android' && !blurTarget && !solidFallback) throw new Error('GlassDialog requires a blur target.');
+  return <Portal>
+    <KeyboardAvoidingView pointerEvents="box-none" style={StyleSheet.absoluteFill} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
+      <Dialog visible={visible} onDismiss={onDismiss} style={[styles.dialog, solidFallback && { backgroundColor: colors.surface }]}>
+        {!solidFallback && <DialogBlur blurTarget={blurTarget} />}
+        {children}
+      </Dialog>
+    </KeyboardAvoidingView>
+  </Portal>;
+}
+
+function DialogBlur({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof View> | null> | null }) {
+  const { colors } = useTheme();
+  // Paper adds a first-child margin; the absolute backdrop must not inherit it.
+  return glassBlur(blurTarget, createStyles(colors));
+}
+
+export function Button({ label, onPress, disabled, secondary, soft, style, icon }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean; soft?: boolean; style?: StyleProp<ViewStyle>; icon?: ReactNode }) {
+  const { colors, reduceMotion } = useTheme();
+  const redesigned = useContext(RedesignedContext);
+  const styles = createStyles(colors);
+  const outlined = secondary || soft;
+  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, outlined && styles.secondaryButton, soft && styles.softActionButton, redesigned && outlined && { backgroundColor: colors.glassControl }, disabled && styles.disabled, pressed && !reduceMotion && styles.pressed, style]}>
+    {outlined ? <View style={styles.buttonContent}>{icon}<Text style={styles.secondaryText}>{label}</Text></View> :
+      <LinearGradient colors={primaryButtonGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.buttonGradient}><View style={styles.buttonContent}>{icon}<Text style={styles.buttonText}>{label}</Text></View></LinearGradient>}
   </Pressable>;
 }
 
-export function StateMessage({ message, loading }: { message: string; loading?: boolean }) {
+export function FilterField({ label, value, onChangeText, placeholder, compact = false }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; compact?: boolean }) {
   const { colors } = useTheme();
+  const redesigned = useContext(RedesignedContext);
   const styles = createStyles(colors);
-  return <View style={styles.state}>{loading ? <ActivityIndicator color={colors.teal} /> : null}<Text style={[styles.muted, styles.centerText]}>{message}</Text></View>;
+  return <View style={styles.filterField}>
+    <Text style={styles.filterLabel}>{label}</Text>
+    <TextInput accessibilityLabel={label} style={[styles.filterInput, redesigned && { backgroundColor: colors.glassControl }, compact && styles.compactFilterInput]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} autoCapitalize="none" />
+  </View>;
 }
 
-export function DataRow({ label, value, detail }: { label: string; value: string; detail?: string }) {
+function parseCalendarDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+}
+
+function calendarDateKey(year: number, month: number, day: number) {
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+export function CalendarFilterField({ label, value, onChangeText, placeholder, min, max }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; min?: string; max?: string }) {
+  const { colors } = useTheme();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const styles = createStyles(colors);
+  const [visible, setVisible] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const selectedDate = parseCalendarDate(value);
+  const year = visibleMonth.getFullYear();
+  const month = visibleMonth.getMonth();
+  const days = new Date(year, month + 1, 0).getDate();
+  const leadingDays = new Date(year, month, 1).getDay();
+  const monthLabel = visibleMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+  function openCalendar() {
+    const current = selectedDate ?? new Date();
+    setVisibleMonth(new Date(current.getFullYear(), current.getMonth(), 1));
+    setVisible(true);
+  }
+
+  function moveMonth(offset: number) {
+    setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  }
+
+  return <View style={styles.filterField}>
+    <Text style={styles.filterLabel}>{label}</Text>
+    <View style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface }}>
+      <TextInput accessibilityLabel={label} style={[styles.filterInput, { flex: 1, borderWidth: 0, backgroundColor: 'transparent' }]} value={value} onChangeText={onChangeText} placeholder={placeholder ?? 'YYYY-MM-DD'} placeholderTextColor={colors.muted} autoCapitalize="none" />
+      <Pressable accessibilityRole="button" accessibilityLabel={`Choose ${label.toLowerCase()}`} onPress={openCalendar} style={{ width: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' }}>
+        <CalendarDays size={18} color={colors.teal} />
+      </Pressable>
+    </View>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
+      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: uiScale.spacing[4], paddingTop: Math.max(uiScale.spacing[4], insets.top + uiScale.spacing[2]), paddingBottom: Math.max(uiScale.spacing[4], insets.bottom + uiScale.spacing[2]), backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close calendar" onPress={() => setVisible(false)} style={StyleSheet.absoluteFill} />
+        <ScrollView
+          style={{ width: '100%', maxHeight: Math.max(160, height - insets.top - insets.bottom - uiScale.spacing[4] * 2) }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: uiScale.spacing[2] }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={{ width: Math.min(width - uiScale.spacing[4] * 2, 440), alignSelf: 'center', gap: uiScale.spacing[3], borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.card, padding: uiScale.spacing[4], backgroundColor: colors.surface }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => moveMonth(-1)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={20} color={colors.ink} /></Pressable>
+              <Text accessibilityRole="header" style={{ color: colors.ink, fontWeight: '700' }}>{monthLabel}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => moveMonth(1)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={20} color={colors.ink} /></Pressable>
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((weekday) => <Text key={weekday} accessibilityLabel={weekday} style={{ width: '14.28%', paddingVertical: 8, color: colors.muted, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{weekday.slice(0, 1)}</Text>)}
+              {Array.from({ length: leadingDays }, (_, index) => <View key={`empty-${index}`} style={{ width: '14.28%', height: 40 }} />)}
+              {Array.from({ length: days }, (_, index) => {
+                const day = index + 1;
+                const dateKey = calendarDateKey(year, month, day);
+                const selected = dateKey === value;
+                const disabled = Boolean((min && dateKey < min) || (max && dateKey > max));
+                const dateLabel = new Date(year, month, day).toLocaleDateString();
+                return <Pressable key={dateKey} accessibilityRole="button" accessibilityLabel={dateLabel} accessibilityState={{ selected, disabled }} disabled={disabled} onPress={() => { onChangeText(dateKey); setVisible(false); }} style={{ width: '14.28%', height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.pill, backgroundColor: selected ? colors.selected : 'transparent' }}>
+                  <Text style={{ color: disabled ? colors.muted : selected ? colors.teal : colors.ink, fontWeight: selected ? '700' : '400' }}>{day}</Text>
+                </Pressable>;
+              })}
+            </View>
+          </View>
+        </ScrollView>
+      </View>
+    </Modal>
+  </View>;
+}
+
+export function Chip({ label, selected, onPress, compact = false }: { label: string; selected?: boolean; onPress?: () => void; compact?: boolean }) {
+  const { colors } = useTheme();
+  const redesigned = useContext(RedesignedContext);
+  const styles = createStyles(colors);
+  const content = <Text style={[styles.chipText, selected && styles.chipSelectedText]}>{label}</Text>;
+  return onPress
+    ? <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.chip, redesigned && { backgroundColor: colors.glassControl }, styles.selectableChip, selected && styles.chipSelected, compact && styles.compactChip]}>{content}</Pressable>
+    : <View style={[styles.chip, redesigned && { backgroundColor: colors.glassControl }]}>{content}</View>;
+}
+
+export function RecordRow({ icon, title, caption, right, rightCaption, children }: { icon: ReactNode; title: string; caption?: string; right?: ReactNode; rightCaption?: string; children?: ReactNode }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  return <View style={styles.dataRow}><View style={{ flex: 1 }}><Text style={styles.dataLabel}>{label}</Text>{detail ? <Text style={styles.muted}>{detail}</Text> : null}</View><Text style={styles.dataValue}>{value}</Text></View>;
+  return <View style={styles.recordRow}>
+    <View style={styles.recordHeader}>
+      <View style={styles.recordIcon}>{icon}</View>
+      <View style={styles.recordMiddle}>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.recordTitle}>{title}</Text>
+        {caption ? <Text numberOfLines={1} ellipsizeMode="tail" style={styles.recordCaption}>{caption}</Text> : null}
+      </View>
+      {(right != null || rightCaption) && <View style={styles.recordRight}>
+        {typeof right === 'string' || typeof right === 'number' ? <Text style={styles.recordValue}>{right}</Text> : right != null ? <View style={styles.recordRightContent}>{right}</View> : null}
+        {rightCaption ? <Text style={[styles.recordCaption, styles.recordRightText]}>{rightCaption}</Text> : null}
+      </View>}
+    </View>
+    {children}
+  </View>;
+}
+
+export function RecordMetrics({ items }: { items: { label: string; value: ReactNode }[] }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+  return <View style={styles.recordMetrics}>
+    <View style={styles.recordMetricLine}>{items.map((item) => <Text key={item.label} style={[styles.recordCaption, styles.recordMetric]}>{item.label}</Text>)}</View>
+    <View style={styles.recordMetricLine}>{items.map((item) => <Text key={item.label} style={[styles.recordValue, styles.recordMetric]}>{item.value}</Text>)}</View>
+  </View>;
+}
+
+export const createRecordStyles = (colors: Palette) => StyleSheet.create({
+  row: { gap: uiScale.spacing[1], paddingVertical: uiScale.spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border },
+  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] },
+  title: { color: colors.ink, fontWeight: '700', flexShrink: 1 },
+  caption: { color: colors.muted, fontSize: uiScale.type.caption, flexShrink: 1 },
+  body: { color: colors.ink, flexShrink: 1 },
+  metrics: { flexDirection: 'row', gap: uiScale.spacing[2], marginTop: uiScale.spacing[1] },
+  metric: { flex: 1, minWidth: 0, gap: uiScale.spacing[1] },
+  value: { color: colors.ink, fontWeight: '700', fontVariant: ['tabular-nums'] },
+});
+
+export function StateMessage({ message, loading, spacious = false }: { message: string; loading?: boolean; spacious?: boolean }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+  return <View style={[styles.state, spacious && styles.spaciousState]}>{loading ? <ActivityIndicator color={colors.teal} /> : null}<Text style={[styles.muted, styles.centerText]}>{message}</Text></View>;
+}
+
+export function DataRow({ label, value, detail, valueColor }: { label: string; value: string; detail?: string; valueColor?: string }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+  return <View style={styles.dataRow}><View style={{ flex: 1 }}><Text style={styles.dataLabel}>{label}</Text>{detail ? <Text style={styles.dataDetail}>{detail}</Text> : null}</View><Text style={[styles.dataValue, valueColor ? { color: valueColor } : null]}>{value}</Text></View>;
 }
 
 export const createFormStyles = (colors: Palette) => StyleSheet.create({
-  input: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, minHeight: 48, backgroundColor: colors.surface, color: colors.ink, fontSize: 16 },
-  label: { color: colors.ink, fontWeight: '700', marginBottom: 4, fontSize: 14 },
-  formField: { gap: 6, marginBottom: 8 },
+  input: { borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3], paddingVertical: uiScale.spacing[2], minHeight: 48, backgroundColor: colors.surface, color: colors.ink, fontSize: uiScale.type.body },
+  label: { color: colors.ink, fontWeight: '700', marginBottom: uiScale.spacing[1], fontSize: 14 },
+  formField: { gap: uiScale.spacing[1], marginBottom: uiScale.spacing[2] },
 });
 
 const createStyles = (colors: Palette) => StyleSheet.create({
-  background: { flex: 1 },
-  safe: { flex: 1 },
-  scroll: { flexGrow: 1 },
+  background: { flex: 1, backgroundColor: 'transparent' },
+  authBackground: { width: '100%', backgroundColor: authColors.background },
+  authBackdrop: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
+  authBackdropImage: { width: '100%', height: '100%' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
+  scroll: { flexGrow: 1, backgroundColor: 'transparent' },
   authScroll: { justifyContent: 'center' },
-  page: { width: '100%', maxWidth: 1100, alignSelf: 'center', paddingTop: 24, paddingBottom: 36, gap: 18 },
-  authPage: { maxWidth: 620, paddingTop: 32, paddingBottom: 40 },
-  brand: { alignItems: 'center', gap: 10, marginBottom: 8 },
-  brandCompact: { flexDirection: 'row', alignItems: 'center', gap: 9, minWidth: 0 },
+  page: { width: '100%', maxWidth: 1100, alignSelf: 'center', paddingTop: uiScale.spacing[4], paddingBottom: uiScale.spacing[5], gap: uiScale.spacing[2], backgroundColor: 'transparent' },
+  authPage: { maxWidth: 480, paddingTop: uiScale.spacing[4], paddingBottom: uiScale.spacing[4], backgroundColor: 'transparent' },
+  brand: { alignItems: 'center', gap: uiScale.spacing[2], marginBottom: uiScale.spacing[2] },
+  brandCompact: { flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2], minWidth: 0 },
   brandTextCompact: { flexShrink: 1, minWidth: 0 },
-  brandText: { alignItems: 'center', gap: 3 },
+  brandText: { alignItems: 'center', gap: uiScale.spacing[1] },
   logo: { width: 52, height: 74 },
   logoSmall: { width: 26, height: 37, flexShrink: 0 },
+  authLogo: { width: 36, height: 36, flexShrink: 0 },
+  authBrandName: { color: authColors.ink, fontWeight: '700', fontSize: 20, lineHeight: 22 },
+  authBrandCaption: { color: authColors.caption, fontSize: 10, letterSpacing: 1.6, marginTop: 2 },
+  logoButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   brandName: { color: colors.ink, fontWeight: '800', fontSize: 24, letterSpacing: -0.5 },
   brandNameSmall: { color: colors.ink, fontWeight: '800', fontSize: 17 },
-  brandCaption: { color: colors.muted, fontSize: 9, letterSpacing: 0.9, fontWeight: '700' },
-  heading: { gap: 6, paddingVertical: 2 },
+  brandCaption: { color: colors.muted, fontSize: uiScale.type.caption, letterSpacing: 0.9, fontWeight: '700' },
+  brandCaptionCompact: { fontSize: 10, letterSpacing: 0.2 },
+  heading: { gap: uiScale.spacing[2], paddingVertical: uiScale.spacing[1] / 2 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   centered: { alignItems: 'center' },
   centerText: { textAlign: 'center' },
-  title: { color: colors.ink, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.4 },
-  muted: { color: colors.muted, fontSize: 14, lineHeight: 21 },
-  card: { backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.cardBorder, padding: 20, gap: 14, shadowColor: '#1e40af', shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  title: { color: colors.ink, fontSize: uiScale.type.title, lineHeight: 34, fontWeight: '700', letterSpacing: -0.4, flexShrink: 1 },
+  muted: { color: colors.muted, fontSize: uiScale.type.body, lineHeight: 24 },
+  card: { backgroundColor: Platform.OS === 'android' ? 'transparent' : 'rgba(255,255,255,0.04)', borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: uiScale.spacing[3], gap: uiScale.spacing[2], boxShadow: '0px 8px 32px rgba(0,0,0,0.25)' },
+  authCard: { backgroundColor: 'transparent', borderColor: authColors.border, padding: uiScale.spacing[4], gap: uiScale.spacing[3] },
+  dialog: { backgroundColor: Platform.OS === 'android' ? 'transparent' : 'rgba(255,255,255,0.04)', borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', elevation: 0, boxShadow: '0px 8px 32px rgba(0,0,0,0.25)' },
+  cardBlur: { borderRadius: uiScale.radius.card, overflow: 'hidden' },
+  nestedCard: { backgroundColor: 'transparent', boxShadow: 'none' },
   cardHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  cardTitle: { color: colors.ink, fontSize: 17, fontWeight: '700', flexShrink: 1 },
-  button: { minHeight: 48, borderRadius: 24, overflow: 'hidden', justifyContent: 'center' },
-  buttonGradient: { minHeight: 48, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
-  buttonText: { color: 'white', fontWeight: '700', fontSize: 14, textAlign: 'center' },
+  cardTitle: { color: colors.ink, fontSize: uiScale.type.section, fontWeight: '700', flexShrink: 1 },
+  button: { minHeight: 48, borderRadius: uiScale.radius.pill, overflow: 'hidden', justifyContent: 'center' },
+  buttonGradient: { flexGrow: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
+  buttonContent: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  buttonText: { color: 'white', fontWeight: '700', fontSize: 14, textAlign: 'center', flexShrink: 1 },
   secondaryButton: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, paddingVertical: 10 },
-  secondaryText: { color: colors.ink, fontWeight: '700', fontSize: 14, textAlign: 'center' },
+  softActionButton: { borderColor: colors.teal, backgroundColor: colors.selected, shadowColor: colors.teal, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 1 },
+  secondaryText: { color: colors.ink, fontWeight: '700', fontSize: 14, textAlign: 'center', flexShrink: 1 },
+  filterField: { flex: 1, minWidth: 0, gap: uiScale.spacing[1] },
+  filterLabel: { color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '600' },
+  filterInput: { minHeight: 36, minWidth: 0, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: 10, paddingVertical: uiScale.spacing[1], backgroundColor: colors.surface, color: colors.ink, fontSize: uiScale.type.caption + 2 },
+  compactFilterInput: { minHeight: 36, fontSize: uiScale.type.caption + 2 },
+  chip: { alignSelf: 'flex-start', flexShrink: 1, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.pill, paddingHorizontal: uiScale.spacing[3], paddingVertical: uiScale.spacing[1], backgroundColor: colors.surface },
+  selectableChip: { minHeight: 44, justifyContent: 'center' },
+  compactChip: { minHeight: 32, paddingHorizontal: uiScale.spacing[2] + uiScale.spacing[1] / 2 },
+  chipSelected: { borderColor: colors.teal, backgroundColor: colors.selected },
+  chipText: { color: colors.ink, fontSize: uiScale.type.caption, fontWeight: '600' },
+  chipSelectedText: { color: colors.teal },
+  recordRow: { backgroundColor: colors.glassControl, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.card, padding: uiScale.spacing[4], gap: uiScale.spacing[3] },
+  recordHeader: { flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[3] },
+  recordIcon: { width: 40, height: 40, borderRadius: uiScale.radius.pill, backgroundColor: colors.selected, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  recordMiddle: { flex: 1, minWidth: 0, gap: uiScale.spacing[1] },
+  recordTitle: { color: colors.ink, fontWeight: '700' },
+  recordCaption: { color: colors.muted, fontSize: uiScale.type.caption },
+  recordRight: { minWidth: 96, maxWidth: '40%', alignItems: 'flex-end', gap: uiScale.spacing[1] },
+  recordRightContent: { alignSelf: 'flex-end', maxWidth: '100%' },
+  recordRightText: { textAlign: 'right', fontVariant: ['tabular-nums'] },
+  recordValue: { color: colors.ink, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'right' },
+  recordMetrics: { gap: uiScale.spacing[1] },
+  recordMetricLine: { flexDirection: 'row', gap: uiScale.spacing[1] },
+  recordMetric: { flex: 1, minWidth: 0, textAlign: 'center' },
   disabled: { opacity: 0.5 },
-  pressed: { opacity: 0.8 },
-  state: { padding: 18, alignItems: 'center', gap: 10 },
-  dataRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 10, gap: 8 },
+  pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
+  state: { padding: uiScale.spacing[3], alignItems: 'center', gap: uiScale.spacing[2] },
+  spaciousState: { padding: uiScale.spacing[5] },
+  dataRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: uiScale.spacing[2], gap: uiScale.spacing[2] },
+  dataDetail: { color: colors.muted, fontSize: uiScale.type.caption, lineHeight: 18 },
   dataLabel: { color: colors.ink, fontWeight: '700', fontSize: 14 },
-  dataValue: { color: colors.ink, fontWeight: '700', fontSize: 17, flexShrink: 1, textAlign: 'right' },
+  dataValue: { color: colors.ink, fontWeight: '700', fontSize: uiScale.type.body, flexShrink: 1, textAlign: 'right', fontVariant: ['tabular-nums'] },
 });

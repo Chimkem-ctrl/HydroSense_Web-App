@@ -1,44 +1,54 @@
+import { AlertTriangle, Clock3, Info } from 'lucide-react';
+import type { CSSProperties } from 'react';
 import type { MeasuredParameter, Reading, Threshold } from '@hydrosense/shared';
-import { DEFAULT_THRESHOLDS, formatManilaDateTime, formatParameter, getParameterStatus } from '@hydrosense/shared';
+import { DEFAULT_THRESHOLDS, formatManilaDateTime, formatParameter, getParameterStatus, isValidMeasurement, safeRangeGauge } from '@hydrosense/shared';
 import { StatusBadge } from './StatusBadge';
 
 const config: Record<MeasuredParameter, { title: string; unit: string }> = {
   temperature: { title: 'Temperature', unit: '°C' },
-  do: { title: 'Dissolved oxygen', unit: 'mg/L' },
+  do: { title: 'DO', unit: 'mg/L' },
   ph: { title: 'pH', unit: 'pH' },
 };
 
-export function ReadingCard({ parameter, reading, threshold, showRangeMeter = false }: { parameter: MeasuredParameter; reading: Reading; threshold?: Threshold; showRangeMeter?: boolean }) {
+export function ReadingCard({ parameter, reading, threshold, showRangeMeter = false, showUpdatedTimestamp = true, stale = false }: { parameter: MeasuredParameter; reading: Reading; threshold?: Threshold; showRangeMeter?: boolean; showUpdatedTimestamp?: boolean; stale?: boolean }) {
   const value = parameter === 'do' ? reading.doMgL : reading[parameter];
   const configuredThreshold = threshold ?? DEFAULT_THRESHOLDS.find((item) => item.parameter === parameter);
   const status = getParameterStatus(parameter, value, configuredThreshold);
-  const safeRange = configuredThreshold?.min !== undefined && configuredThreshold.max !== undefined
-    ? `Safe ${configuredThreshold.min}–${configuredThreshold.max}${parameter === 'temperature' ? '°C' : parameter === 'do' ? ' mg/L' : ' pH'}`
-    : configuredThreshold?.min !== undefined
-      ? `Safe ≥${configuredThreshold.min}${parameter === 'temperature' ? '°C' : parameter === 'do' ? ' mg/L' : ' pH'}`
-      : `Safe ≤${configuredThreshold?.max ?? '—'}`;
+  const unit = config[parameter].unit;
+  const valid = isValidMeasurement(parameter, value);
+  const formattedValue = valid ? formatParameter(parameter, value) : '';
+  const numericValue = formattedValue.slice(0, -unit.length).trimEnd();
   const min = configuredThreshold?.min;
   const max = configuredThreshold?.max;
-  const scaleMin = min !== undefined && max !== undefined ? min : min !== undefined ? Math.min(0, min) : max !== undefined ? Math.min(0, max) : undefined;
-  const scaleMax = min !== undefined && max !== undefined ? max : min !== undefined ? Math.max(min * 2, min + 1) : max !== undefined ? Math.max(max, 1) : undefined;
-  const showScale = showRangeMeter && Number.isFinite(value) && scaleMin !== undefined && scaleMax !== undefined && scaleMax > scaleMin;
-  const position = showScale ? Math.max(0, Math.min(100, (value - scaleMin) / (scaleMax - scaleMin) * 100)) : 0;
+  const safeRange = min !== undefined && max !== undefined
+    ? `Safe ${min}–${max} ${unit}`
+    : min !== undefined
+      ? `Safe ≥${min} ${unit}`
+      : `Safe ≤${max ?? '—'} ${unit}`;
+  const gauge = showRangeMeter && valid && configuredThreshold ? safeRangeGauge(value, configuredThreshold) : null;
+  const scaleNote = gauge ? `Display scale ${gauge.scaleMin}–${gauge.scaleMax} ${unit}${value < gauge.scaleMin || value > gauge.scaleMax ? ' · marker at scale edge' : ''}` : '';
+  const distance = status.distance.replace('minimum', 'min').replace('maximum', 'max');
   return (
-    <article className={`card reading-card${showRangeMeter ? ' glass' : ''}`} aria-label={`${config[parameter].title} reading`}>
-      <div className="inline" style={{ justifyContent: 'space-between' }}>
+    <article className={`card reading-card${showRangeMeter ? ' glass' : ''}${stale ? ' reading-stale' : ''}`} data-parameter={parameter} aria-label={`${config[parameter].title} reading`}>
+      <div className="reading-head">
         <span className="reading-label">{config[parameter].title}</span>
-        <StatusBadge level={status.level} label={status.label} />
+        {!valid ? <span className="badge reading-invalid"><AlertTriangle size={15} aria-hidden="true" />Check probe</span> : stale ? <span className="badge reading-offline"><Clock3 size={15} aria-hidden="true" />Offline</span> : <StatusBadge level={status.level} label={status.label} />}
       </div>
-      <strong className="reading-number">{formatParameter(parameter, value)}</strong>
-      <div className="reading-meta">
-        <span>{status.distance}</span>
-        <span>{safeRange}</span>
-      </div>
-      {showScale && <div className="reading-scale">
-        <div className="reading-scale-track" aria-hidden="true"><span style={{ left: `${position}%` }} /></div>
-        <span>Display scale {scaleMin}–{scaleMax} {config[parameter].unit}{value < scaleMin || value > scaleMax ? ' · marker at scale edge' : ''}</span>
-      </div>}
-      {showRangeMeter && <p className="reading-updated">Updated {formatManilaDateTime(reading.timestamp)} PHT</p>}
+      <strong className="reading-number"><span>{valid ? numericValue : '—'}</span>{' '}<span className="reading-unit">{unit}</span></strong>
+      <p className="reading-status">{!valid ? 'Invalid reading excluded' : stale ? 'Last reading; status unavailable' : distance}</p>
+      {gauge ? (
+        <div className="reading-scale">
+          <div className={`reading-scale-track${max === undefined ? ' reading-scale-track-minimum-only' : ''}`} role="img" aria-label={`${safeRange}. Current value ${formatParameter(parameter, value)}`} style={{ '--safe-start': `${gauge.safeStart}%`, '--safe-end': `${gauge.safeEnd}%` } as CSSProperties}>
+            <span style={{ left: `${gauge.position}%` }} />
+          </div>
+          <div className="reading-scale-labels" aria-hidden="true">
+            {min !== undefined && <span className={gauge.safeStart === 0 ? 'reading-scale-label-start' : undefined} style={{ left: `${gauge.safeStart}%` }}>{min}</span>}
+            {max !== undefined && <span className={gauge.safeEnd === 100 ? 'reading-scale-label-end' : undefined} style={{ left: `${gauge.safeEnd}%` }}>{max}</span>}
+          </div>
+          <button type="button" className="info-tip" aria-label={scaleNote} title={scaleNote}><Info size={14} aria-hidden="true" /></button>
+        </div>
+      ) : <p className="reading-caption">{safeRange}</p>}
+      {showRangeMeter && showUpdatedTimestamp && <p className="reading-updated">Updated {formatManilaDateTime(reading.timestamp)} PHT</p>}
     </article>
   );
 }

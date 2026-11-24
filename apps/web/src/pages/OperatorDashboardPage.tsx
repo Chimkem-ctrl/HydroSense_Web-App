@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { getCurrentUser, signOut, SUBSCRIBED_HATCHERIES } from '../services/authService';
 import { readTankRegistry, tanks } from '../data/mockDashboardData';
-import { ACTIVITY_EVENT_TYPES, ACTIVITY_OPERATION_TYPES } from '@hydrosense/shared';
+import { ACTIVITY_EVENT_TYPES, ACTIVITY_OPERATION_TYPES, toCsv } from '@hydrosense/shared';
 import {
   getThreeHourReadings,
   operatorAlerts,
@@ -205,7 +205,7 @@ function ReadingTrend({ values, color }: { values: number[]; color: string }) {
     return `${x},${y}`;
   });
   return (
-    <svg className="operator-sparkline" viewBox="0 0 100 34" role="img" aria-label="Recent 3-hour sensor trend">
+    <svg className="operator-sparkline" viewBox="0 0 100 34" role="img" aria-label="Recent sensor trend">
       <polyline points={coords.join(' ')} fill="none" stroke={color} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -247,7 +247,6 @@ function TrendPanel({
       <ReadingTrend values={values} color={color} />
       <div className="operator-trend-meta">
         <span>24-hour avg <b>{average.toFixed(1)} {unit}</b></span>
-        <span>Updated every 3 hours</span>
       </div>
     </article>
   );
@@ -321,13 +320,6 @@ export default function OperatorDashboardPage() {
   const [activityNotes, setActivityNotes] = useState('');
   const [waterChangePercent, setWaterChangePercent] = useState('');
   const [waterSource, setWaterSource] = useState('');
-  const [manualReadings, setManualReadings] = useState({
-    dissolvedOxygen: '',
-    temperature: '',
-    ph: '',
-    salinity: '',
-    method: '',
-  });
   const [environmentImpact, setEnvironmentImpact] = useState('Moderate');
   const [formError, setFormError] = useState('');
   const [resolutionAlertId, setResolutionAlertId] = useState('');
@@ -409,7 +401,6 @@ export default function OperatorDashboardPage() {
     setActivityNotes('');
     setWaterChangePercent('');
     setWaterSource('');
-    setManualReadings({ dissolvedOxygen: '', temperature: '', ph: '', salinity: '', method: '' });
     setFormError('');
     setModal('log');
   }
@@ -427,33 +418,6 @@ export default function OperatorDashboardPage() {
       return;
     }
 
-    const readingEntries = [
-      ['Dissolved oxygen', manualReadings.dissolvedOxygen, 'mg/L', 0, 30],
-      ['Temperature', manualReadings.temperature, '°C', -5, 60],
-      ['pH', manualReadings.ph, 'pH', 0, 14],
-      ['Salinity', manualReadings.salinity, 'ppt', 0, 100],
-    ] as const;
-    const recordedManualReadings = readingEntries.flatMap(([label, rawValue, unit, min, max]) => {
-      if (!rawValue.trim()) return [];
-      const value = Number(rawValue);
-      if (!Number.isFinite(value) || value < min || value > max) return [];
-      return [{ label, value, unit }];
-    });
-    if (activityKind === 'OPERATION' && activityType === 'Manual water quality check') {
-      const enteredReadingCount = readingEntries.filter(([, rawValue]) => rawValue.trim()).length;
-      if (enteredReadingCount === 0) {
-        setFormError('Enter at least one water-quality measurement from a manual instrument.');
-        return;
-      }
-      if (recordedManualReadings.length !== enteredReadingCount) {
-        setFormError('Check that each manual reading is within its allowed numeric range.');
-        return;
-      }
-    }
-
-    const manualReadingSummary = recordedManualReadings.length
-      ? ` Manual readings: ${recordedManualReadings.map(({ label, value, unit }) => `${label} ${value} ${unit}`).join(', ')}${manualReadings.method.trim() ? ` (method: ${manualReadings.method.trim()})` : ''}.`
-      : '';
     const extraDetails = activityKind === 'OPERATION' &&
       activityType === 'Water change / exchange' && waterSource.trim()
       ? ` Water source: ${waterSource.trim()}.`
@@ -467,20 +431,11 @@ export default function OperatorDashboardPage() {
       type: activityType,
       occurredAt: time.now.toISOString(),
       operator: activeOperatorName,
-      notes: `${activityNotes.trim()}${extraDetails}${manualReadingSummary}`,
+      notes: `${activityNotes.trim()}${extraDetails}`,
       ...(activityKind === 'OPERATION' && activityType === 'Water change / exchange'
         ? { waterChangePercent: parsedPercent }
         : {}),
       ...(activityKind === 'ENVIRONMENT' ? { impact: environmentImpact } : {}),
-      ...(recordedManualReadings.length ? {
-        manualReadings: {
-          ...(manualReadings.dissolvedOxygen.trim() ? { dissolvedOxygen: Number(manualReadings.dissolvedOxygen) } : {}),
-          ...(manualReadings.temperature.trim() ? { temperature: Number(manualReadings.temperature) } : {}),
-          ...(manualReadings.ph.trim() ? { ph: Number(manualReadings.ph) } : {}),
-          ...(manualReadings.salinity.trim() ? { salinity: Number(manualReadings.salinity) } : {}),
-          ...(manualReadings.method.trim() ? { method: manualReadings.method.trim() } : {}),
-        },
-      } : {}),
     };
     setLogs((current) => [newLog, ...current]);
     setModal(null);
@@ -546,12 +501,12 @@ export default function OperatorDashboardPage() {
 
   function refreshReadings() {
     setLastRefresh(new Date());
-    setMessage('Demo sensor view refreshed. Sensors report on a 3-hour cadence; no live hardware was contacted.');
+    setMessage('Demo sensor view refreshed. No live hardware was contacted.');
   }
 
   function downloadLog() {
-    const rows = [
-      ['Timestamp (PHT)', 'Tank', 'Type', 'Activity', 'Operator', 'Water change (%)', 'Manual salinity (ppt)', 'Manual DO (mg/L)', 'Manual temperature (°C)', 'Manual pH', 'Manual method', 'Impact', 'Notes'],
+    const rows: unknown[][] = [
+      ['Timestamp (PHT)', 'Tank/scope', 'Kind', 'Activity', 'Operator', 'Water change (%)', 'Manual readings', 'Impact', 'Notes'],
       ...logsForTank.map((log) => [
         formatManilaTimestamp(new Date(log.occurredAt)),
         log.tankId === 'hatchery'
@@ -561,19 +516,17 @@ export default function OperatorDashboardPage() {
         log.type,
         log.operator,
         log.waterChangePercent === undefined ? '' : String(log.waterChangePercent),
-        log.manualReadings?.salinity === undefined ? '' : String(log.manualReadings.salinity),
-        log.manualReadings?.dissolvedOxygen === undefined ? '' : String(log.manualReadings.dissolvedOxygen),
-        log.manualReadings?.temperature === undefined ? '' : String(log.manualReadings.temperature),
-        log.manualReadings?.ph === undefined ? '' : String(log.manualReadings.ph),
-        log.manualReadings?.method ?? '',
+        [
+          ['DO', log.manualReadings?.dissolvedOxygen, 'mg/L'],
+          ['Temperature', log.manualReadings?.temperature, '°C'],
+          ['pH', log.manualReadings?.ph, ''],
+          ['Salinity', log.manualReadings?.salinity, 'ppt'],
+        ].flatMap(([label, value, unit]) => value === undefined ? [] : [`${label}: ${value}${unit ? ` ${unit}` : ''}`]).join('; '),
         log.impact ?? '',
         log.notes,
       ]),
     ];
-    const csv = rows.map((row) => row.map((field) => {
-      const safeField = /^[\s]*[=+\-@]/.test(field) ? `'${field}` : field;
-      return `"${safeField.replace(/"/g, '""')}"`;
-    }).join(',')).join('\r\n');
+    const csv = toCsv(rows);
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
@@ -682,7 +635,6 @@ export default function OperatorDashboardPage() {
               <div className="operator-status-stats">
                 <div><span>Last reading</span><b>{formatManilaTimestamp(time.now)} PHT</b></div>
                 <div><span>Connected sensors</span><b>{sensorStatus === 'ONLINE' ? '3 online' : 'Disconnected'}</b></div>
-                <div><span>Reading interval</span><b>Every 3 hours</b></div>
               </div>
             </article>
 
@@ -696,7 +648,7 @@ export default function OperatorDashboardPage() {
           </section>}
 
           {currentPage === 'readings' && <section className="operator-section" id="operator-readings">
-            <OperatorSectionHeading title="Current Water Quality" detail={`${selectedTank.name} · Sensor readings are collected every 3 hours`} action={<span className="operator-last-sync"><span className="operator-online-dot" /> Last sync {formatManilaTimestamp(lastRefresh)} PHT</span>} />
+            <OperatorSectionHeading title="Current Water Quality" detail={`${selectedTank.name} · Current sensor readings`} action={<span className="operator-last-sync"><span className="operator-online-dot" /> Last sync {formatManilaTimestamp(lastRefresh)} PHT</span>} />
             <div className="operator-reading-grid">
               <article className={`operator-card operator-reading-card${latestReading.dissolvedOxygen < DO_DEMO_THRESHOLD ? ' has-critical-reading' : ''}`}>
                 <div className="operator-reading-card-top"><span className="operator-reading-icon operator-reading-icon--aqua"><Droplets size={18} /></span><OperatorBadge tone={latestReading.dissolvedOxygen < DO_DEMO_THRESHOLD ? 'critical' : 'safe'}>{latestReading.dissolvedOxygen < DO_DEMO_THRESHOLD ? 'LOW' : 'IN RANGE'}</OperatorBadge></div>
@@ -704,7 +656,7 @@ export default function OperatorDashboardPage() {
                 <div className="operator-reading-value">{latestReading.dissolvedOxygen.toFixed(1)} <small>mg/L</small></div>
                 <div className="operator-reading-context">{latestReading.dissolvedOxygen < DO_DEMO_THRESHOLD ? `Below demo minimum of ${DO_DEMO_THRESHOLD.toFixed(1)} mg/L` : 'Compare with your hatchery guidance'}</div>
                 <ReadingTrend values={readings.map((item) => item.dissolvedOxygen)} color={latestReading.dissolvedOxygen < DO_DEMO_THRESHOLD ? '#ff777c' : '#55c7e8'} />
-                <span className="operator-reading-updated"><Clock3 size={12} /> Latest 3-hour sample</span>
+                <span className="operator-reading-updated"><Clock3 size={12} /> Latest available sample</span>
               </article>
               <article className="operator-card operator-reading-card">
                 <div className="operator-reading-card-top"><span className="operator-reading-icon operator-reading-icon--orange"><Thermometer size={18} /></span><OperatorBadge tone={sensorStatus === 'ONLINE' ? 'safe' : 'muted'}>{sensorStatus === 'ONLINE' ? 'SENSOR ONLINE' : 'HARDWARE OFFLINE'}</OperatorBadge></div>
@@ -712,7 +664,7 @@ export default function OperatorDashboardPage() {
                 <div className="operator-reading-value">{latestReading.temperature.toFixed(1)} <small>°C</small></div>
                 <div className="operator-reading-context">Review against tank-specific guidance</div>
                 <ReadingTrend values={readings.map((item) => item.temperature)} color="#f0b467" />
-                <span className="operator-reading-updated"><Clock3 size={12} /> Latest 3-hour sample</span>
+                <span className="operator-reading-updated"><Clock3 size={12} /> Latest available sample</span>
               </article>
               <article className="operator-card operator-reading-card">
                 <div className="operator-reading-card-top"><span className="operator-reading-icon operator-reading-icon--blue"><FlaskConical size={18} /></span><OperatorBadge tone={sensorStatus === 'ONLINE' ? 'safe' : 'muted'}>{sensorStatus === 'ONLINE' ? 'SENSOR ONLINE' : 'HARDWARE OFFLINE'}</OperatorBadge></div>
@@ -720,7 +672,7 @@ export default function OperatorDashboardPage() {
                 <div className="operator-reading-value">{latestReading.ph.toFixed(1)} <small>pH units</small></div>
                 <div className="operator-reading-context">Compare with your hatchery guidance</div>
                 <ReadingTrend values={readings.map((item) => item.ph)} color="#88a8ff" />
-                <span className="operator-reading-updated"><Clock3 size={12} /> Latest 3-hour sample</span>
+                <span className="operator-reading-updated"><Clock3 size={12} /> Latest available sample</span>
               </article>
               <article className="operator-card operator-reading-card operator-salinity-card">
                 <div className="operator-reading-card-top"><span className="operator-reading-icon operator-reading-icon--violet"><Waves size={18} /></span><OperatorBadge tone="warning">VERIFY</OperatorBadge></div>
@@ -763,12 +715,12 @@ export default function OperatorDashboardPage() {
           </section>}
 
           {currentPage === 'history' && <section className="operator-section" id="operator-history">
-            <OperatorSectionHeading title="3-Hour Sensor Readings" detail="Eight sample intervals cover the last 24 hours. Historical readings are not a substitute for direct verification." action={<button type="button" className="operator-button operator-button--quiet" onClick={refreshReadings}><RefreshCw size={13} /> Refresh view</button>} />
+            <OperatorSectionHeading title="Recent Sensor Readings" detail="Historical readings are not a substitute for direct verification." action={<button type="button" className="operator-button operator-button--quiet" onClick={refreshReadings}><RefreshCw size={13} /> Refresh view</button>} />
             <div className="operator-card operator-history-card">
-              <div className="operator-history-legend"><span><i className="legend-dot legend-dot--do" /> Dissolved Oxygen (mg/L)</span><span><i className="legend-dot legend-dot--temp" /> Temperature (°C)</span><span><i className="legend-dot legend-dot--ph" /> pH</span><span className="operator-cadence"><Clock3 size={12} /> 3-hour cadence</span></div>
+              <div className="operator-history-legend"><span><i className="legend-dot legend-dot--do" /> Dissolved Oxygen (mg/L)</span><span><i className="legend-dot legend-dot--temp" /> Temperature (°C)</span><span><i className="legend-dot legend-dot--ph" /> pH</span></div>
               <div className="operator-table-wrap">
                 <table className="operator-table">
-                  <thead><tr><th>Sample interval</th><th>Dissolved oxygen</th><th>Temperature</th><th>pH</th><th>Salinity</th><th>Sensor status</th></tr></thead>
+                  <thead><tr><th>Reading time</th><th>Dissolved oxygen</th><th>Temperature</th><th>pH</th><th>Salinity</th><th>Sensor status</th></tr></thead>
                   <tbody>
                     {readings.slice().reverse().map((reading, index) => (
                       <tr key={`${reading.timestamp}-${index}`} className={index === 0 && reading.dissolvedOxygen < DO_DEMO_THRESHOLD ? 'operator-row-critical' : ''}>
@@ -831,7 +783,6 @@ export default function OperatorDashboardPage() {
                     <span className="operator-sensor-icon"><Icon size={16} /></span>
                     <span className="operator-sensor-name"><b>{name}</b><small>{id}</small></span>
                     <span className={`operator-table-online${sensorStatus === 'OFFLINE' ? ' is-offline' : ''}`}><i /> {sensorStatus}</span>
-                    <small className="operator-sensor-sync">3-hour interval</small>
                   </div>
                 ))}
                 <div className="operator-device-footer"><span className="operator-online-dot" /> Last transmission {formatManilaTimestamp(lastRefresh)} PHT</div>
@@ -859,7 +810,7 @@ export default function OperatorDashboardPage() {
       {message && <div className="operator-toast" role="status"><Check size={15} />{message}<button type="button" aria-label="Dismiss notification" onClick={() => setMessage('')}><X size={14} /></button></div>}
 
       {modal === 'log' && (
-        <OperatorModal title={activityKind === 'OPERATION' ? 'Log hatchery operation' : 'Log weather or event'} description="Entries are saved in this browser for shift handover." onClose={() => setModal(null)}>
+        <OperatorModal title={activityKind === 'OPERATION' ? 'Log Hatchery Operation' : 'Log Weather or Event'} description="Entries are saved in this browser for shift handover." onClose={() => setModal(null)}>
           <form className="operator-form" onSubmit={submitLog}>
             <div className="operator-form-tabs">
               <button type="button" className={activityKind === 'OPERATION' ? 'is-selected' : ''} onClick={() => { setActivityKind('OPERATION'); setEntryTankId(tankId); setActivityType(ACTIVITY_OPERATION_TYPES[0]); setFormError(''); }}>Operation</button>
@@ -876,18 +827,6 @@ export default function OperatorDashboardPage() {
                 <label>Water source (optional)<input value={waterSource} onChange={(event) => setWaterSource(event.target.value)} placeholder="e.g. treated reservoir" /></label>
               </div>
             )}
-            {activityKind === 'OPERATION' && activityType === 'Manual water quality check' && (
-              <>
-                <div className="operator-manual-reading-grid">
-                  <label>Dissolved oxygen (mg/L)<input type="number" min="0" max="30" step="0.1" value={manualReadings.dissolvedOxygen} onChange={(event) => setManualReadings((current) => ({ ...current, dissolvedOxygen: event.target.value }))} placeholder="Optional" /></label>
-                  <label>Temperature (°C)<input type="number" min="-5" max="60" step="0.1" value={manualReadings.temperature} onChange={(event) => setManualReadings((current) => ({ ...current, temperature: event.target.value }))} placeholder="Optional" /></label>
-                  <label>pH<input type="number" min="0" max="14" step="0.1" value={manualReadings.ph} onChange={(event) => setManualReadings((current) => ({ ...current, ph: event.target.value }))} placeholder="Optional" /></label>
-                  <label>Salinity (ppt)<input type="number" min="0" max="100" step="0.1" value={manualReadings.salinity} onChange={(event) => setManualReadings((current) => ({ ...current, salinity: event.target.value }))} placeholder="Optional" /></label>
-                </div>
-                <label>Instrument / method (optional)<input value={manualReadings.method} onChange={(event) => setManualReadings((current) => ({ ...current, method: event.target.value }))} placeholder="e.g. calibrated handheld refractometer" /></label>
-                <small className="operator-field-help">Enter readings you actually measured. Manual values are logged as operator observations, separate from sensor readings.</small>
-              </>
-            )}
             {activityKind === 'ENVIRONMENT' && <label>Observed impact<select value={environmentImpact} onChange={(event) => setEnvironmentImpact(event.target.value)}><option>Low</option><option>Moderate</option><option>High</option><option>Unknown</option></select></label>}
             <label>Notes<textarea value={activityNotes} onChange={(event) => setActivityNotes(event.target.value)} placeholder={activityKind === 'OPERATION' ? 'What was done? Include observations or follow-up needed.' : 'When did it occur? What changed around the tank?'} rows={4} required /></label>
             <div className="operator-form-meta">Recorded by <b>{activeOperatorName}</b> · {time.date}, {time.time} PHT</div>
@@ -898,7 +837,7 @@ export default function OperatorDashboardPage() {
       )}
 
       {modal === 'resolve' && (
-        <OperatorModal title="Record corrective action" description="Only mark the alert resolved after action and verification. The resolution is added to your activity log." onClose={() => setModal(null)}>
+        <OperatorModal title="Record corrective action" description="Are you sure you want to resolve this alert? Continue only after taking action and verifying the condition. The resolution is added to your activity log." onClose={() => setModal(null)}>
           <form className="operator-form" onSubmit={submitResolution}>
             {(() => {
               const alert = alerts.find((item) => item.id === resolutionAlertId);

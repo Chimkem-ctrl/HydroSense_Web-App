@@ -84,7 +84,7 @@ export default function Gallery() {
         <div className="ds-section-heading"><div><p className="ds-eyebrow">01 · READINGS</p><h2>Hero readings</h2></div><span>Measured parameters only</span></div>
         <div className="ds-grid ds-grid-3">
           <HeroReading label="Temperature" value="29.7" unit="°C" level="normal" detail="Safe 28–32 °C · updated 11:00 PHT" />
-          <HeroReading label="Dissolved oxygen" value="4.3" unit="mg/L" level="warning" detail="Safe ≥4 mg/L · updated 11:00 PHT" />
+          <HeroReading label="DO" value="4.3" unit="mg/L" level="warning" detail="Safe ≥4 mg/L · updated 11:00 PHT" />
           <HeroReading label="pH" value="5.6" unit="pH" level="critical" detail="Safe 6–8 pH · updated 11:00 PHT" />
         </div>
 
@@ -131,7 +131,7 @@ export default function Gallery() {
         <GlassCard title="Data table" action={<Pill>Sticky header</Pill>}>
           <DataTable headers={['Time (PHT)', 'Parameter', 'Value', 'Status']} rows={[
             ['11:00', 'Temperature', '29.7 °C', <StatusBadge level="normal" />],
-            ['08:00', 'Dissolved oxygen', '4.3 mg/L', <StatusBadge level="warning" />],
+            ['08:00', 'DO', '4.3 mg/L', <StatusBadge level="warning" />],
             ['05:00', 'pH', '5.6 pH', <StatusBadge level="critical" />],
           ]} />
         </GlassCard>

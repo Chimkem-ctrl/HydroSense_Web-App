@@ -1,11 +1,25 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AdvisoryState, DeviceStatus, Reading, Tank } from '@hydrosense/shared';
+import type { DeviceStatus, Reading, Tank } from '@hydrosense/shared';
 import { api, liveClient } from '../api';
 import { DATA_MODE, tierConfig } from '../config';
+import { useAuth } from '../auth/RoleContext';
+import { authService } from '../../services/authService';
 
 export function useTanks() {
   return useQuery({ queryKey: ['tanks'], queryFn: () => api.listTanks() });
+}
+
+export function useProfileSite(enabled = true) {
+  const user = useAuth();
+  return useQuery({
+    queryKey: ['profile-site', user?.id],
+    queryFn: async () => {
+      if (!user) throw new Error('Sign in to load your hatchery assignment.');
+      return (await authService.getProfileSite(user)) ?? null;
+    },
+    enabled: Boolean(user) && enabled,
+  });
 }
 
 export function useLatestReading(tankId: string) {
@@ -14,7 +28,7 @@ export function useLatestReading(tankId: string) {
     queryKey: ['latest-reading', tankId],
     queryFn: () => api.getLatestReading(tankId),
     enabled: Boolean(tankId),
-    refetchInterval: DATA_MODE === 'api' ? false : tierConfig.refreshIntervalMs,
+    refetchInterval: DATA_MODE === 'api' ? 30_000 : tierConfig.refreshIntervalMs,
   });
   useEffect(() => {
     if (!tankId) return undefined;
@@ -30,7 +44,11 @@ export function useLatestReading(tankId: string) {
 export function useDeviceStatuses() {
   const queryClient = useQueryClient();
   const tanks = useTanks();
-  const query = useQuery({ queryKey: ['device-status'], queryFn: () => api.listDeviceStatuses() });
+  const query = useQuery({
+    queryKey: ['device-status'],
+    queryFn: () => api.listDeviceStatuses(),
+    refetchInterval: DATA_MODE === 'api' ? 30_000 : false,
+  });
   useEffect(() => {
     if (!tanks.data?.length) return undefined;
     const subscriptions = tanks.data.map((tank) => liveClient.subscribe(tank.id, (event) => {
@@ -49,14 +67,17 @@ export function useOpenAlerts(tankId?: string) {
   return useQuery({
     queryKey: ['alerts', tankId ?? 'all'],
     queryFn: async () => (await api.listAlerts(tankId)).filter((alert) => alert.status === 'open'),
+    refetchInterval: DATA_MODE === 'api' ? 5_000 : false,
   });
 }
 
-export function useAdvisories(tankId: string) {
-  return useQuery<AdvisoryState[]>({
-    queryKey: ['advisories', tankId],
-    queryFn: () => api.listAdvisories(tankId),
-    enabled: Boolean(tankId),
+export function usePendingRequests(allowManager = false) {
+  const user = useAuth();
+  return useQuery({
+    queryKey: ['pending-requests', user?.id, user?.role],
+    queryFn: () => authService.listPendingRequests(),
+    enabled: user?.role === 'admin' || (allowManager && user?.role === 'manager' && Boolean(user.hatcheryId)),
+    refetchInterval: tierConfig.refreshIntervalMs,
   });
 }
 

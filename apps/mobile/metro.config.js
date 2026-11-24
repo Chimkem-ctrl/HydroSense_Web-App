@@ -15,4 +15,15 @@ config.resolver.extraNodeModules = {
   '@hydrosense/shared': path.resolve(workspaceRoot, 'packages/shared'),
 };
 
+const resolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  const resolved = (resolveRequest ?? context.resolveRequest)(context, moduleName, platform);
+  // The tslib wrapper imports CommonJS as a default, which Metro can resolve as undefined on web.
+  if (moduleName === 'tslib' && resolved.type === 'sourceFile' &&
+      resolved.filePath.endsWith(path.join('tslib', 'modules', 'index.js'))) {
+    return { type: 'sourceFile', filePath: path.resolve(path.dirname(resolved.filePath), '../tslib.es6.js') };
+  }
+  return resolved;
+};
+
 module.exports = config;

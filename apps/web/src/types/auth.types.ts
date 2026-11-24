@@ -1,6 +1,6 @@
 import type { Role, SignupAddress } from '@hydrosense/shared';
 
-export type RequestedRole = Exclude<Role, 'admin'>;
+export type RequestedRole = Role;
 export type AccountStatus = 'pending' | 'approved' | 'rejected';
 
 export interface SignInValues {
@@ -14,6 +14,7 @@ export interface SignUpValues extends SignInValues {
   employeeId: string;
   phone: string;
   hatcheryId: string;
+  requestedRole: RequestedRole;
   address: SignupAddress;
   emergencyContactName: string;
   emergencyContactPhone: string;
@@ -32,6 +33,7 @@ export interface AuthUser {
   employeeId?: string;
   phone?: string;
   position?: string;
+  avatarUrl?: string;
   hatcheryId?: string;
   address?: string;
   emergencyContactName?: string;

@@ -1,25 +1,28 @@
 import { useTheme } from '../../app/ThemeContext';
 import type { ThemeChoice } from '../../app/ThemeContext';
 
-const OPTIONS: { value: ThemeChoice; label: string; hint: string }[] = [
-  { value: 'system', label: 'System', hint: 'Match your device setting' },
-  { value: 'light', label: 'Light', hint: 'Light background' },
-  { value: 'dark', label: 'Dark', hint: 'Dark background, easier to read at night' },
+const OPTIONS: { value: ThemeChoice; label: string }[] = [
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
 ];
 
 export function AppearancePanel() {
   const { choice, setChoice } = useTheme();
   return (
-    <section className="card stack">
-      <fieldset className="stack" style={{ border: 0, margin: 0, padding: 0 }}>
-        <legend className="card-title">Theme</legend>
-        {OPTIONS.map(({ value, label, hint }) => (
-          <label key={value} className="check-row">
-            <input type="radio" name="theme" value={value} checked={choice === value} onChange={() => setChoice(value)} />
-            <span>{label}</span>
-            <small className="muted">{hint}</small>
-          </label>
-        ))}
+    <section id="appearance" className="card profile-preferences" aria-labelledby="appearance-title">
+      <div className="profile-panel-heading"><h2 id="appearance-title">Appearance</h2></div>
+      <fieldset className="profile-theme">
+        <legend className="sr-only">Theme</legend>
+        <div className="profile-options">
+          {OPTIONS.map(({ value, label }) => (
+            <label key={value} className={`check-row${choice === value || (choice === 'system' && document.documentElement.dataset.theme === value) ? ' is-selected' : ''}`}>
+              <input type="radio" name="theme" value={value} checked={choice === value || (choice === 'system' && document.documentElement.dataset.theme === value)} onChange={() => setChoice(value)} aria-labelledby={`theme-${value}-label`} />
+              <span className="profile-option-copy">
+                <span id={`theme-${value}-label`}>{label}</span>
+              </span>
+            </label>
+          ))}
+        </div>
       </fieldset>
     </section>
   );

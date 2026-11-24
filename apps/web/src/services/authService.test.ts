@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   authService,
   DEMO_ADMIN_CREDENTIALS,
+  DEMO_ROLE_CREDENTIALS,
   getCurrentUser,
   signOut,
   SUBSCRIBED_HATCHERIES,
@@ -16,11 +17,12 @@ function signupValues(overrides: Partial<SignUpValues> = {}): SignUpValues {
   return {
     firstName: 'Taylor',
     lastName: 'Rivera',
-    employeeId: 'EMP-001',
+    employeeId: 'EMP-123',
     phone: '+63 917 555 0100',
     email: 'taylor@example.com',
     password: 'TestPass!2026',
     hatcheryId: SUBSCRIBED_HATCHERIES[0].id,
+    requestedRole: 'operator',
     address: { country: 'PH', province: '1001800000', city: '1001805000', barangay: '1001805001', street: 'Main Street' },
     emergencyContactName: 'Alex Rivera',
     emergencyContactPhone: '+63 917 555 0101',
@@ -42,11 +44,13 @@ async function signInAsAdmin() {
 describe('authService', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
     Object.defineProperty(window, 'crypto', { configurable: true, value: webcrypto });
   });
 
   afterEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it('signs in the configured admin and stores only the user ID in the session', async () => {
@@ -54,19 +58,72 @@ describe('authService', () => {
 
     expect(result).toMatchObject({ status: 'approved', redirectPath: '/' });
     expect(getCurrentUser()).toMatchObject({ id: 'demo-admin', role: 'admin', status: 'approved' });
-    expect(JSON.parse(window.localStorage.getItem(SESSION_KEY) ?? '{}')).toEqual({ userId: 'demo-admin' });
+    expect(JSON.parse(window.sessionStorage.getItem(SESSION_KEY) ?? '{}')).toEqual({ userId: 'demo-admin' });
+  });
+
+  it.each([
+    ['admin', DEMO_ADMIN_CREDENTIALS.email, DEMO_ADMIN_CREDENTIALS.password],
+    ['operator', DEMO_ROLE_CREDENTIALS[0].email, DEMO_ROLE_CREDENTIALS[0].password],
+  ])('persists a changed demo password for %s', async (_role, email, password) => {
+    await authService.signIn(email, password);
+    await expect(authService.changePassword('incorrect', 'NewPassword123', 'NewPassword123')).rejects.toThrow('Current password is incorrect.');
+    await authService.changePassword(password, 'NewPassword123', 'NewPassword123');
+    signOut();
+    await expect(authService.signIn(email, password)).rejects.toThrow('Email or password is incorrect.');
+    await expect(authService.signIn(email, 'NewPassword123')).resolves.toMatchObject({ status: 'approved' });
+  });
+
+  it.each(DEMO_ROLE_CREDENTIALS)('signs in the $role demo account and restores its session', async ({ role, email, password }) => {
+    await expect(authService.signIn(email, 'wrong-password')).rejects.toThrow('Email or password is incorrect.');
+    await expect(authService.signIn(email, password)).resolves.toMatchObject({ status: 'approved', user: { role, email } });
+    expect(getCurrentUser()).toMatchObject({ role, email });
+    signOut();
+    expect(getCurrentUser()).toBeNull();
+  });
+
+  it('does not overwrite existing demo accounts or recreate a removed account', async () => {
+    await signInAsAdmin();
+    const [operator] = DEMO_ROLE_CREDENTIALS;
+    const account = (await authService.listApprovedUsers()).find((user) => user.email === operator.email);
+    expect(account).toBeDefined();
+    await authService.removeAccount(account!.id);
+    signOut();
+    await expect(authService.signIn(operator.email, operator.password)).rejects.toThrow('Email or password is incorrect.');
+  });
+
+  it('allows a removed user to request a new account with the same email', async () => {
+    const userId = await createPendingRequest();
+    await signInAsAdmin();
+    await authService.approveRequest(userId, 'operator');
+    await authService.removeAccount(userId);
+    signOut();
+    await expect(authService.signUp(signupValues())).resolves.toMatchObject({ status: 'pending' });
+    await expect(authService.signUp(signupValues({ email: DEMO_ROLE_CREDENTIALS[0].email })))
+      .rejects.toThrow('An account with this email already exists.');
   });
 
   it('does not sign in pending accounts and checks the password before reporting pending status', async () => {
     await authService.signUp(signupValues());
-    expect(window.localStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(window.sessionStorage.getItem(SESSION_KEY)).toBeNull();
 
     await expect(authService.signIn('taylor@example.com', 'incorrect-password'))
       .rejects.toThrow('Email or password is incorrect.');
     await expect(authService.signIn('taylor@example.com', 'TestPass!2026'))
       .resolves.toMatchObject({ status: 'pending', redirectPath: '/pending-approval' });
     expect(getCurrentUser()).toBeNull();
-    expect(window.localStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(window.sessionStorage.getItem(SESSION_KEY)).toBeNull();
+  });
+
+  it('stores the requested role, selected hatchery, and employee ID', async () => {
+    const values = signupValues({ hatcheryId: SUBSCRIBED_HATCHERIES[1].id, requestedRole: 'admin' });
+    await authService.signUp(values);
+    await signInAsAdmin();
+    const [request] = await authService.listPendingRequests();
+    expect(request).toMatchObject({
+      requestedRole: 'admin',
+      hatcheryId: 'camiguin-benoni',
+    });
+    expect(request.employeeId).toBe('EMP-123');
   });
 
   it('blocks rejected accounts after verifying the password', async () => {
@@ -88,7 +145,7 @@ describe('authService', () => {
     signOut();
 
     await expect(authService.signIn('taylor@example.com', 'TestPass!2026'))
-      .resolves.toMatchObject({ status: 'approved', user: { role: 'manager', requestedRole: null } });
+      .resolves.toMatchObject({ status: 'approved', user: { role: 'manager', requestedRole: 'operator' } });
     expect(getCurrentUser()?.role).toBe('manager');
 
     const accounts = JSON.parse(window.localStorage.getItem(ACCOUNT_KEY) ?? '[]');

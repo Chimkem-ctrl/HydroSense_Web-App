@@ -1,6 +1,8 @@
 import type { ActivityLog, AdvisoryRuleSettings, AlertItem, CalibrationLog, DashboardUser, ManualEntry, Tank, Threshold, ValidationTolerance } from '../types';
 import { mapManualEntryToActivityLog } from '../activity';
 import { DEFAULT_ADVISORY_RULES, getAmmoniaAdvisory, getSalinityAdvisory } from '../rules/advisory';
+import { isValidMeasurement } from '../rules/reading';
+import { activityInHatchery, hatcheryId } from '../hatcheries';
 import { DEFAULT_VALIDATION_TOLERANCES } from '../validation';
 import {
   mockAdvisoryStates,
@@ -16,7 +18,7 @@ import {
   mockUsers,
   mockValidationRows,
 } from '../mock/data';
-import type { AcknowledgeAlertInput, CreateCalibrationInput, HydroSenseApi, ReadingQuery } from './types';
+import type { AcknowledgeAlertInput, CreateCalibrationInput, HydroSenseApi, ReadingQuery, SaveReportInput } from './types';
 
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -35,6 +37,7 @@ export class MockApiClient implements HydroSenseApi {
   private tolerances = clone(DEFAULT_VALIDATION_TOLERANCES);
   private users = clone(mockUsers);
   private auditLogs = clone(mockAuditLogs);
+  private reports: SaveReportInput[] = [];
   private auditSequence = 0;
 
   async listTanks() { return clone(this.tanks); }
@@ -112,7 +115,18 @@ export class MockApiClient implements HydroSenseApi {
     return clone(rows[rows.length - 1] ?? null);
   }
 
-  async listDeviceStatuses() { return clone(this.devices); }
+  async listDeviceStatuses() {
+    return clone(this.devices.map((device) => {
+      const tank = this.tanks.find((item) => item.deviceId === device.deviceId);
+      const latest = this.readings.filter((reading) => reading.tankId === tank?.id)
+        .reduce<typeof this.readings[number] | undefined>((current, reading) =>
+          !current || reading.timestamp > current.timestamp ? reading : current, undefined);
+      if (!latest) return device;
+      const invalidParameters = (['temperature', 'do', 'ph'] as const).filter((parameter) =>
+        !isValidMeasurement(parameter, parameter === 'do' ? latest.doMgL : latest[parameter]));
+      return { ...device, invalidParameters, probeCheckedAt: latest.timestamp };
+    }));
+  }
   async listAlerts(tankId?: string) { return clone(this.alerts.filter((alert) => !tankId || alert.tankId === tankId)); }
   async listAlertResponses(alertId: string) { return clone(this.responses.filter((response) => response.alertId === alertId)); }
 
@@ -155,8 +169,9 @@ export class MockApiClient implements HydroSenseApi {
     return clone(created);
   }
   async listActivityLogs(tankId?: string) {
+    const tank = this.tanks.find((item) => item.id === tankId);
     return clone(this.activityLogs
-      .filter((log) => !tankId || log.tankId === tankId || log.tankId === 'hatchery')
+      .filter((log) => !tankId || log.tankId === tankId || (log.tankId === 'hatchery' && Boolean(tank && activityInHatchery(log, this.tanks, hatcheryId(tank.site)))))
       .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)));
   }
   async createActivityLog(entry: Omit<ActivityLog, 'id' | 'occurredAt'>) {
@@ -214,7 +229,7 @@ export class MockApiClient implements HydroSenseApi {
     }
     for (const entry of advisoryEntries) {
       if (entry.tankId === 'hatchery') {
-        this.entries.unshift(...this.tanks.map((tank) => ({
+        this.entries.unshift(...this.tanks.filter((tank) => activityInHatchery(created, this.tanks, hatcheryId(tank.site))).map((tank) => ({
           ...entry,
           id: `${entry.id}-${tank.id}`,
           tankId: tank.id,
@@ -225,7 +240,7 @@ export class MockApiClient implements HydroSenseApi {
     }
     if (created.tankId !== 'hatchery') this.refreshAdvisories(created.tankId, created.occurredAt);
     for (const tank of this.tanks) {
-      if (created.tankId === 'hatchery' && advisoryEntries.length > 0) {
+      if (created.tankId === 'hatchery' && advisoryEntries.length > 0 && activityInHatchery(created, this.tanks, hatcheryId(tank.site))) {
         this.refreshAdvisories(tank.id, created.occurredAt);
       }
     }
@@ -272,23 +287,32 @@ export class MockApiClient implements HydroSenseApi {
     return clone(this.users[index]);
   }
   async listAuditLogs() { return clone(this.auditLogs); }
+  async saveReport(report: SaveReportInput) {
+    if (!this.reports.some((existing) => existing.id === report.id)) this.reports.push(clone(report));
+  }
 
   private refreshAdvisories(tankId: string, updatedAt = new Date().toISOString()) {
     const readings = this.readings.filter((reading) => reading.tankId === tankId);
     const latest = readings[readings.length - 1];
     if (!latest) return;
     const entries = this.entries.filter((entry) => entry.tankId === tankId);
+    const tank = this.tanks.find((item) => item.id === tankId);
+    const events = this.activityLogs
+      .filter((event) => event.tankId === tankId || (event.tankId === 'hatchery' && Boolean(tank && activityInHatchery(event, this.tanks, hatcheryId(tank.site)))))
+      .map(({ type, tankId: scope }) => ({ type, scope }));
     const previousAmmonia = this.advisories[tankId]?.find((item) => item.kind === 'ammonia');
     this.advisories[tankId] = [
       getSalinityAdvisory({
         temperatureC: latest.temperature,
         rainEvent: entries.some((entry) => entry.type === 'rain_event'),
         freshwaterDosing: entries.some((entry) => entry.type === 'freshwater_dosing'),
+        events,
       }, this.advisorySettings, updatedAt),
       getAmmoniaAdvisory({
         temperatureC: latest.temperature,
         ph: latest.ph,
         feedingLoad: previousAmmonia?.inputs.feedingLoad === 'high' ? 'high' : 'usual',
+        events,
       }, this.advisorySettings, updatedAt),
     ];
   }

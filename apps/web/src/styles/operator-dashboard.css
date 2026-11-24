@@ -637,7 +637,7 @@
   min-width: 0;
   border: 1px solid var(--op-border);
   border-radius: 9px;
-  background: linear-gradient(145deg, rgba(28, 37, 66, 0.97), rgba(22, 30, 53, 0.98));
+  background: rgba(28, 37, 66, 0.97);
   box-shadow: 0 7px 22px rgba(0, 0, 0, 0.1);
 }
 
@@ -953,7 +953,7 @@
 
 .operator-reading-card.has-critical-reading {
   border-color: rgba(237, 109, 119, 0.25);
-  background: linear-gradient(145deg, rgba(48, 34, 55, 0.97), rgba(30, 28, 51, 0.98));
+  background: rgba(48, 34, 55, 0.97);
 }
 
 .operator-reading-card-top {
@@ -974,7 +974,7 @@
 .operator-reading-icon--aqua { color: #73d5ec; background: rgba(98, 205, 228, 0.13); }
 .operator-reading-icon--orange { color: #f1bf74; background: rgba(237, 182, 95, 0.12); }
 .operator-reading-icon--blue { color: #92adff; background: rgba(117, 145, 234, 0.13); }
-.operator-reading-icon--violet { color: #c5a5f1; background: rgba(172, 133, 233, 0.12); }
+.operator-reading-icon--violet { color: rgb(var(--overlay-accent, 107, 157, 255)); background: rgba(var(--overlay-accent, 107, 157, 255), 0.12); }
 
 .operator-reading-card .operator-overline {
   font-size: 8px;

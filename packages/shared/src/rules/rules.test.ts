@@ -2,18 +2,36 @@ import { describe, expect, it } from 'vitest';
 import { getAmmoniaAdvisory, getSalinityAdvisory } from './advisory';
 import { getParameterStatus } from './status';
 import { canAccessRole, validateAcknowledgeNote, validateAdvisoryRules, validateValidationTolerances } from '../validation';
+import { evaluateEventImpact } from '../activity';
 import { MockApiClient } from '../api/mockClient';
 import { getManilaDateString, getRaisingDay } from '../format';
 
 describe('measured status display', () => {
   it('keeps values within the safe range normal and identifies near-limit readings', () => {
-    expect(getParameterStatus('temperature', 30).level).toBe('normal');
-    expect(getParameterStatus('temperature', 32.2).level).toBe('warning');
+    expect(getParameterStatus('temperature', 28).level).toBe('normal');
+    expect(getParameterStatus('temperature', 30.2).level).toBe('warning');
     expect(getParameterStatus('do', 3).level).toBe('critical');
+    expect(getParameterStatus('ph', 15)).toMatchObject({ label: 'Check probe', icon: 'warning' });
   });
 });
 
 describe('advisory rules', () => {
+  it.each([
+    ['Rainfall', 'salinity', 'Watch'],
+    ['Water change / exchange', 'salinity', 'Watch'],
+    ['Freshwater dosing (log only)', 'salinity', 'Watch'],
+    ['Unusually hot weather', 'ammonia', 'Watch'],
+    ['Feeding', 'ammonia', 'Watch'],
+    ['Mortality observation', 'ammonia', 'Watch'],
+    ['Power interruption', 'ammonia', 'High'],
+  ] as const)('maps %s events to %s/%s impacts', (type, targetAdvisory, riskAdjustment) => {
+    expect(evaluateEventImpact({ type, scope: 'tank-a' })).toMatchObject({ targetAdvisory, riskAdjustment });
+  });
+
+  it('ignores events without an advisory mapping', () => {
+    expect(evaluateEventImpact({ type: 'Other environmental event', scope: 'tank-a' })).toBeNull();
+  });
+
   it('reports the fired salinity rule and evidence without treating it as a sensor reading', () => {
     const advisory = getSalinityAdvisory({ temperatureC: 32, rainEvent: false, freshwaterDosing: false });
     expect(advisory).toMatchObject({ kind: 'salinity', level: 'high' });
@@ -23,6 +41,17 @@ describe('advisory rules', () => {
 
   it('raises ammonia to watch when feeding load is high without a high pH', () => {
     expect(getAmmoniaAdvisory({ temperatureC: 29, ph: 7.2, feedingLoad: 'high' }).level).toBe('watch');
+  });
+
+  it('applies logged event impacts to salinity and ammonia advisory levels', () => {
+    const events = [
+      { type: 'Water change / exchange', scope: 'tank-a' },
+      { type: 'Power interruption', scope: 'tank-a' },
+    ];
+    expect(getSalinityAdvisory({ temperatureC: 29, rainEvent: false, freshwaterDosing: false, events }))
+      .toMatchObject({ level: 'watch', firedRule: expect.stringContaining('Salinity check recommended') });
+    expect(getAmmoniaAdvisory({ temperatureC: 29, ph: 7.2, feedingLoad: 'usual', events }))
+      .toMatchObject({ level: 'high', firedRule: expect.stringContaining('Monitor TAN levels') });
   });
 });
 
@@ -104,6 +133,28 @@ describe('mock tank administration', () => {
     }, 'Manager');
     expect((await api.listAdvisories('tank-a')).find((item) => item.kind === 'salinity')?.firedRule).toContain('recent water event');
   });
+
+  it('uses activity event impacts when refreshing mock advisories', async () => {
+    const api = new MockApiClient();
+    await api.createActivityLog({
+      tankId: 'tank-a',
+      kind: 'OPERATION',
+      type: 'Water change / exchange',
+      operator: 'Operator',
+      notes: 'Completed planned water exchange.',
+      waterChangePercent: 20,
+    });
+    await api.createActivityLog({
+      tankId: 'tank-a',
+      kind: 'ENVIRONMENT',
+      type: 'Power interruption',
+      operator: 'Operator',
+      notes: 'Power outage reported.',
+    });
+    const advisories = await api.listAdvisories('tank-a');
+    expect(advisories.find((item) => item.kind === 'salinity')).toMatchObject({ level: 'watch' });
+    expect(advisories.find((item) => item.kind === 'ammonia')).toMatchObject({ level: 'high' });
+  });
 });
 
 describe('Asia/Manila date helpers', () => {
@@ -115,7 +166,8 @@ describe('Asia/Manila date helpers', () => {
 
   it('filters mock readings by timestamp instants across UTC and Manila offsets', async () => {
     const api = new MockApiClient();
-    const from = `${getManilaDateString()}T00:00:00+08:00`;
+    const previousDay = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const from = `${getManilaDateString(previousDay)}T00:00:00+08:00`;
     const readings = await api.listReadings({ tankId: 'tank-a', from });
     expect(readings.length).toBeGreaterThan(0);
     expect(readings.every((reading) => Date.parse(reading.timestamp) >= Date.parse(from))).toBe(true);

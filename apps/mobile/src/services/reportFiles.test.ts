@@ -1,0 +1,105 @@
+import { describe, expect, it } from 'vitest';
+import { Workbook } from 'exceljs';
+import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream } from 'pdf-lib';
+import { buildReport, toCsv } from '@hydrosense/shared';
+import type { ReportData, ReportSpec } from '@hydrosense/shared';
+import { createReportFile, reportDatasetRows, reportRows } from './reportFiles';
+
+const data: ReportData = {
+  tanks: [{ id: 'a', name: 'Tank A', site: 'Hatchery', rearingStartDate: '2026-01-01', deviceId: 'device-a' }],
+  readings: [{ id: 'r', tankId: 'a', timestamp: '2026-01-02T03:00:00Z', temperature: 28, doMgL: 5, ph: 7 }],
+  alerts: [{ id: 'alert', tankId: 'a', parameter: 'temperature', value: 31, threshold: '30', severity: 'warning', status: 'open', createdAt: '2026-01-02T03:00:00Z', note: '=unsafe' }],
+  thresholds: [], advisories: {}, activityLogs: [], calibrationLogs: [], validationRows: [], deviceStatuses: [],
+};
+const spec: ReportSpec = {
+  tankIds: ['a'], from: '2026-01-02T00:00:00Z', to: '2026-01-03T00:00:00Z',
+  sections: ['summary', 'statistics', 'alerts', 'raw-readings'], format: 'pdf',
+  generatedBy: { name: 'Test', role: 'operator' },
+};
+
+function pdfContent(pdf: PDFDocument, pageIndex: number) {
+  const contents = pdf.getPages()[pageIndex].node.Contents();
+  const streams = contents instanceof PDFArray ? contents.asArray().map((ref) => pdf.context.lookup(ref)) : [contents];
+  return streams.filter((stream): stream is PDFRawStream => stream instanceof PDFRawStream)
+    .map((stream) => new TextDecoder().decode(decodePDFRawStream(stream).decode())).join('\n');
+}
+
+describe('mobile report files', () => {
+  it('exports the selected filtered dataset and escapes spreadsheet formulas', () => {
+    const report = buildReport(spec, {
+      ...data,
+      readings: [...data.readings, { ...data.readings[0], id: 'outside', timestamp: '2025-01-01T00:00:00Z' }],
+    });
+    const readings = reportDatasetRows(report, 'readings');
+    expect(readings).toHaveLength(2);
+    expect(readings[1]).toEqual(['2026-01-02T03:00:00Z', 'Tank A', 28, 5, 7]);
+    const alerts = reportDatasetRows(report, 'alerts');
+    expect(alerts).toHaveLength(2);
+    expect(toCsv(alerts)).toContain("\"'=unsafe\"");
+    const acronymReport = buildReport(spec, {
+      ...data,
+      alerts: [{ ...data.alerts[0], parameter: 'do' }],
+    });
+    expect(reportDatasetRows(acronymReport, 'alerts')[1][2]).toBe('DO');
+    expect(reportDatasetRows(report, 'activity')).toHaveLength(1);
+  });
+  it('only includes selected sections and their actual data', () => {
+    const report = buildReport({ ...spec, sections: ['statistics'] }, data);
+    const rows = reportRows(report);
+    expect(rows.filter((row) => row[0] === 'Statistics')).toHaveLength(3);
+    expect(rows.some((row) => row[0] === 'Readings' || row[0] === 'Alerts' || row[0] === 'Summary')).toBe(false);
+    expect(rows.find((row) => row[1] === 'Temperature')?.[2]).toContain('mean: 28.00');
+  });
+
+  it('generates UTF-8 CSV with the selected content', async () => {
+    const file = await createReportFile(buildReport({ ...spec, format: 'csv', generatedBy: { name: '=unsafe', role: 'operator' } }, data));
+    const text = new TextDecoder().decode(file.bytes);
+    expect(file.mimeType).toBe('text/csv');
+    expect(text).toContain('Tank A');
+    expect(text).toContain('28.00 °C');
+    expect(text).toContain('=unsafe');
+    expect(text).toContain("\"'=unsafe (operator)\"");
+  });
+
+  it('creates a readable PDF', async () => {
+    const file = await createReportFile(buildReport(spec, data));
+    const pdf = await PDFDocument.load(file.bytes);
+    expect(file.mimeType).toBe('application/pdf');
+    expect(pdf.getPageCount()).toBeGreaterThan(0);
+    expect(new TextDecoder().decode(file.bytes.slice(0, 5))).toBe('%PDF-');
+    const content = pdf.getPages().map((_, index) => pdfContent(pdf, index)).join('\n');
+    expect(content).toContain('52656164696E677320696E2072616E6765202825206F662076616C69642072656164696E677329');
+    expect(pdf.getPages()[0].getWidth()).toBeCloseTo(595.28);
+  });
+
+  it('wraps long unbroken text and paginates without losing the analysis chart', async () => {
+    const report = buildReport(spec, { ...data, tanks: [{ ...data.tanks[0], name: 'A'.repeat(5000) }] });
+    const file = await createReportFile(report);
+    const pdf = await PDFDocument.load(file.bytes);
+    expect(pdf.getPageCount()).toBeGreaterThan(1);
+    const content = pdfContent(pdf, pdf.getPageCount() - 1);
+    expect(content).toContain('52656164696E677320696E2072616E6765');
+  });
+
+  it('omits the chart when statistics are not selected', async () => {
+    const file = await createReportFile(buildReport({ ...spec, sections: ['summary'] }, data));
+    const pdf = await PDFDocument.load(file.bytes);
+    expect(pdfContent(pdf, 0)).not.toContain('52656164696E677320696E2072616E6765');
+  });
+
+  it('creates a readable XLSX with actual values as text, not formulas', async () => {
+    const file = await createReportFile(buildReport({ ...spec, format: 'xlsx' }, data));
+    const workbook = new Workbook();
+    await workbook.xlsx.load(file.bytes.buffer as ArrayBuffer);
+    const rows = workbook.getWorksheet('HydroSense')?.getSheetValues();
+    expect(file.mimeType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(JSON.stringify(rows)).toContain('Tank A');
+    expect(JSON.stringify(rows)).toContain('=unsafe');
+    expect(JSON.stringify(rows)).not.toContain('"formula"');
+  });
+
+  it('fails explicitly when the PDF font cannot represent report text', async () => {
+    const report = buildReport(spec, { ...data, tanks: [{ ...data.tanks[0], name: '水' }] });
+    await expect(createReportFile(report)).rejects.toThrow('Choose CSV or XLSX instead.');
+  });
+});

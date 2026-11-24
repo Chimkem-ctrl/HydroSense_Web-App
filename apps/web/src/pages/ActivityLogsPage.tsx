@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useOutletContext } from 'react-router-dom';
+import { ClipboardList, CloudSun, FileDown } from 'lucide-react';
 import {
   ACTIVITY_EVENT_TYPES,
   ACTIVITY_OPERATION_TYPES,
+  activityInHatchery,
   formatManilaDateTime,
+  hatcheryId,
   validateActivityLog,
 } from '@hydrosense/shared';
 import type { ActivityLog, ActivityLogKind } from '@hydrosense/shared';
@@ -13,63 +17,28 @@ import { useRole } from '../app/auth/RoleContext';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { useTanks } from '../app/data/hooks';
 import { PageHeading } from '../components/common/PageHeading';
+import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 import { activityLogCsv, manilaDate } from './activityLogs';
+import { downloadCsv } from '../services/downloadCsv';
+import type { ShellOutletContext } from '../components/shell/AppShell';
 
 type FormKind = Extract<ActivityLogKind, 'OPERATION' | 'ENVIRONMENT'>;
-type ReadingField = 'dissolvedOxygen' | 'temperature' | 'ph' | 'salinity' | 'ammonia';
-type RawReadings = Record<ReadingField | 'method', string>;
-
-const initialReadings: RawReadings = {
-  dissolvedOxygen: '',
-  temperature: '',
-  ph: '',
-  salinity: '',
-  ammonia: '',
-  method: '',
-};
-
-const readingFields: Array<{ key: ReadingField; label: string; min: number; max: number; unit: string }> = [
-  { key: 'dissolvedOxygen', label: 'Dissolved oxygen', min: 0, max: 30, unit: 'mg/L' },
-  { key: 'temperature', label: 'Temperature', min: -5, max: 60, unit: '°C' },
-  { key: 'ph', label: 'pH', min: 0, max: 14, unit: '' },
-  { key: 'salinity', label: 'Salinity', min: 0, max: 100, unit: 'ppt' },
-  { key: 'ammonia', label: 'Ammonia test-kit result', min: 0, max: 100, unit: 'mg/L' },
-];
-
-function parsedReadings(raw: RawReadings) {
-  const readings: NonNullable<ActivityLog['manualReadings']> = {};
-  readingFields.forEach(({ key }) => {
-    if (raw[key].trim()) readings[key] = Number(raw[key]);
-  });
-  if (raw.method.trim()) readings.method = raw.method.trim();
-  return readings;
-}
-
-function downloadCsv(csv: string, fileName: string) {
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 export default function ActivityLogsPage() {
-  const { tankId } = useSelectedTank();
-  const { userName } = useRole();
+  const { notifyActivityExport } = useOutletContext<ShellOutletContext>();
+  const { tankId, hatchery, tanks: scopedTanks } = useSelectedTank();
+  const { userName, role } = useRole();
   const queryClient = useQueryClient();
   const tanks = useTanks();
   const logs = useQuery({ queryKey: ['activity-logs'], queryFn: () => api.listActivityLogs() });
+  const canExport = role === 'manager' || role === 'admin';
   const [modalKind, setModalKind] = useState<FormKind | null>(null);
   const [scope, setScope] = useState(tankId);
   const [activityType, setActivityType] = useState<string>(ACTIVITY_OPERATION_TYPES[0]);
   const [notes, setNotes] = useState('');
   const [waterChangePercent, setWaterChangePercent] = useState('');
   const [waterSource, setWaterSource] = useState('');
-  const [readings, setReadings] = useState<RawReadings>(initialReadings);
   const [impact, setImpact] = useState('Moderate');
   const [formError, setFormError] = useState('');
   const [kindFilter, setKindFilter] = useState<ActivityLogKind | 'all'>('all');
@@ -84,7 +53,6 @@ export default function ActivityLogsPage() {
       setNotes('');
       setWaterChangePercent('');
       setWaterSource('');
-      setReadings(initialReadings);
       setFormError('');
       setStatusMessage(created.kind === 'OPERATION' ? 'Hatchery operation logged.' : 'Environmental event logged.');
       await queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
@@ -107,12 +75,13 @@ export default function ActivityLogsPage() {
   }, [modalKind]);
 
   const filteredLogs = (logs.data ?? [])
+    .filter((log) => activityInHatchery(log, tanks.data ?? [], hatchery))
     .filter((log) => kindFilter === 'all' || log.kind === kindFilter)
     .filter((log) => {
-      const date = manilaDate(log.occurredAt);
+      const date = typeof log.occurredAt === 'string' ? manilaDate(log.occurredAt) : '';
       return (!dateFrom || date >= dateFrom) && (!dateTo || date <= dateTo);
     })
-    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+    .sort((left, right) => String(right.occurredAt ?? '').localeCompare(String(left.occurredAt ?? '')));
   const tankNames = new Map((tanks.data ?? []).map((tank) => [tank.id, tank.name]));
 
   function openLog(kind: FormKind) {
@@ -122,7 +91,6 @@ export default function ActivityLogsPage() {
     setNotes('');
     setWaterChangePercent('');
     setWaterSource('');
-    setReadings(initialReadings);
     setImpact('Moderate');
     setFormError('');
   }
@@ -130,13 +98,17 @@ export default function ActivityLogsPage() {
   function submitLog(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!modalKind) return;
+    const selectedTank = (tanks.data ?? []).find((tank) => tank.id === tankId);
+    const selectedHatchery = hatchery === 'all' ? (selectedTank ? hatcheryId(selectedTank.site) : '') : hatchery;
+    if (scope === 'hatchery' && !selectedHatchery) {
+      setFormError('Select a tank or hatchery before recording a hatchery-wide event.');
+      return;
+    }
     const rawPercent = waterChangePercent.trim();
     const parsedPercent = rawPercent ? Number(rawPercent) : undefined;
-    const manualReadings = modalKind === 'OPERATION' && activityType === 'Manual water quality check'
-      ? parsedReadings(readings)
-      : undefined;
     const entry: Omit<ActivityLog, 'id' | 'occurredAt'> = {
       tankId: scope,
+      ...(scope === 'hatchery' ? { hatcheryId: selectedHatchery } : {}),
       kind: modalKind,
       type: activityType,
       operator: userName,
@@ -145,7 +117,6 @@ export default function ActivityLogsPage() {
         waterChangePercent: parsedPercent ?? Number.NaN,
         ...(waterSource.trim() ? { waterSource: waterSource.trim() } : {}),
       } : {}),
-      ...(manualReadings ? { manualReadings } : {}),
       ...(modalKind === 'ENVIRONMENT' ? { impact } : {}),
     };
     const issues = validateActivityLog(entry);
@@ -153,62 +124,55 @@ export default function ActivityLogsPage() {
       setFormError(issues[0].message);
       return;
     }
-    const detailSuffix = [
-      entry.waterSource ? `Water source: ${entry.waterSource}.` : '',
-      entry.manualReadings ? `Manual readings: ${readingFields.flatMap(({ key, label, unit }) => {
-        const value = entry.manualReadings?.[key];
-        return value === undefined ? [] : [`${label} ${value}${unit ? ` ${unit}` : ''}`];
-      }).join(', ')}${entry.manualReadings.method ? ` (method: ${entry.manualReadings.method})` : ''}.` : '',
-    ].filter(Boolean).join(' ');
     createLog.mutate({
       ...entry,
-      notes: `${entry.notes}${detailSuffix ? ` ${detailSuffix}` : ''}`,
     });
   }
 
   function exportLogs() {
     if (!filteredLogs.length) return;
     downloadCsv(activityLogCsv(filteredLogs, tanks.data ?? []), 'hydrosense-activity-logs.csv');
-    setStatusMessage('Activity logs exported.');
+    notifyActivityExport();
   }
 
   return (
-    <div className="stack">
+    <div className="stack activity-logs-page">
       <PageHeading
-        title="Activity logs"
-        description="Record hatchery operations, water-quality observations and environmental events for shift handover."
+        title="Activity Logs"
+        description="Log operations, water-quality checks, and environmental events for shift handover."
       />
-      <div className="inline">
-        <button type="button" className="button button-primary" onClick={() => openLog('OPERATION')}>Log operation</button>
-        <button type="button" className="button" onClick={() => openLog('ENVIRONMENT')}>Log weather / event</button>
-        <button type="button" className="button" disabled={!filteredLogs.length} onClick={exportLogs}>Export CSV</button>
-      </div>
+      {role !== 'admin' && <div className="inline activity-log-actions">
+        <button type="button" className="button" onClick={() => openLog('OPERATION')}><ClipboardList size={18} aria-hidden="true" />Log operation</button>
+        <button type="button" className="button" onClick={() => openLog('ENVIRONMENT')}><CloudSun size={18} aria-hidden="true" />Log weather / event</button>
+      </div>}
       {statusMessage && <p className="small muted" role="status">{statusMessage}</p>}
       <StaleQueryState updatedAt={logs.dataUpdatedAt} />
-      <section className="card stack">
-        <h2 className="card-title">Activity records</h2>
-        <div className="form-grid">
+      <section className="card stack activity-log-records">
+        <header className="activity-log-records-header">
+          <h2 className="card-title">Activity Records</h2>
+          {canExport && <button type="button" className="icon-button activity-log-export" aria-label="Export CSV" title="Export CSV" disabled={!filteredLogs.length || logs.isLoading || logs.isError || tanks.isLoading || tanks.isError} onClick={exportLogs}><FileDown size={18} aria-hidden="true" /></button>}
+        </header>
+        <div className="form-grid filter-row activity-log-filters">
           <label className="field">Kind
-            <select value={kindFilter} onChange={(event) => setKindFilter(event.target.value as ActivityLogKind | 'all')}>
-              <option value="all">All kinds</option>
+            <Select value={kindFilter === 'all' ? '' : kindFilter} clearable placeholder="Kind" onChange={(event) => setKindFilter((event.target.value || 'all') as ActivityLogKind | 'all')}>
               <option value="OPERATION">Operation</option>
               <option value="ENVIRONMENT">Environment</option>
               <option value="ALERT RESOLUTION">Alert resolution</option>
-            </select>
+            </Select>
           </label>
           <label className="field">From date (PHT)<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
           <label className="field">To date (PHT)<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
         </div>
-        {logs.isLoading ? <LoadingState /> : logs.isError ? <ErrorState error={logs.error} onRetry={() => void logs.refetch()} /> : !filteredLogs.length ? <EmptyState>No activity logs match the selected filters.</EmptyState> : (
-          <div className="table-wrap"><table><thead><tr><th>Time (PHT)</th><th>Kind</th><th>Type</th><th>Tank/scope</th><th>Details</th><th>Operator</th></tr></thead><tbody>
+        {logs.isLoading || tanks.isLoading ? <LoadingState /> : logs.isError ? <ErrorState error={logs.error} onRetry={() => void logs.refetch()} /> : tanks.isError ? <ErrorState error={tanks.error} onRetry={() => void tanks.refetch()} /> : !filteredLogs.length ? <EmptyState>No activity logs match the selected filters.</EmptyState> : (
+          <div className="table-wrap activity-log-table-wrap"><table className="activity-log-table"><thead><tr><th>Time (PHT)</th><th>Kind</th><th>Type</th><th>Tank/scope</th><th>Details</th><th>Operator</th></tr></thead><tbody>
             {filteredLogs.map((log) => (
               <tr key={log.id}>
-                <td>{formatManilaDateTime(log.occurredAt)} PHT</td>
-                <td>{log.kind}</td>
-                <td>{log.type}</td>
-                <td>{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId}</td>
-                <td>{log.notes}{log.waterChangePercent !== undefined ? ` · ${log.waterChangePercent}% exchanged` : ''}{log.impact ? ` · Impact: ${log.impact}` : ''}</td>
-                <td>{log.operator}</td>
+                <td data-label="Time (PHT)">{log.occurredAt && Number.isFinite(Date.parse(log.occurredAt)) ? `${formatManilaDateTime(log.occurredAt)} PHT` : 'Unavailable'}</td>
+                <td data-label="Kind">{log.kind ?? '—'}</td>
+                <td data-label="Type">{log.type ?? '—'}</td>
+                <td data-label="Tank/scope">{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId ?? '—'}</td>
+                <td data-label="Details">{log.notes ?? '—'}{log.waterChangePercent !== undefined ? ` · ${log.waterChangePercent}% exchanged` : ''}{log.impact ? ` · Impact: ${log.impact}` : ''}</td>
+                <td data-label="Operator">{log.operator ?? '—'}</td>
               </tr>
             ))}
           </tbody></table></div>
@@ -219,24 +183,20 @@ export default function ActivityLogsPage() {
         <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setModalKind(null); }}>
           <section className="dialog card stack" role="dialog" aria-modal="true" aria-labelledby="activity-log-title">
             <header>
-              <h2 id="activity-log-title" className="card-title">{modalKind === 'OPERATION' ? 'Log hatchery operation' : 'Log weather or event'}</h2>
+              <h2 id="activity-log-title" className="card-title activity-log-dialog-title">{modalKind === 'OPERATION' ? <ClipboardList size={20} aria-hidden="true" /> : <CloudSun size={20} aria-hidden="true" />}{modalKind === 'OPERATION' ? 'Log Hatchery Operation' : 'Log Weather or Event'}</h2>
               <p className="small muted">Add an activity record for shift handover.</p>
             </header>
-            <form className="stack" onSubmit={submitLog}>
-              <div className="inline">
-                <button type="button" className={`button${modalKind === 'OPERATION' ? ' button-primary' : ''}`} onClick={() => openLog('OPERATION')}>Operation</button>
-                <button type="button" className={`button${modalKind === 'ENVIRONMENT' ? ' button-primary' : ''}`} onClick={() => openLog('ENVIRONMENT')}>Weather / event</button>
-              </div>
+            <form className="stack activity-log-form" onSubmit={submitLog}>
               <label className="field">{modalKind === 'OPERATION' ? 'Tank or scope' : 'Event scope'}
-                <select value={scope} onChange={(event) => setScope(event.target.value)}>
+                <Select value={scope} onChange={(event) => setScope(event.target.value)}>
                   <option value="hatchery">Entire hatchery</option>
-                  {(tanks.data ?? []).map((tank) => <option value={tank.id} key={tank.id}>{tank.name}</option>)}
-                </select>
+                  {scopedTanks.map((tank) => <option value={tank.id} key={tank.id}>{tank.name}</option>)}
+                </Select>
               </label>
               <label className="field">{modalKind === 'OPERATION' ? 'Operation type' : 'Event type'}
-                <select value={activityType} onChange={(event) => setActivityType(event.target.value)}>
+                <Select value={activityType} onChange={(event) => setActivityType(event.target.value)}>
                   {(modalKind === 'OPERATION' ? ACTIVITY_OPERATION_TYPES : ACTIVITY_EVENT_TYPES).map((type) => <option key={type}>{type}</option>)}
-                </select>
+                </Select>
               </label>
               {modalKind === 'OPERATION' && activityType === 'Water change / exchange' && (
                 <div className="form-grid">
@@ -244,22 +204,8 @@ export default function ActivityLogsPage() {
                   <label className="field">Water source (optional)<input value={waterSource} onChange={(event) => setWaterSource(event.target.value)} placeholder="e.g. treated reservoir" /></label>
                 </div>
               )}
-              {modalKind === 'OPERATION' && activityType === 'Manual water quality check' && (
-                <>
-                  <div className="form-grid">
-                    {readingFields.map(({ key, label, min, max, unit }) => (
-                      <label className="field" key={key}>{label}{unit ? ` (${unit})` : ''}
-                        <input type="number" min={min} max={max} step="0.1" value={readings[key]} onChange={(event) => setReadings((current) => ({ ...current, [key]: event.target.value }))} placeholder="Optional" />
-                      </label>
-                    ))}
-                  </div>
-                  <label className="field">Instrument / method (optional)<input value={readings.method} onChange={(event) => setReadings((current) => ({ ...current, method: event.target.value }))} placeholder="e.g. calibrated handheld refractometer" /></label>
-                  <p className="small muted">Enter readings actually measured. Manual values are logged separately from sensor readings.</p>
-                </>
-              )}
-              {modalKind === 'ENVIRONMENT' && <label className="field">Observed impact<select value={impact} onChange={(event) => setImpact(event.target.value)}><option>Low</option><option>Moderate</option><option>High</option><option>Unknown</option></select></label>}
+              {modalKind === 'ENVIRONMENT' && <label className="field">Observed impact<Select value={impact} onChange={(event) => setImpact(event.target.value)}><option>Low</option><option>Moderate</option><option>High</option><option>Unknown</option></Select></label>}
               <label className="field">Notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={modalKind === 'OPERATION' ? 'What was done? Include observations or follow-up needed.' : 'When did it occur? What changed around the tank?'} rows={4} required /></label>
-              <p className="small muted">Recorded by <b>{userName}</b></p>
               {formError && <p className="state-error" role="alert">{formError}</p>}
               {createLog.isError && <ErrorState error={createLog.error} />}
               <footer className="inline">

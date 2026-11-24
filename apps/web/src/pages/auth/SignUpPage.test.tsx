@@ -1,8 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authService } from '../../services/authService';
 import SignUpPage from './SignUpPage';
+
+function LocationProbe() {
+  const location = useLocation();
+  const state = location.state as { email?: string } | null;
+  return <output data-testid="current-location">{`${location.pathname}:${state?.email ?? ''}`}</output>;
+}
 
 afterEach(() => {
   cleanup();
@@ -12,7 +18,7 @@ afterEach(() => {
 function fillRequiredFields() {
   fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Test' } });
   fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'User' } });
-  fireEvent.change(screen.getByLabelText('Employee / staff ID'), { target: { value: 'EMP-01' } });
+  fireEvent.change(screen.getByLabelText('Employee / staff ID'), { target: { value: 'EMP-123' } });
   fireEvent.change(screen.getByLabelText('Work email'), { target: { value: 'test@example.test' } });
   fireEvent.change(screen.getByLabelText('Subscribed hatchery'), { target: { value: 'camiguin-sagay' } });
   fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'PH' } });
@@ -27,10 +33,17 @@ function fillRequiredFields() {
 }
 
 describe('signup phone fields', () => {
-  it('clears dependent address selections and does not ask for a role or position', () => {
+  it('clears dependent address selections and marks the temporary backend-required employee ID field', () => {
     render(<MemoryRouter><SignUpPage /></MemoryRouter>);
-    expect(screen.queryByLabelText('Requested role')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Requested role')).toHaveValue('operator');
+    const requestedRole = screen.getByLabelText('Requested role');
+    expect(requestedRole.querySelector('option[value="admin"]')).not.toBeNull();
+    expect(requestedRole.querySelector('option[value="manager"]')).not.toBeNull();
+    expect(requestedRole.querySelector('option[value="operator"]')).not.toBeNull();
+    expect(screen.getByLabelText('Employee / staff ID')).toBeRequired();
+    expect(screen.queryByText('To be removed')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Position')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Subscribed hatchery').querySelector('option[value="camiguin-benoni"]')).not.toBeNull();
     fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'PH' } });
     fireEvent.change(screen.getByLabelText('Province / region'), { target: { value: '1001800000' } });
     fireEvent.change(screen.getByLabelText('City / municipality / district'), { target: { value: '1001805000' } });
@@ -41,8 +54,19 @@ describe('signup phone fields', () => {
     expect(screen.getByLabelText('Barangay')).toBeDisabled();
   });
   it('submits independently selected country codes as international numbers', async () => {
-    const signUp = vi.spyOn(authService, 'signUp').mockResolvedValue({ status: 'pending', redirectPath: '/pending-approval' });
-    render(<MemoryRouter><SignUpPage /></MemoryRouter>);
+    const signUp = vi.spyOn(authService, 'signUp').mockResolvedValue({
+      status: 'verify-email',
+      redirectPath: '/verify-email',
+      email: 'test@example.test',
+    });
+    render(
+      <MemoryRouter initialEntries={['/signup']}>
+        <Routes>
+          <Route path="/signup" element={<SignUpPage />} />
+          <Route path="/verify-email" element={<LocationProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
     fillRequiredFields();
     fireEvent.change(screen.getByLabelText('Contact number country code'), { target: { value: 'GB' } });
     expect(screen.getByLabelText('Contact number country code').parentElement).toHaveTextContent('+44');
@@ -50,11 +74,12 @@ describe('signup phone fields', () => {
     fireEvent.change(screen.getByLabelText('Contact number', { exact: true }), { target: { value: '020 7946 0018' } });
     fireEvent.change(screen.getByLabelText('Emergency contact number country code'), { target: { value: 'US' } });
     fireEvent.change(screen.getByLabelText('Emergency contact number', { exact: true }), { target: { value: '202 555 0123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Submit Request' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign up' }));
     await waitFor(() => expect(signUp).toHaveBeenCalledWith(expect.objectContaining({
-      phone: '+442079460018', emergencyContactPhone: '+12025550123',
+      employeeId: 'EMP-123', phone: '+442079460018', emergencyContactPhone: '+12025550123', requestedRole: 'operator',
     })));
-  });
+    expect(await screen.findByTestId('current-location')).toHaveTextContent('/verify-email:test@example.test');
+  }, 15000);
 
   it('prevents submission of invalid national numbers', async () => {
     const signUp = vi.spyOn(authService, 'signUp');
@@ -62,8 +87,16 @@ describe('signup phone fields', () => {
     fillRequiredFields();
     fireEvent.change(screen.getByLabelText('Contact number', { exact: true }), { target: { value: '123' } });
     fireEvent.change(screen.getByLabelText('Emergency contact number', { exact: true }), { target: { value: '0917 555 0100' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Submit Request' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign up' }));
     expect(await screen.findByText('Enter a valid national contact number for the selected country.')).toBeInTheDocument();
     expect(signUp).not.toHaveBeenCalled();
+  }, 15000);
+
+  it('renders the terms dialog outside the scrollable auth card', () => {
+    render(<MemoryRouter><SignUpPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Terms and Conditions' }));
+    expect(document.body.querySelector('.terms-modal')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(document.body.querySelector('.terms-modal')).not.toBeInTheDocument();
   });
 });

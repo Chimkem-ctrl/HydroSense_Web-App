@@ -29,10 +29,14 @@ export interface DeviceStatus {
   deviceId: string;
   online: boolean;
   lastSeen: string;
-  batteryPct: number;
+  batteryPct: number | null;
   powerSource: 'solar' | 'grid' | 'battery';
   wifiRssi: number;
   pendingSyncCount: number;
+  reportedFields?: Array<'batteryPct' | 'wifiRssi' | 'pendingSyncCount'>;
+  storageAvailable?: boolean | null;
+  invalidParameters?: MeasuredParameter[];
+  probeCheckedAt?: string;
 }
 
 export interface Threshold {
@@ -95,6 +99,7 @@ export type ActivityLogKind = 'OPERATION' | 'ENVIRONMENT' | 'ALERT RESOLUTION';
 export interface ActivityLog {
   id: string;
   tankId: string | 'hatchery';
+  hatcheryId?: string;
   kind: ActivityLogKind;
   type: string;
   occurredAt: string;
@@ -126,6 +131,7 @@ export interface CalibrationLog {
 }
 
 export interface ValidationRow {
+  tankId?: string | null;
   parameter: string;
   hydrosenseMean: number;
   reference: number;
@@ -142,10 +148,12 @@ export interface DashboardUser {
   role: Role;
   site: string;
   active: boolean;
+  chatEnabled?: boolean;
   lastActive: string;
   employeeId?: string;
   phone?: string;
   position?: string;
+  avatarUrl?: string;
   address?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
