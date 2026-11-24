@@ -1,5 +1,5 @@
 import type { ActivityLog, AdvisoryRuleSettings, AlertItem, CalibrationLog, DashboardUser, ManualEntry, Reading, Tank, Threshold, ValidationRow, ValidationTolerance } from '../types';
-import type { AcknowledgeAlertInput, HydroSenseApi, ReadingQuery } from './types';
+import type { AcknowledgeAlertInput, HydroSenseApi, ReadingQuery, SaveReportInput } from './types';
 
 export class HttpApiClient implements HydroSenseApi {
   constructor(
@@ -90,4 +90,7 @@ export class HttpApiClient implements HydroSenseApi {
     return this.request<DashboardUser>(`/v1/admin/users/${encodeURIComponent(userId)}/role`, { method: 'PUT', body: JSON.stringify({ role, changedBy }) });
   }
   listAuditLogs() { return this.requestList<import('../types').AuditLog>('/v1/admin/logs'); }
+  saveReport(report: SaveReportInput) {
+    return this.request<void>('/v1/reports', { method: 'POST', body: JSON.stringify(report) });
+  }
 }

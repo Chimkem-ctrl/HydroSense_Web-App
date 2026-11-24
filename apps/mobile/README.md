@@ -30,10 +30,10 @@ authentication cards blur the page gradient. iOS system materials can look
 different from CSS blur. The native navigation menus and critical alert retain
 solid surfaces because Android modal windows cannot blur the underlying screen.
 The
-authenticated background covers the window behind the header and navigation,
-and changes with the account role and appearance. The native system background
-uses the appearance's canvas color while the image is loading. Rebuild native
-development builds after adding the system UI module.
+same authenticated background covers the window behind the header and
+navigation for every role, adapting to the selected appearance. The native
+system background uses the appearance's canvas color while the image is
+loading. Rebuild native development builds after adding the system UI module.
 Appearance is available in My profile and Settings. Choose System,
 Light or Dark; the preference is saved on the device and System follows its
 current color scheme. The preference remains after signing out.
@@ -107,10 +107,14 @@ Operators can access historical logs; validation is available to managers and
 admins. Managers can view approved users in their assigned
 hatchery. Admins can review requests, change non-admin roles, remove accounts,
 and view audit logs.
-Some web features, including audit-log filtering and export, tolerance editing,
-and full reporting, remain on the web. The mobile report builder exports PDF,
+Audit logs support detail search, Manila-date, user and action filters, and CSV
+sharing for authorized users. Tolerance editing remains on the web. The mobile report builder exports PDF,
 CSV or XLSX with tank, date and section selections. It stops rather than
 producing incomplete reports when the API reading or alert limit is reached.
+Trends supports 24-hour, 7-day, 21-day and custom Manila-date ranges,
+latest-value cards, range statistics, charts with safe bands, overnight windows
+and offline gaps, expanded statistics, and CSV sharing. Trends and History page through readings;
+they warn if the API cannot provide a complete range or reaches the 20,000-row cap.
 History offers separate tank, parameter and date filters. Pages opened from
 More have a back button to return to the More menu. The profile's change
 password control is currently unavailable.

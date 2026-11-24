@@ -1,8 +1,8 @@
 import { ChevronDown, FileDown, Printer } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { activityHatcheryName, activityInHatchery, buildReport, can, formatManilaDateTime, formatMeasuredParameterLabel, getManilaDateString, tankInHatchery, toCsv } from '@hydrosense/shared';
-import type { Reading, ReportData, ReportSection } from '@hydrosense/shared';
+import { activityHatcheryName, activityInHatchery, buildReport, can, formatManilaDateTime, generateReportId, formatMeasuredParameterLabel, getManilaDateString, loadAllReadings, tankInHatchery, toCsv } from '@hydrosense/shared';
+import type { ReportData, ReportModel, ReportSection } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
 import { tierConfig } from '../app/config';
 import { api } from '../app/api';
@@ -38,24 +38,6 @@ function manilaEnd(date: string) {
   return new Date(`${date}T23:59:59.999+08:00`).toISOString();
 }
 
-async function loadReportReadings(tankId: string, from: number, to: number): Promise<Reading[]> {
-  const readings = await api.listReadings({
-    tankId,
-    from: new Date(from).toISOString(),
-    to: new Date(to).toISOString(),
-    limit: 500,
-  });
-  if (readings.length < 500) return readings;
-  if (to - from <= 1) {
-    throw new Error('Too many readings occur within one millisecond to produce a complete report.');
-  }
-  const midpoint = from + Math.floor((to - from) / 2);
-  // Overlap the inclusive boundaries so sub-millisecond timestamps are not lost.
-  const earlier = await loadReportReadings(tankId, from, midpoint);
-  const later = await loadReportReadings(tankId, midpoint, to);
-  return [...new Map([...earlier, ...later].map((reading) => [reading.id, reading])).values()];
-}
-
 const reportRangeDateFormatter = new Intl.DateTimeFormat('en-PH', {
   timeZone: 'Asia/Manila',
   month: 'short',
@@ -73,6 +55,16 @@ function formatThresholdRange(min?: number, max?: number) {
   return '—';
 }
 
+function saveReportMetadata(report: ReportModel, reportType: ReportModel['format']) {
+  void api.saveReport({
+    id: report.id,
+    reportType,
+    tankIds: report.tanks.map((tank) => tank.id),
+    rangeFrom: report.range.from,
+    rangeTo: report.range.to,
+  }).catch((error) => console.error('Could not save report metadata:', error));
+}
+
 export default function ReportsPage() {
   const { tankId, hatchery } = useSelectedTank();
   const { userName, role } = useRole();
@@ -83,7 +75,7 @@ export default function ReportsPage() {
   const [selectedTankIds, setSelectedTankIds] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filterPosition, setFilterPosition] = useState<FilterPopoverPosition | null>(null);
-  const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - Math.min(7, tierConfig.retentionDays) * 86_400_000)));
+  const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - 7 * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
   const minimumDate = getManilaDateString(new Date(Date.now() - Math.max(0, tierConfig.retentionDays - 1) * 86_400_000));
   const maximumDate = getManilaDateString();
@@ -156,29 +148,42 @@ export default function ReportsPage() {
   }, [filtersOpen]);
   const dataQuery = useQuery({
     queryKey: ['report-data', role, hatchery, from, to],
-    queryFn: async (): Promise<ReportData> => {
+    staleTime: 60_000,
+    queryFn: async (): Promise<ReportData & { truncated: boolean }> => {
       const tanks = (await api.listTanks()).filter((tank) => tankInHatchery(tank, hatchery));
       if (!tanks.length) {
-        return { tanks, readings: [], alerts: [], thresholds: [], advisories: {}, activityLogs: [], calibrationLogs: [], validationRows: [], deviceStatuses: [] };
+        return { tanks, readings: [], alerts: [], thresholds: [], advisories: {}, activityLogs: [], calibrationLogs: [], validationRows: [], deviceStatuses: [], truncated: false };
       }
       const [readingGroups, alertGroups, thresholds, activityLogs, calibrationLogs, validationGroups] = await Promise.all([
-        Promise.all(tanks.map((tank) => loadReportReadings(tank.id, Date.parse(manilaStart(from)), Date.parse(manilaEnd(to))))),
+        Promise.all(tanks.map((tank) => loadAllReadings(api, {
+          tankId: tank.id,
+          from: manilaStart(from),
+          to: manilaEnd(to),
+        }))),
         Promise.all(tanks.map((tank) => api.listAlerts(tank.id))),
         api.listThresholds(),
         api.listActivityLogs(),
         canViewCalibration ? api.listCalibrationLogs() : Promise.resolve([]),
         canViewValidation ? Promise.all(tanks.map((tank) => api.listValidationRows(tank.id))) : Promise.resolve([]),
       ]);
+      const readings = readingGroups.flatMap(({ rows }) => rows);
+      const alerts = alertGroups.flat();
+      const validationRows = validationGroups.flat();
       return {
         tanks,
-        readings: readingGroups.flat(),
-        alerts: alertGroups.flat(),
+        readings,
+        alerts,
         thresholds,
         advisories: {},
         activityLogs,
         calibrationLogs,
-        validationRows: validationGroups.flat(),
+        validationRows,
         deviceStatuses: [],
+        truncated: readingGroups.some((result) => result.truncated) ||
+          alerts.length >= 1000 ||
+          activityLogs.length >= 1000 ||
+          calibrationLogs.length >= 1000 ||
+          validationRows.length >= 1000,
       };
     },
   });
@@ -217,6 +222,7 @@ export default function ReportsPage() {
       window.removeEventListener('scroll', reposition, true);
     };
   }, [filtersOpen, dataQuery.data]);
+  const reportId = useMemo(() => generateReportId(), [from, hatchery, role, sections, selectedTankIds, tankId, to, userName]);
   const model = useMemo(() => {
     if (!dataQuery.data) return null;
     const availableTanks = dataQuery.data.tanks.filter((tank) => tankInHatchery(tank, hatchery));
@@ -235,8 +241,8 @@ export default function ReportsPage() {
       sections,
       format: 'pdf',
       generatedBy: { name: userName, role },
-    }, siteData);
-  }, [dataQuery.data, from, hatchery, role, sections, selectedTankIds, tankId, to, userName]);
+    }, siteData, undefined, reportId);
+  }, [dataQuery.data, from, hatchery, reportId, role, sections, selectedTankIds, tankId, to, userName]);
   const rows = useMemo((): unknown[][] => {
     if (!model) return [];
     const site = (id: string) => model.tanks.find((tank) => tank.id === id)?.site ?? '';
@@ -265,6 +271,7 @@ export default function ReportsPage() {
   }
 
   function downloadCsv() {
+    if (model) saveReportMetadata(model, 'csv');
     const csv = type === 'activity' && model
       ? activityLogCsv(model.activityLogs, model.tanks)
       : toCsv([['Hatchery', ...headers[type]], ...rows]);
@@ -328,11 +335,12 @@ export default function ReportsPage() {
           </div>
         </section>
         <section className="card stack dash-card dash-report-preview print-preview" aria-labelledby="report-preview-title">
+          {dataQuery.data?.truncated && <p className="small muted">Showing the most recent {dataQuery.data.readings.length} readings. Narrow the date range for the full set.</p>}
           <div className="dash-report-preview-header">
             <h2 id="report-preview-title" className="card-title">Report Preview</h2>
-            {canExport && model && <button className="button button-primary button-soft-action" type="button" onClick={() => window.print()}><Printer size={18} aria-hidden="true" />Print / Save PDF</button>}
+            {canExport && model && <button className="button button-primary button-soft-action" type="button" onClick={() => { saveReportMetadata(model, 'pdf'); window.print(); }}><Printer size={18} aria-hidden="true" />Print / Save PDF</button>}
           </div>
-          {dataQuery.isLoading ? <LoadingState label="Preparing report..." /> : dataQuery.isError ? <ErrorState error={dataQuery.error} onRetry={() => void dataQuery.refetch()} /> : !model ? <EmptyState>No tanks are available for the selected hatchery.</EmptyState> : (
+          {dataQuery.isLoading || dataQuery.isFetching ? <LoadingState label="Preparing report..." /> : dataQuery.isError ? <ErrorState error={dataQuery.error} onRetry={() => void dataQuery.refetch()} /> : !model ? <EmptyState>No tanks are available for the selected hatchery.</EmptyState> : (
             <div className="dash-report-body">
               <header className="report-print-only report-print-header">
                 <div className="report-print-brand">HydroSense</div>

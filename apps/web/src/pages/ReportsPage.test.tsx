@@ -71,19 +71,28 @@ describe('ReportsPage filters dropdown', () => {
 
   it('prepares report headings for the selected sections and opens the print dialog', async () => {
     const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
+    const saveReport = vi.spyOn(api, 'saveReport').mockRejectedValue(new Error('Report save failed'));
+    const reportSaveError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     renderReportsPage();
-    const preview = await screen.findByRole('region', { name: 'Report preview' });
+    const preview = await screen.findByRole('region', { name: 'Report Preview' });
     await within(preview).findByText('Water Quality Report');
+    const reportId = preview.querySelector('.dash-report-id')?.textContent ?? '';
+    expect(reportId).toMatch(/^RPT-\d{8}-[A-HJ-NP-Z2-9]{6}$/);
+    expect(reportId).not.toContain('tank-1');
     expect(within(preview).getByText('Executive Summary')).toHaveClass('report-print-only');
     expect(within(preview).getByText('Water Quality Statistics')).toHaveClass('report-print-only');
     expect(within(preview).getByText('Operations And Data Quality')).toHaveClass('report-print-only');
     expect(within(preview).getByText('Reading Sample')).toHaveClass('report-print-only');
     fireEvent.click(within(preview).getByRole('button', { name: 'Print / Save PDF' }));
     expect(print).toHaveBeenCalledOnce();
+    expect(saveReport).toHaveBeenCalledWith(expect.objectContaining({ id: reportId, reportType: 'pdf', tankIds: ['tank-1'] }));
+    await waitFor(() => expect(reportSaveError).toHaveBeenCalledOnce());
+    expect(preview.querySelector('.dash-report-id')?.textContent).toBe(reportId);
 
     fireEvent.click(screen.getByRole('button', { name: 'Filters 9/9' }));
     fireEvent.click(within(await screen.findByRole('dialog', { name: 'Report filters' })).getByRole('checkbox', { name: 'Statistics' }));
     expect(within(preview).queryByText('Water Quality Statistics')).not.toBeInTheDocument();
+    expect(preview.querySelector('.dash-report-id')?.textContent).not.toBe(reportId);
   });
 
   it('shows valid in-range percentages in the report chart and hides it with statistics', async () => {
@@ -184,45 +193,48 @@ describe('ReportsPage filters dropdown', () => {
     expect(within(sections).getAllByRole('checkbox')).toHaveLength(9);
     expect(within(panel).getByText('Tanks and sections apply to the report preview and PDF.')).toBeInTheDocument();
 
-    const summary = within(sections).getByRole('checkbox', { name: 'Executive summary' });
+    const summary = within(sections).getByRole('checkbox', { name: 'Executive Summary' });
     await waitFor(() => expect(summary).toHaveFocus());
     fireEvent.click(summary);
     expect(trigger).toHaveAccessibleName('Filters 8/9');
   });
 
   describe('ReportsPage reading limits', () => {
-    it('loads all readings across limited requests without duplicating boundary readings', async () => {
+    it('loads all readings across 2,000-row pages without duplicating boundaries', async () => {
       const now = Date.now();
       const from = getManilaDateString(new Date(now - Math.min(7, tierConfig.retentionDays) * 86_400_000));
       const to = getManilaDateString(new Date(now));
       const start = Date.parse(`${from}T00:00:00+08:00`);
       const end = Date.parse(`${to}T23:59:59.999+08:00`);
       const midpoint = start + Math.floor((end - start) / 2);
-      const readings = Array.from({ length: 1201 }, (_, index) => ({
+      const readings = Array.from({ length: 2201 }, (_, index) => ({
         id: `reading-${index}`, tankId: 'tank-1', timestamp: new Date(midpoint + (index - 600) * 1000).toISOString(),
         temperature: 28, doMgL: 5, ph: 7.4,
       }));
       const listReadings = vi.mocked(api.listReadings).mockImplementation(async (query = {}) => readings
         .filter((reading) => Date.parse(reading.timestamp) >= Date.parse(query.from!) && Date.parse(reading.timestamp) <= Date.parse(query.to!))
+        .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
         .slice(0, query.limit));
       renderReportsPage();
 
-      expect(await screen.findByText('Showing first 10 of 1201 readings')).toBeInTheDocument();
+      expect(await screen.findByText('Showing first 10 of 2201 readings')).toBeInTheDocument();
       expect(listReadings.mock.calls.length).toBeGreaterThan(1);
+      expect(listReadings).toHaveBeenCalledWith(expect.objectContaining({ limit: 2000 }));
       expect(screen.getByRole('button', { name: 'Download CSV' })).toBeEnabled();
     });
 
-    it('reports an error when a timestamp cannot be split below the reading limit', async () => {
+    it('shows a non-blocking warning when duplicate timestamps stop pagination', async () => {
       const timestamp = new Date().toISOString();
-      const readings = Array.from({ length: 500 }, (_, index) => ({
+      const readings = Array.from({ length: 2000 }, (_, index) => ({
         id: `reading-${index}`, tankId: 'tank-1', timestamp, temperature: 28, doMgL: 5, ph: 7.4,
       }));
       vi.mocked(api.listReadings).mockImplementation(async (query = {}) =>
         Date.parse(timestamp) >= Date.parse(query.from!) && Date.parse(timestamp) <= Date.parse(query.to!) ? readings : []);
       renderReportsPage();
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('Too many readings occur within one millisecond to produce a complete report.');
-      expect(screen.getByRole('button', { name: 'Download CSV' })).toBeDisabled();
+      expect(await screen.findByText('Showing the most recent 2000 readings. Narrow the date range for the full set.')).toBeInTheDocument();
+      expect(screen.getByText('Showing first 10 of 2000 readings')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Download CSV' })).toBeEnabled();
     });
   });
 

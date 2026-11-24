@@ -72,7 +72,7 @@ describe('themed dashboard routes', () => {
     expect(screen.getByRole('heading', { name: 'Live Monitor' })).toBeInTheDocument();
   });
 
-  it('labels the chart download icons by format and chart', async () => {
+  it('labels the chart download menu by chart and exposes its formats', async () => {
     vi.stubGlobal('ResizeObserver', class {
       observe() {}
       unobserve() {}
@@ -81,15 +81,15 @@ describe('themed dashboard routes', () => {
     signInAs('admin');
     window.history.replaceState({}, '', '/trends');
     render(<App />);
-    const png = await screen.findByRole('button', { name: 'Download Temperature PNG' });
-    const csv = screen.getByRole('button', { name: 'Download Temperature CSV' });
-    expect(png).toHaveAttribute('title', 'Download Temperature PNG');
-    expect(csv).toHaveAttribute('title', 'Download Temperature CSV');
-    expect(png.querySelector('svg')).not.toBeNull();
-    expect(png.textContent).toBe('');
-    expect(csv.textContent).toBe('');
-    expect(csv.querySelector('svg')).not.toBeNull();
-    expect(png.parentElement).toBe(csv.parentElement);
+    const trigger = await screen.findByRole('button', { name: 'Download Temperature' });
+    expect(trigger).toHaveAttribute('title', 'Download Temperature');
+    expect(trigger.querySelector('svg')).not.toBeNull();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    const menu = screen.getByRole('group', { name: 'Temperature download formats' });
+    expect(within(menu).getByRole('button', { name: 'Image (PNG)' })).toBeInTheDocument();
+    expect(within(menu).getByRole('button', { name: 'CSV' })).toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('labels the chart zoom icons by action and chart', async () => {
@@ -249,6 +249,7 @@ describe('themed dashboard routes', () => {
     vi.spyOn(api, 'listActivityLogs').mockResolvedValue([]);
     vi.spyOn(api, 'listCalibrationLogs').mockResolvedValue([]);
     vi.spyOn(api, 'listValidationRows').mockResolvedValue([]);
+    const saveReport = vi.spyOn(api, 'saveReport');
     window.history.replaceState({}, '', '/reports');
     render(<App />);
     const settings = screen.getByRole('heading', { name: 'Export Settings' }).closest('section')!;
@@ -257,6 +258,9 @@ describe('themed dashboard routes', () => {
     fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Benoni Experimental Station' }));
     const preview = screen.getByRole('heading', { name: 'Report Preview' }).closest('section')!;
     expect(await within(preview).findByText(/Benoni tank ·/)).toBeInTheDocument();
+    const reportId = preview.querySelector('.dash-report-id')?.textContent ?? '';
+    expect(reportId).toMatch(/^RPT-\d{8}-[A-HJ-NP-Z2-9]{6}$/);
+    expect(reportId).not.toContain('b');
     expect(within(preview).getAllByText('31.00').length).toBeGreaterThan(0);
     expect(within(preview).queryByText('22.00')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }));
@@ -268,6 +272,10 @@ describe('themed dashboard routes', () => {
     });
     expect(csv).toContain('Benoni');
     expect(csv).not.toContain('Sagay');
+    expect(saveReport).toHaveBeenCalledWith(expect.objectContaining({
+      id: reportId, reportType: 'csv', tankIds: ['b'],
+    }));
+    expect(preview.querySelector('.dash-report-id')?.textContent).toBe(reportId);
   });
 
   it('does not present unscoped audit records as hatchery-filtered', async () => {
@@ -289,7 +297,7 @@ describe('themed dashboard routes', () => {
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
     fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Benoni Experimental Station' }));
     expect(await screen.findByText('No tanks are available for the selected hatchery.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Download CSV' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download CSV' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Print / Save PDF' })).not.toBeInTheDocument();
   });
   it('displays the fetched profile site rather than a stale session assignment', async () => {

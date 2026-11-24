@@ -24,6 +24,26 @@ describe('HTTP API authorization errors', () => {
     expect(onUnauthorized).toHaveBeenCalledOnce();
     expect(onUnauthorized).toHaveBeenCalledWith('current-token');
   });
+
+  it('saves report metadata through the reports endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const api = new HttpApiClient('https://example.test', () => 'current-token');
+    const report = {
+      id: 'RPT-20261124-ABC234',
+      reportType: 'pdf' as const,
+      tankIds: ['tank-a'],
+      rangeFrom: '2026-11-01T16:00:00.000Z',
+      rangeTo: '2026-11-02T15:59:59.999Z',
+    };
+
+    await api.saveReport(report);
+
+    expect(fetchMock).toHaveBeenCalledWith('https://example.test/v1/reports', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify(report),
+    }));
+  });
   it('identifies the failing endpoint without exposing query parameters', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":"Internal server error."}', { status: 500 })));
     const api = new HttpApiClient('https://example.test');

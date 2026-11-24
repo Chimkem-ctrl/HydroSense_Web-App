@@ -396,6 +396,36 @@ Deno.serve(async (request) => {
     }
     const actor = [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || profile.email;
 
+    if (action === "/v1/reports" && request.method === "POST") {
+      if (!["operator", "manager", "admin"].includes(profile.role)) return json({ error: "Forbidden." }, 403);
+      const body = await readJson(request);
+      const reportIdPattern = /^RPT-\d{8}-[A-HJ-NP-Z2-9]{6}$/;
+      const isTimestamp = (value: unknown) => typeof value === "string" &&
+        Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
+      const hasRangeFrom = body.rangeFrom != null;
+      const hasRangeTo = body.rangeTo != null;
+      const validRange = hasRangeFrom === hasRangeTo &&
+        (!hasRangeFrom || (isTimestamp(body.rangeFrom) && isTimestamp(body.rangeTo) &&
+          Date.parse(body.rangeFrom as string) <= Date.parse(body.rangeTo as string)));
+      if (typeof body.id !== "string" || !reportIdPattern.test(body.id) ||
+          !["pdf", "csv", "xlsx"].includes(body.reportType) ||
+          !Array.isArray(body.tankIds) || body.tankIds.length === 0 ||
+          body.tankIds.some((tankId: unknown) => !isText(tankId, 200)) ||
+          new Set(body.tankIds).size !== body.tankIds.length || !validRange) {
+        return json({ error: "Provide a valid report ID, type, tanks and date range." }, 400);
+      }
+      const { error } = await admin.from("reports").upsert({
+        id: body.id,
+        generated_by: userData.user.id,
+        report_type: body.reportType,
+        tank_ids: body.tankIds,
+        range_from: body.rangeFrom ?? null,
+        range_to: body.rangeTo ?? null,
+      }, { onConflict: "id", ignoreDuplicates: true });
+      if (error) return serverError(error);
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
     const chatThreadRoute = action.match(/^\/v1\/chat\/threads\/([0-9a-f-]+)\/(messages|read)$/i);
     const chatAdminRoute = action.match(/^\/v1\/admin\/users\/([0-9a-f-]+)\/chat$/i);
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

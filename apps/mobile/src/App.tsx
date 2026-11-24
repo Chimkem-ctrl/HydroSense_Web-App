@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import type { ComponentRef } from 'react';
-import { AppState, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Image, Keyboard, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationLightTheme, NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import type { LinkingOptions } from '@react-navigation/native';
@@ -46,25 +46,14 @@ import { ChatScreen } from './ChatScreen';
 import { api, liveClient } from './services/client';
 import { queryClient, queryPersister } from './services/queryClient';
 import { canAccess } from './access';
-import type { Role } from '@hydrosense/shared';
 import type { ThemeMode } from './themePreference';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
-const roleBackgrounds: Record<Role, Record<ThemeMode, number>> = {
-  admin: {
-    light: require('../../web/public/assets/images/admin bg light app.png'),
-    dark: require('../../web/public/assets/images/admin bg app (1).png'),
-  },
-  manager: {
-    light: require('../../web/public/assets/images/manager bg light app (1).png'),
-    dark: require('../../web/public/assets/images/manager bg app.png'),
-  },
-  operator: {
-    light: require('../../web/public/assets/images/operator bg light app.png'),
-    dark: require('../../web/public/assets/images/operator bg app.png'),
-  },
+const authenticatedBackgrounds: Record<ThemeMode, number> = {
+  light: require('../../web/public/assets/images/manager bg light app (1).png'),
+  dark: require('../../web/public/assets/images/manager bg app.png'),
 };
 // Web needs screen detachment to hide inactive transparent tabs.
 if (Platform.OS === 'web') enableScreens(true);
@@ -96,7 +85,17 @@ const linking: LinkingOptions<RootStackParamList> = {
 
 function MainTabs() {
   const { user } = useSession();
-  return <TabBarVisibleContext.Provider value><Tabs.Navigator tabBar={(props) => <MobileTabBar {...props} />} screenOptions={{ sceneStyle: { backgroundColor: 'transparent' }, header: (props) => <HeaderToolbar {...props} /> }}>
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return <TabBarVisibleContext.Provider value={!keyboardVisible}><Tabs.Navigator tabBar={(props) => keyboardVisible ? null : <MobileTabBar {...props} />} screenOptions={{ sceneStyle: { backgroundColor: 'transparent' }, header: (props) => <HeaderToolbar {...props} /> }}>
     <Tabs.Screen name="Home" component={HomeScreen} />
     <Tabs.Screen name="Tanks" component={TanksScreen} />
     <Tabs.Screen name="Alerts" component={AlertsScreen} />
@@ -200,7 +199,7 @@ function NotificationNavigation() {
 
 function AppNavigation() {
   const { colors, mode } = useTheme();
-  const { user, ready } = useSession();
+  const { user, ready, signOut } = useSession();
   const blurTarget = useRef<ComponentRef<typeof View> | null>(null);
   const [online, setOnline] = useState(true);
   useEffect(() => NetInfo.addEventListener((state) => setOnline(Boolean(state.isConnected))), []);
@@ -210,9 +209,17 @@ function AppNavigation() {
       console.error('Could not request notification permission.', error);
     });
   }, [user]);
-  return <SplashGate ready={ready}><View style={{ flex: 1, width: '100%', height: '100%', backgroundColor: colors.canvas }}>
+  async function handleGetStarted() {
+    if (!user) return;
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Could not fully clear the saved session before sign-in.', error);
+    }
+  }
+  return <SplashGate ready={ready} hasUser={Boolean(user)} onGetStarted={handleGetStarted}><View style={{ flex: 1, width: '100%', height: '100%', backgroundColor: colors.canvas }}>
     <BlurTargetView ref={blurTarget} style={[StyleSheet.absoluteFill, { backgroundColor: colors.canvas }]} pointerEvents="none">
-      {user && <Image source={roleBackgrounds[user.role][mode]} resizeMode="cover" style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.15 }] }]} accessible={false} />}
+      {user && <Image source={authenticatedBackgrounds[mode]} resizeMode="cover" style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.15 }] }]} accessible={false} />}
     </BlurTargetView>
     <BlurTargetContext.Provider value={blurTarget}>
     <NavigationContainer ref={navigationRef} linking={linking} theme={{ ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme), colors: { ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme).colors, primary: colors.teal, background: user ? 'transparent' : colors.canvas, card: colors.surface, text: colors.ink, border: colors.border } }}>

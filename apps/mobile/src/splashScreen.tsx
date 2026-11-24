@@ -11,7 +11,7 @@ const SPLASH_OVERLAY_BOTTOM = 'rgba(0,0,0,0.45)';
 const SPLASH_SCRIM_COLOR = '#000000';
 const SPLASH_SCRIM_OPACITY = 0.45;
 
-export default function SplashScreen({ onGetStarted }: { onGetStarted: () => void }) {
+export default function SplashScreen({ disabled, onGetStarted }: { disabled: boolean; onGetStarted: () => Promise<void> }) {
   const { width } = useWindowDimensions();
   const { reduceMotion } = useTheme();
   const opacity = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
@@ -65,12 +65,15 @@ export default function SplashScreen({ onGetStarted }: { onGetStarted: () => voi
           <Text style={styles.tagline}>REAL-TIME WATER QUALITY MONITORING</Text>
           <Pressable
             accessibilityRole="button"
+            accessibilityState={{ disabled }}
+            disabled={disabled}
             onPress={onGetStarted}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             style={({ pressed }) => [
               styles.cta,
-              pressed && styles.ctaPressed,
+              disabled && styles.ctaDisabled,
+              pressed && !disabled && styles.ctaPressed,
               focused && styles.ctaFocused,
             ]}
           >
@@ -82,10 +85,26 @@ export default function SplashScreen({ onGetStarted }: { onGetStarted: () => voi
   );
 }
 
-export function SplashGate({ ready, children }: PropsWithChildren<{ ready: boolean }>) {
+export function SplashGate({ ready, hasUser, children, onGetStarted }: PropsWithChildren<{ ready: boolean; hasUser: boolean; onGetStarted: () => Promise<void> }>) {
+  const { colors } = useTheme();
   const [requested, setRequested] = useState(false);
-  if (ready && requested) return children;
-  return <SplashScreen onGetStarted={() => setRequested(true)} />;
+  const [starting, setStarting] = useState(false);
+  const [sessionCleared, setSessionCleared] = useState(false);
+  useEffect(() => {
+    if (ready && requested && !hasUser) setSessionCleared(true);
+  }, [ready, requested, hasUser]);
+  async function handleGetStarted() {
+    if (!ready || starting) return;
+    setStarting(true);
+    try {
+      await onGetStarted();
+    } finally {
+      setRequested(true);
+      setStarting(false);
+    }
+  }
+  if (ready && requested) return sessionCleared ? children : <View style={{ flex: 1, backgroundColor: colors.canvas }} />;
+  return <SplashScreen disabled={!ready || starting} onGetStarted={handleGetStarted} />;
 }
 
 const createStyles = (width: number) => StyleSheet.create({
@@ -110,6 +129,7 @@ const createStyles = (width: number) => StyleSheet.create({
   divider: { width: 96, height: 1, backgroundColor: 'rgba(245,247,251,0.55)' },
   tagline: { maxWidth: width < 400 ? 280 : 360, color: '#b6c4d2', fontSize: 11, letterSpacing: 2, lineHeight: 19, textAlign: 'center' },
   cta: { borderWidth: 1, borderColor: 'rgba(245,247,251,0.7)', borderRadius: 999, paddingVertical: 13, paddingHorizontal: 34 },
+  ctaDisabled: { opacity: 0.5 },
   ctaPressed: { backgroundColor: 'rgba(255,255,255,0.1)' },
   ctaFocused: {
     borderColor: '#fff',

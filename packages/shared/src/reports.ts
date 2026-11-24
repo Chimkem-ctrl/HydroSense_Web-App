@@ -10,10 +10,10 @@ import type {
   Threshold,
   ValidationRow,
 } from './types';
-import { DEFAULT_THRESHOLDS } from './rules/status';
+import { DEFAULT_THRESHOLDS, formatMeasuredParameterLabel } from './rules/status';
 import { isValidMeasurement } from './rules/reading';
-import { formatMeasuredParameterLabel } from './rules/status';
 import { activityInHatchery, hatcheryId } from './hatcheries';
+import type { HydroSenseApi } from './api/types';
 
 export type ReportSection =
   | 'summary'
@@ -82,6 +82,60 @@ export interface ReportModel {
   dataQuality: { expectedReadings: number; receivedReadings: number; receivedPercent: number };
   rawReadings: Reading[];
   summary: string;
+}
+
+export async function loadAllReadings(
+  api: Pick<HydroSenseApi, 'listReadings'>,
+  input: { tankId: string; from: string; to: string },
+): Promise<{ rows: Reading[]; truncated: boolean }> {
+  const pageSize = 2000;
+  const rowCap = 20_000;
+  const rows = new Map<string, Reading>();
+  let pageTo = input.to;
+  let truncated = false;
+
+  while (rows.size < rowCap) {
+    const page = await api.listReadings({ tankId: input.tankId, from: input.from, to: pageTo, limit: pageSize });
+    const beforePageSize = rows.size;
+    for (const reading of page) {
+      if (rows.size >= rowCap) break;
+      if (!rows.has(reading.id)) rows.set(reading.id, reading);
+    }
+
+    if (rows.size >= rowCap) {
+      truncated = true;
+      break;
+    }
+    if (page.length < pageSize) break;
+    if (rows.size === beforePageSize) {
+      truncated = true;
+      break;
+    }
+
+    pageTo = page.reduce((earliest, reading) =>
+      Date.parse(reading.timestamp) < Date.parse(earliest) ? reading.timestamp : earliest,
+    page[0].timestamp);
+  }
+
+  return { rows: [...rows.values()], truncated };
+}
+
+export function generateReportId(now = new Date()): string {
+  const dateParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const year = dateParts.find((part) => part.type === 'year')?.value;
+  const month = dateParts.find((part) => part.type === 'month')?.value;
+  const day = dateParts.find((part) => part.type === 'day')?.value;
+  if (!year || !month || !day) throw new Error('Could not format the report date.');
+
+  const randomBytes = crypto.getRandomValues(new Uint8Array(6));
+  const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const suffix = Array.from(randomBytes, (byte) => characters[byte % characters.length]).join('');
+  return `RPT-${year}${month}${day}-${suffix}`;
 }
 
 const parameterDefinitions = {
@@ -170,7 +224,12 @@ export function calculateParameterStatistics(
   };
 }
 
-export function buildReport(spec: ReportSpec, data: ReportData, generatedAt = new Date().toISOString()): ReportModel {
+export function buildReport(
+  spec: ReportSpec,
+  data: ReportData,
+  generatedAt = new Date().toISOString(),
+  reportId = generateReportId(new Date(generatedAt)),
+): ReportModel {
   const from = Date.parse(spec.from);
   const to = Date.parse(spec.to);
   if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) {
@@ -203,7 +262,7 @@ export function buildReport(spec: ReportSpec, data: ReportData, generatedAt = ne
   const summary = `${readings.length} readings and ${alerts.length} alerts were recorded for ${tanks.map((tank) => tank.name).join(', ')}. ` +
     `${alertCounts.critical} critical and ${alertCounts.warning} warning alerts; in-range reading percentages: ${safePercentages.join(', ') || 'not available'}.`;
   return {
-    id: `HS-${generatedAt.replace(/\D/g, '').slice(0, 14)}-${tanks.map((tank) => tank.id).join('-')}`,
+    id: reportId,
     sections: [...spec.sections],
     format: spec.format,
     generatedAt,

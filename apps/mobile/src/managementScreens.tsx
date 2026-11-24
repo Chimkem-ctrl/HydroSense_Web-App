@@ -4,11 +4,14 @@ import { Dialog } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-import { formatManilaDateTime, hatcheryId, tankInHatchery, validatePasswordChange } from '@hydrosense/shared';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { fromByteArray } from 'base64-js';
+import { formatManilaDateTime, getManilaDateString, hatcheryId, tankInHatchery, toCsv, validatePasswordChange } from '@hydrosense/shared';
 import type { Role } from '@hydrosense/shared';
-import { Camera, Check, ClipboardList, Droplets, Eye, EyeOff, MapPin, Search, UserRound, Users, X } from 'lucide-react-native';
+import { Camera, Check, ClipboardList, Droplets, Eye, EyeOff, FileDown, ListFilter, MapPin, Search, Trash2, UserRound, Users, X } from 'lucide-react-native';
 import { canAccess } from './access';
-import { Button, Card, GlassDialog, Page, StateMessage, Title } from './components/ui';
+import { Button, CalendarFilterField, Card, Chip, GlassDialog, Page, RecordRow, StateMessage, Title } from './components/ui';
 import { FilterDropdown } from './components/FilterDropdown';
 import { AlertPreferenceControls, DeviceMaintenanceControls } from './components/ProfileControls';
 import { AppearanceOptions } from './components/AppearanceOptions';
@@ -246,7 +249,7 @@ export function ProfileScreen() {
     <Card title="Device Maintenance">
       {isLoading ? <StateMessage message="Loading selected tank..." loading /> : error ? <><StateMessage message={`Could not load tank: ${error.message}`} /><Button label="Retry" secondary onPress={refetch} /></> : <>
         {user?.role === 'admin' && <View style={{ gap: 8 }}>
-          <FilterDropdown label="Hatchery" summary={hatcheryOptions.find((option) => option.value === maintenanceHatchery)?.label ?? 'Select a hatchery'} icon={<MapPin size={16} color={colors.teal} />} options={hatcheryOptions} value={maintenanceHatchery} expanded={expandedMaintenanceFilter === 'hatchery'} onToggle={() => setExpandedMaintenanceFilter((current) => current === 'hatchery' ? null : 'hatchery')} onChange={(site) => {
+          <FilterDropdown label="Hatchery" summary={hatcheryOptions.find((option) => option.value === maintenanceHatchery)?.label ?? 'Select a hatchery'} icon={<MapPin size={14} color={colors.teal} />} options={hatcheryOptions} value={maintenanceHatchery} expanded={expandedMaintenanceFilter === 'hatchery'} onToggle={() => setExpandedMaintenanceFilter((current) => current === 'hatchery' ? null : 'hatchery')} onChange={(site) => {
             setMaintenanceHatchery(site);
             setMaintenanceTankId('');
             setExpandedMaintenanceFilter(null);
@@ -256,7 +259,7 @@ export function ProfileScreen() {
           {user?.role === 'admin' && !maintenanceHatchery
             ? <Text style={styles.detail}>Select a hatchery first.</Text>
             : maintenanceTanks.length
-              ? <FilterDropdown label="Tank" summary={tankOptions.find((option) => option.value === maintenanceTankId)?.label ?? 'Select a tank'} icon={<Droplets size={16} color={colors.teal} />} options={tankOptions} value={maintenanceTankId} expanded={expandedMaintenanceFilter === 'tank'} onToggle={() => setExpandedMaintenanceFilter((current) => current === 'tank' ? null : 'tank')} onChange={(id) => {
+              ? <FilterDropdown label="Tank" summary={tankOptions.find((option) => option.value === maintenanceTankId)?.label ?? 'Select a tank'} icon={<Droplets size={14} color={colors.teal} />} options={tankOptions} value={maintenanceTankId} expanded={expandedMaintenanceFilter === 'tank'} onToggle={() => setExpandedMaintenanceFilter((current) => current === 'tank' ? null : 'tank')} onChange={(id) => {
                 setMaintenanceTankId(id);
                 setExpandedMaintenanceFilter(null);
               }} />
@@ -319,11 +322,10 @@ export function UsersScreen() {
     {!admin && profile.isLoading ? <StateMessage message="Loading hatchery assignment..." loading /> :
       !admin && profile.isError ? <Card><StateMessage message={`Could not load hatchery: ${profile.error.message}`} /><Button label="Retry" secondary onPress={() => void profile.refetch()} /></Card> :
       !admin && !profile.data?.site?.trim() ? <StateMessage message="No hatchery is assigned to your account. Contact an administrator." /> : <>
-      {admin && <Card title="Pending Requests" action={pending.data && <View style={{ flex: 1, minWidth: 150, maxWidth: 260, gap: 6, alignItems: 'stretch' }}>
-        {pending.data.length > 0 && <SearchBox label="Search pending requests" value={requestSearch} onChange={setRequestSearch} colors={colors} />}
-        <Text style={styles.pendingCount}>{pending.data.length} pending</Text>
-      </View>}>
+      {admin && <Card title="Pending Requests" style={{ gap: uiScale.spacing[3] }}>
         <Text style={styles.intro}>Review new account requests and assign a role.</Text>
+        {Boolean(pending.data?.length) && <SearchBox label="Search pending requests" value={requestSearch} onChange={setRequestSearch} colors={colors} />}
+        {pending.data && <Text style={styles.pendingCount}>{filteredPending.length} pending</Text>}
         {pending.isLoading ? <StateMessage message="Loading requests..." loading /> :
           pending.isError ? <><StateMessage message={`Could not load requests: ${pending.error.message}`} /><Button label="Retry requests" secondary onPress={() => void pending.refetch()} /></> :
           !pending.data?.length ? <StateMessage message="No account requests are awaiting review." /> : [...groupByHatchery(pending.data, (item) => item.site)].map(([site, allRequests]) => { const accounts = allRequests.filter((account) => filteredPending.includes(account)); return <View key={site} style={styles.group}>
@@ -332,10 +334,16 @@ export function UsersScreen() {
             {accounts.map((account) => {
               const reviewRole = selectedRoles[account.id] ?? account.requestedRole;
               return <View key={account.id} style={styles.account}>
-              <View style={styles.requestHeader}><Text style={styles.name}>{account.firstName} {account.lastName}</Text><Text style={styles.pendingBadge}>Status: Pending</Text></View>
-              <Text style={styles.detail}>{account.email}</Text>
-              <Text style={styles.detail}>Phone: {value(account.phone)}</Text>
-              <Text style={styles.detail}>Requested role: {account.requestedRole ? account.requestedRole[0].toUpperCase() + account.requestedRole.slice(1) : 'Not specified'}</Text>
+              <View style={styles.accountRow}>
+                <View style={styles.accountAvatar}><UserRound size={20} color={colors.teal} /></View>
+                <View style={styles.accountIdentity}><Text numberOfLines={1} style={styles.name}>{account.firstName} {account.lastName}</Text><Text numberOfLines={1} ellipsizeMode="tail" style={styles.detail}>{account.email}</Text><Chip label={reviewRole ? capitalize(reviewRole) : 'Role not specified'} compact /></View>
+                <View style={styles.requestActions}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Approve ${account.firstName} ${account.lastName}`} disabled={review.isPending || !reviewRole} onPress={() => {
+                    if (reviewRole) setConfirmation({ action: 'approve', id: account.id, name: `${account.firstName} ${account.lastName}`, role: reviewRole });
+                  }} style={[styles.requestActionButton, styles.approveAction]}><Check size={19} color={colors.normal} /></Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Reject ${account.firstName} ${account.lastName}`} disabled={review.isPending} onPress={() => setConfirmation({ action: 'reject', id: account.id, name: `${account.firstName} ${account.lastName}` })} style={[styles.requestActionButton, styles.rejectAction]}><X size={19} color={colors.critical} /></Pressable>
+                </View>
+              </View>
               <Text style={styles.label}>Review Role</Text>
               <View accessibilityRole="radiogroup" style={styles.roleChoices}>
                 {(['operator', 'manager', 'admin'] as const).map((role) => {
@@ -343,29 +351,21 @@ export function UsersScreen() {
                   return <Pressable key={role} accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => setSelectedRoles((current) => ({ ...current, [account.id]: role }))} style={[styles.roleOption, selected && styles.roleSelected]}><Text style={[styles.roleText, selected && styles.roleTextSelected]}>{role[0].toUpperCase() + role.slice(1)}</Text></Pressable>;
                 })}
               </View>
-              <Text style={styles.label}>Action</Text>
-              <View style={styles.requestActions}>
-                <Pressable accessibilityRole="button" accessibilityLabel={`Approve ${account.firstName} ${account.lastName}`} disabled={review.isPending || !reviewRole} onPress={() => {
-                  if (reviewRole) setConfirmation({ action: 'approve', id: account.id, name: `${account.firstName} ${account.lastName}`, role: reviewRole });
-                }} style={[styles.requestActionButton, styles.approveAction]}><Check size={19} color={colors.normal} /></Pressable>
-                <Pressable accessibilityRole="button" accessibilityLabel={`Reject ${account.firstName} ${account.lastName}`} disabled={review.isPending} onPress={() => setConfirmation({ action: 'reject', id: account.id, name: `${account.firstName} ${account.lastName}` })} style={[styles.requestActionButton, styles.rejectAction]}><X size={19} color={colors.critical} /></Pressable>
-              </View>
             </View>; })}
           </View>; })}
         {review.isError && <StateMessage message={`Could not review request: ${review.error.message}`} />}
       </Card>}
-      {admin && <Card title="Admin Accounts">
+      {admin && <Card title="Admin Accounts" style={{ gap: uiScale.spacing[3] }}>
         <Text style={styles.intro}>Administrator accounts with system-wide access.</Text>
         {users.isLoading ? <StateMessage message="Loading accounts..." loading /> : users.isError ? <StateMessage message={`Could not load accounts: ${users.error.message}`} /> :
           !visibleAdminUsers.length ? <StateMessage message="No administrator accounts are registered." /> :
-          visibleAdminUsers.map((account) => <View key={account.id} style={styles.account}>
-            <View style={styles.accountHeading}><Text style={styles.name}>{account.name || account.email}</Text><View style={styles.roleBadge}><Text style={styles.roleBadgeText}>{account.role}</Text></View></View>
-            <Text style={styles.detail}>{account.email}</Text>
-            <Text style={styles.detail}>ID: {value(account.employeeId)}</Text>
-            <Text style={styles.detail}>Phone number: {value(account.phone)}</Text>
+          visibleAdminUsers.map((account) => <View key={account.id} style={[styles.account, styles.accountRow]}>
+            <View style={styles.accountAvatar}><UserRound size={20} color={colors.teal} /></View>
+            <View style={styles.accountIdentity}><Text numberOfLines={1} style={styles.name}>{account.name || account.email}</Text><Text numberOfLines={1} ellipsizeMode="tail" style={styles.detail}>{account.email}</Text></View>
+            <Chip label={capitalize(account.role)} compact />
           </View>)}
       </Card>}
-      <Card title="Team Accounts">
+      <Card title="Team Accounts" style={{ gap: uiScale.spacing[3] }}>
         <Text style={styles.intro}>View team accounts grouped by hatchery.</Text>
         {users.isLoading ? <StateMessage message="Loading accounts..." loading /> : users.isError ? <><StateMessage message={`Could not load accounts: ${users.error.message}`} /><Button label="Retry accounts" secondary onPress={() => void users.refetch()} /></> :
           !visibleUsers.length ? <StateMessage message="No team users are registered." /> :
@@ -375,13 +375,11 @@ export function UsersScreen() {
               <Text style={styles.accountCount}>{accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}</Text>
             </View>
             {!accounts.length && <StateMessage message="No accounts match your search." />}
-            {accounts.map((account) => <View key={account.id} style={styles.account}>
-              <View style={styles.accountHeading}><Text style={styles.name}>{account.name || account.email}</Text><View style={styles.roleBadge}><Text style={styles.roleBadgeText}>{account.role}</Text></View></View>
-              <Text style={styles.detail}>{account.email}</Text>
-              <Text style={styles.detail}>Phone: {value(account.phone)}</Text>
-              <Text style={styles.detail}>Employee ID: {value(account.employeeId)}</Text>
-              {account.lastActive && <Text style={styles.detail}>Last active: {formatManilaDateTime(account.lastActive)} PHT</Text>}
-              {admin && account.role !== 'admin' && <Pressable accessibilityRole="button" disabled={remove.isPending} onPress={() => setConfirmation({ action: 'remove', id: account.id, name: account.name || account.email })} style={styles.removeButton}><Text style={styles.removeButtonText}>Remove account</Text></Pressable>}
+            {accounts.map((account) => <View key={account.id} style={[styles.account, styles.accountRow]}>
+              <View style={styles.accountAvatar}><UserRound size={20} color={colors.teal} /></View>
+              <View style={styles.accountIdentity}><Text numberOfLines={1} style={styles.name}>{account.name || account.email}</Text><Text numberOfLines={1} ellipsizeMode="tail" style={styles.detail}>{account.email}</Text></View>
+              <Chip label={capitalize(account.role)} compact />
+              {admin && account.role !== 'admin' && <Pressable accessibilityRole="button" accessibilityLabel={`Remove account ${account.name || account.email}`} disabled={remove.isPending} onPress={() => setConfirmation({ action: 'remove', id: account.id, name: account.name || account.email })} style={styles.removeButton}><Trash2 size={20} color={colors.critical} /></Pressable>}
             </View>)}
           </View>; })}
         {remove.isError && <StateMessage message={`Could not remove account: ${remove.error.message}`} />}
@@ -400,10 +398,10 @@ export function UsersScreen() {
   </Page>;
 }
 
-function SearchBox({ label, value, onChange, colors }: { label: string; value: string; onChange: (text: string) => void; colors: Palette }) {
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 46, paddingHorizontal: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.65)', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.06)' }}>
+function SearchBox({ label, value, onChange, colors, placeholder = 'Search name, email, ID, role or date' }: { label: string; value: string; onChange: (text: string) => void; colors: Palette; placeholder?: string }) {
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2], height: 40, paddingHorizontal: uiScale.spacing[3], borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.glassControl }}>
     <Search size={17} color={colors.muted} />
-    <TextInput accessibilityLabel={label} placeholder="Search name, email, ID, role or date" placeholderTextColor={colors.muted} value={value} onChangeText={onChange} autoCapitalize="none" autoCorrect={false} style={{ flex: 1, color: colors.ink, fontSize: 14, paddingVertical: 8 }} />
+    <TextInput accessibilityLabel={label} placeholder={placeholder} placeholderTextColor={colors.muted} value={value} onChangeText={onChange} autoCapitalize="none" autoCorrect={false} style={{ flex: 1, minWidth: 0, color: colors.ink, fontSize: uiScale.type.caption, paddingVertical: uiScale.spacing[1] }} />
   </View>;
 }
 
@@ -427,21 +425,20 @@ const createManagementStyles = (colors: Palette) => StyleSheet.create({
   profileColumn: { flexGrow: 1, flexShrink: 1, flexBasis: 120, minWidth: 0 },
   profileEmail: { flexBasis: 190 },
   intro: { color: colors.muted, fontSize: 14, lineHeight: 21 },
-  group: { gap: 10, marginTop: 4 },
+  group: { gap: uiScale.spacing[3] },
   site: { color: colors.teal, fontSize: 15, lineHeight: 21, fontWeight: '700' },
   siteHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
-  accountCount: { color: colors.normal, fontSize: 12, fontWeight: '700', backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: uiScale.radius.pill, overflow: 'hidden' },
-  account: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 14, gap: 8, backgroundColor: 'transparent' },
-  requestHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
-  pendingBadge: { color: colors.critical, fontSize: 12, fontWeight: '700' },
-  pendingCount: { color: colors.critical, fontSize: 12, fontWeight: '700', backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: uiScale.radius.pill, overflow: 'hidden' },
-  requestActions: { flexDirection: 'row', gap: 10 },
+  accountCount: { color: colors.normal, fontSize: uiScale.type.caption, fontWeight: '700' },
+  account: { borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, padding: uiScale.spacing[2], gap: uiScale.spacing[2], backgroundColor: colors.glassControl },
+  accountRow: { flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2], minWidth: 0 },
+  accountAvatar: { width: 36, height: 36, borderRadius: uiScale.radius.pill, backgroundColor: colors.selected, alignItems: 'center', justifyContent: 'center' },
+  accountIdentity: { flex: 1, minWidth: 0, gap: uiScale.spacing[1] },
+  pendingCount: { color: colors.critical, fontSize: uiScale.type.caption, fontWeight: '700' },
+  requestActions: { flexDirection: 'row', gap: uiScale.spacing[1] },
   requestActionButton: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: uiScale.radius.pill },
   approveAction: { borderColor: colors.normal, backgroundColor: `${colors.normal}12` },
   rejectAction: { borderColor: colors.critical, backgroundColor: `${colors.critical}12` },
-  removeButton: { minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.critical, backgroundColor: 'transparent' },
-  removeButtonText: { color: colors.critical, fontWeight: '700' },
-  accountHeading: { flexDirection: 'row', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 },
+  removeButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   name: { color: colors.ink, fontSize: 16, lineHeight: 22, fontWeight: '700', flexShrink: 1 },
   detail: { color: colors.muted, fontSize: 14, lineHeight: 20 },
   label: { color: colors.ink, fontSize: 14, lineHeight: 20, fontWeight: '700', marginTop: 4 },
@@ -450,8 +447,6 @@ const createManagementStyles = (colors: Palette) => StyleSheet.create({
   roleSelected: { borderColor: colors.teal, backgroundColor: colors.selected },
   roleText: { color: colors.ink, fontSize: 14, fontWeight: '600' },
   roleTextSelected: { color: colors.teal },
-  roleBadge: { backgroundColor: colors.selected, borderRadius: uiScale.radius.pill, paddingVertical: 4, paddingHorizontal: 10 },
-  roleBadgeText: { color: colors.teal, fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
   confirmationButton: { minHeight: 42, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 14, borderRadius: uiScale.radius.pill },
   confirmationCancelText: { color: colors.ink, fontWeight: '700' },
   confirmationApprove: { backgroundColor: colors.normal },
@@ -462,11 +457,66 @@ const createManagementStyles = (colors: Palette) => StyleSheet.create({
 export function AuditLogsScreen() {
   const { user } = useSession();
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
+  const [search, setSearch] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [selectedUser, setSelectedUser] = useState('');
+  const [action, setAction] = useState('');
+  const [open, setOpen] = useState<'user' | 'action' | null>(null);
+  const [exporting, setExporting] = useState(false);
   const allowed = canAccess(user?.role ?? null, 'admin');
   const logs = useQuery({ queryKey: ['audit-logs', user?.id], queryFn: () => api.listAuditLogs(), enabled: allowed });
+  const validDate = (date: string) => !date || (/^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(`${date}T00:00:00+08:00`)) && getManilaDateString(new Date(`${date}T00:00:00+08:00`)) === date);
+  const validRange = validDate(from) && validDate(to) && (!from || !to || from <= to);
+  const allLogs = logs.data ?? [];
+  const userOptions = [{ value: '', label: 'All users' }, ...Array.from(new Set(allLogs.map((log) => log.user))).sort().map((name) => ({ value: name, label: name }))];
+  const actionOptions = [{ value: '', label: 'All actions' }, ...Array.from(new Set(allLogs.map((log) => log.action))).sort().map((name) => ({ value: name, label: name }))];
+  const filtered = validRange ? allLogs.filter((log) => {
+    const timestamp = Date.parse(log.timestamp);
+    const date = Number.isFinite(timestamp) ? getManilaDateString(new Date(timestamp)) : null;
+    return ((!from && !to) || (date !== null && (!from || date >= from) && (!to || date <= to))) &&
+      (!selectedUser || log.user === selectedUser) && (!action || log.action === action) &&
+      log.detail.toLowerCase().includes(search.trim().toLowerCase());
+  }) : [];
+  const hasFilters = Boolean(search || from || to || selectedUser || action);
+  const exportDisabled = exporting || logs.isLoading || logs.isError || !validRange || !filtered.length;
+  async function shareLogs() {
+    setExporting(true);
+    try {
+      if (!user || !canAccess(user.role, 'canExport')) throw new Error('You do not have permission to export audit logs.');
+      if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
+      const csv = toCsv([['Time (PHT)', 'User', 'Action', 'Detail'], ...filtered.map((log) => [formatManilaDateTime(log.timestamp), log.user, log.action, log.detail])]);
+      const encoded = encodeURIComponent(csv).replace(/%([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+      const uri = `${FileSystem.documentDirectory}hydrosense-audit-logs-${Date.now()}.csv`;
+      await FileSystem.writeAsStringAsync(uri, fromByteArray(Uint8Array.from(encoded, (character) => character.charCodeAt(0))), { encoding: FileSystem.EncodingType.Base64 });
+      await Sharing.shareAsync(uri, { mimeType: 'text/csv', dialogTitle: 'Share audit logs' });
+    } catch (error) {
+      Alert.alert('Export failed', error instanceof Error ? error.message : 'Could not share audit logs.');
+    } finally {
+      setExporting(false);
+    }
+  }
+  const iconButton = { width: 40, height: 40, alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface };
   if (!allowed) return <Page><StateMessage message="You do not have access to audit logs." /></Page>;
   return <Page maxWidth={680}><Title icon={<ClipboardList size={23} color={colors.teal} />} detail="Review admin actions and operational events.">Audit & System Logs</Title><Card>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2] }}>
+      <View style={{ flex: 1, minWidth: 0 }}><SearchBox label="Search detail" placeholder="Search detail" value={search} onChange={setSearch} colors={colors} /></View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Clear filters" accessibilityState={{ disabled: !hasFilters }} disabled={!hasFilters} onPress={() => { setSearch(''); setFrom(''); setTo(''); setSelectedUser(''); setAction(''); setOpen(null); }} style={[iconButton, { opacity: hasFilters ? 1 : 0.5 }]}><X size={18} color={colors.teal} /></Pressable>
+      {user && canAccess(user.role, 'canExport') && <Pressable accessibilityRole="button" accessibilityLabel="Export CSV" accessibilityState={{ disabled: exportDisabled }} disabled={exportDisabled} onPress={() => void shareLogs()} style={[iconButton, { opacity: exportDisabled ? 0.5 : 1 }]}><FileDown size={18} color={colors.teal} /></Pressable>}
+    </View>
+    <View style={{ flexDirection: width < 360 ? 'column' : 'row', gap: uiScale.spacing[2] }}>
+      <CalendarFilterField label="From date (PHT)" value={from} onChangeText={setFrom} max={to || undefined} />
+      <CalendarFilterField label="To date (PHT)" value={to} onChangeText={setTo} min={from || undefined} />
+    </View>
+    <View style={{ flexDirection: width < 360 ? 'column' : 'row', gap: uiScale.spacing[2] }}>
+      <FilterDropdown label="User" summary={selectedUser || 'All users'} icon={<UserRound size={14} color={colors.teal} />} options={userOptions} value={selectedUser} expanded={open === 'user'} onToggle={() => setOpen(open === 'user' ? null : 'user')} onChange={(value) => { setSelectedUser(value); setOpen(null); }} />
+      <FilterDropdown label="Action" summary={action || 'All actions'} icon={<ListFilter size={14} color={colors.teal} />} options={actionOptions} value={action} expanded={open === 'action'} onToggle={() => setOpen(open === 'action' ? null : 'action')} onChange={(value) => { setAction(value); setOpen(null); }} />
+    </View>
     {logs.isLoading ? <StateMessage message="Loading audit events..." loading /> : logs.isError ? <><StateMessage message={`Could not load audit events: ${logs.error.message}`} /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> :
-      !logs.data?.length ? <StateMessage message="No audit or system logs are available." /> : logs.data.map((log) => <View key={log.id} style={{ gap: 4, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{log.action} · {log.user}</Text><Text style={{ color: colors.muted }}>{formatManilaDateTime(log.timestamp)} PHT · {log.detail}</Text></View>)}
+      !validRange ? <StateMessage message="Enter valid dates in YYYY-MM-DD format, with From no later than To." /> : <>
+        <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{filtered.length} events</Text>
+        {filtered.length === 0 ? <StateMessage message="No audit events match the filters." /> : filtered.map((log) => <RecordRow key={log.id} icon={<ClipboardList size={20} color={colors.teal} />} title={log.action} caption={`${log.user} · ${log.detail}`} right={Number.isFinite(Date.parse(log.timestamp)) ? `${formatManilaDateTime(log.timestamp)} PHT` : 'Unavailable'} />)}
+      </>}
   </Card></Page>;
 }

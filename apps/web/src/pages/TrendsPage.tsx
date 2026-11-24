@@ -11,8 +11,8 @@ import { useRole } from '../app/auth/RoleContext';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { PageHeading } from '../components/common/PageHeading';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
-import { calculateTrendStatistics, chartTimeDomain, comparisonStatistics, dailyTicks, gapRanges, nightRanges, parameterValue, prepareParameterRows, prepareTrendRows, rearingDay, sampleParameterReadings, threeHourTicks, trendYAxisDomain } from './trendData';
-import type { TrendParameter } from './trendData';
+import { calculateTrendStatistics, chartTimeDomain, comparisonStatistics, dailyTicks, gapRanges, nightRanges, parameterValue, prepareParameterRows, prepareTrendRows, rearingDay, sampleParameterReadings, threeHourTicks, trendYAxisDomain } from '@hydrosense/shared';
+import type { TrendParameter } from '@hydrosense/shared';
 
 type Range = '24h' | '7d' | 'cycle' | 'custom';
 

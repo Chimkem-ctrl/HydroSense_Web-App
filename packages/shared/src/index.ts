@@ -5,6 +5,8 @@ export * from './hatcheries';
 export * from './phone';
 export * from './address';
 export * from './reports';
+export { calculateTrendStatistics, chartTimeDomain, comparisonStatistics, countMissingSamples, dailyTicks, gapRanges, nightRanges, parameterValue, prepareParameterRows, prepareTrendRows, rearingDay, sampleParameterReadings, threeHourTicks, trendYAxisDomain } from './trends';
+export type { TrendParameter, TrendStatistic } from './trends';
 export * from './rules/status';
 export * from './rules/reading';
 export * from './rules/advisory';

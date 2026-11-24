@@ -2,7 +2,7 @@ import { Children, isValidElement } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { expect, it, vi } from 'vitest';
 
-vi.mock('react-native', () => ({ Pressable: 'Pressable', Text: 'Text', View: 'View' }));
+vi.mock('react-native', () => ({ Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', View: 'View' }));
 vi.mock('lucide-react-native', () => ({ Check: 'Check', ChevronDown: 'ChevronDown' }));
 vi.mock('../theme', () => ({
   uiScale: { spacing: { 1: 4, 2: 8, 3: 12 }, radius: { control: 12 }, type: { caption: 12 } },

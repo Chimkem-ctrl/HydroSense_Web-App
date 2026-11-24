@@ -19,6 +19,7 @@
     ],
     "android": {
       "package": "com.hydrosense.mobile",
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"
       ]

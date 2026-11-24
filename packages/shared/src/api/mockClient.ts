@@ -18,7 +18,7 @@ import {
   mockUsers,
   mockValidationRows,
 } from '../mock/data';
-import type { AcknowledgeAlertInput, CreateCalibrationInput, HydroSenseApi, ReadingQuery } from './types';
+import type { AcknowledgeAlertInput, CreateCalibrationInput, HydroSenseApi, ReadingQuery, SaveReportInput } from './types';
 
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -37,6 +37,7 @@ export class MockApiClient implements HydroSenseApi {
   private tolerances = clone(DEFAULT_VALIDATION_TOLERANCES);
   private users = clone(mockUsers);
   private auditLogs = clone(mockAuditLogs);
+  private reports: SaveReportInput[] = [];
   private auditSequence = 0;
 
   async listTanks() { return clone(this.tanks); }
@@ -286,6 +287,9 @@ export class MockApiClient implements HydroSenseApi {
     return clone(this.users[index]);
   }
   async listAuditLogs() { return clone(this.auditLogs); }
+  async saveReport(report: SaveReportInput) {
+    if (!this.reports.some((existing) => existing.id === report.id)) this.reports.push(clone(report));
+  }
 
   private refreshAdvisories(tankId: string, updatedAt = new Date().toISOString()) {
     const readings = this.readings.filter((reading) => reading.tankId === tankId);

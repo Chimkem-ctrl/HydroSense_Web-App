@@ -16,7 +16,7 @@ function setup(role = 'admin', status = 'approved') {
     { id: 'member', first_name: 'John', last_name: 'Smith', email: 'john@example.test', role: 'operator', status: 'approved', site: 'site', active: true, last_active: 'today' },
     { id: 'other-admin', first_name: 'Other', last_name: 'Admin', email: 'other@example.test', role: 'admin', status: 'approved', active: true },
   ];
-  const tables = { profiles, tanks: [{ id: 'tank', device_id: 'node', site: 'Camiguin, Sagay Multispecies Hatchery' }], sms_alert_queue: [], thresholds: [{ parameter: 'temperature', min_value: 26, max_value: 30 }, { parameter: 'do', min_value: 4, max_value: null }, { parameter: 'ph', min_value: 6, max_value: 8 }], alerts: [], alert_responses: [], device_statuses: [], audit_logs: [], manual_entries: [], activity_logs: [], calibration_logs: [], validation_rows: [], readings: [], advisory_settings: [{ id: true, salinity_watch_temperature_c: 31, salinity_high_temperature_c: 32, ammonia_watch_temperature_c: 31, ammonia_high_ph: 7.8 }] };
+  const tables = { profiles, tanks: [{ id: 'tank', device_id: 'node', site: 'Camiguin, Sagay Multispecies Hatchery' }], sms_alert_queue: [], thresholds: [{ parameter: 'temperature', min_value: 26, max_value: 30 }, { parameter: 'do', min_value: 4, max_value: null }, { parameter: 'ph', min_value: 6, max_value: 8 }], alerts: [], alert_responses: [], device_statuses: [], audit_logs: [], manual_entries: [], activity_logs: [], calibration_logs: [], validation_rows: [], readings: [], reports: [], advisory_settings: [{ id: true, salinity_watch_temperature_c: 31, salinity_high_temperature_c: 32, ammonia_watch_temperature_c: 31, ammonia_high_ph: 7.8 }] };
   const failures = {};
   const uploads = [];
   const inserts = [];
@@ -100,12 +100,15 @@ function setup(role = 'admin', status = 'approved') {
           }
           return this;
         },
-        upsert(value) {
+        upsert(value, options = {}) {
           if (!failures[table]) {
             rows = Array.isArray(value) ? value : [value];
             for (const item of rows) {
-              const existing = tables[table].find((row) => table === 'thresholds' ? row.parameter === item.parameter : row.device_id === item.device_id);
-              if (existing) Object.assign(existing, item); else tables[table].push(item);
+              const conflictField = table === 'thresholds' ? 'parameter' : table === 'reports' ? 'id' : 'device_id';
+              const existing = tables[table].find((row) => row[conflictField] === item[conflictField]);
+              if (existing) {
+                if (!options.ignoreDuplicates) Object.assign(existing, item);
+              } else tables[table].push(item);
             }
           }
           return this;
@@ -190,6 +193,24 @@ function setup(role = 'admin', status = 'approved') {
     })),
   };
 }
+
+test('report metadata is validated, export-role authorized, and inserted idempotently', async () => {
+  const app = setup('operator');
+  const report = {
+    id: 'RPT-20261124-ABC234',
+    reportType: 'pdf',
+    tankIds: ['tank'],
+    rangeFrom: '2026-11-01T16:00:00.000Z',
+    rangeTo: '2026-11-02T15:59:59.999Z',
+  };
+  assert.equal((await app.request('/v1/reports', 'POST', report)).status, 204);
+  assert.equal(app.tables.reports.length, 1);
+  assert.equal(app.tables.reports[0].generated_by, 'actor');
+  assert.equal((await app.request('/v1/reports', 'POST', report)).status, 204);
+  assert.equal(app.tables.reports.length, 1);
+  assert.equal((await app.request('/v1/reports', 'POST', { ...report, id: 'report-tank' })).status, 400);
+  assert.equal((await setup('operator', 'pending').request('/v1/reports', 'POST', report)).status, 403);
+});
 
 test('chat API validates messages, enforces admin controls, and propagates database access checks', async () => {
   const id = '11111111-1111-4111-8111-111111111111';
