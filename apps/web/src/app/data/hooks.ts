@@ -67,6 +67,7 @@ export function useOpenAlerts(tankId?: string) {
   return useQuery({
     queryKey: ['alerts', tankId ?? 'all'],
     queryFn: async () => (await api.listAlerts(tankId)).filter((alert) => alert.status === 'open'),
+    refetchInterval: DATA_MODE === 'api' ? 5_000 : false,
   });
 }
 

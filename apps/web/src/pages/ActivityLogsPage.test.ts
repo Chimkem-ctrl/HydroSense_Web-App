@@ -45,6 +45,14 @@ describe('activity log CSV export', () => {
     expect(csv).toContain('"Benoni"');
   });
 
+  it('exports numbered tanks with their display number', () => {
+    const csv = activityLogCsv([{ id: 'a', tankId: 'tank-a', kind: 'OPERATION', type: 'Feeding', occurredAt: '2025-01-01T00:00:00Z', operator: 'A', notes: '' }], [{
+      id: 'tank-a', name: 'Tank 2', site: 'Sagay', rearingStartDate: '2025-01-01', deviceId: 'device',
+    }]);
+    expect(csv).toContain(',"02",');
+    expect(csv).not.toContain('tank-a');
+  });
+
   it('exports records with unavailable timestamps without throwing', () => {
     const csv = activityLogCsv([{
       id: 'missing-time', tankId: 'hatchery', kind: 'ENVIRONMENT', type: 'Weather', occurredAt: undefined as unknown as string, operator: 'A', notes: '',

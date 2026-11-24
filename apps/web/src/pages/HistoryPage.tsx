@@ -9,12 +9,13 @@ import { useSelectedTank } from '../app/tank/TankContext';
 import { PageHeading } from '../components/common/PageHeading';
 import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState, StaleState } from '../components/common/States';
+import { tankLabel } from '../app/tank/tankLabel';
 
 type SortKey = 'timestamp' | MeasuredParameter;
 const parameterValue = (reading: Reading, parameter: MeasuredParameter) => parameter === 'do' ? reading.doMgL : reading[parameter];
 
 export default function HistoryPage() {
-  const { tankId } = useSelectedTank();
+  const { tankId, tanks } = useSelectedTank();
   const [parameter, setParameter] = useState<MeasuredParameter | 'all'>('all');
   const [from, setFrom] = useState(() => getManilaDateString(new Date(Date.now() - Math.min(7, tierConfig.retentionDays) * 86_400_000)));
   const [to, setTo] = useState(() => getManilaDateString());
@@ -79,7 +80,7 @@ export default function HistoryPage() {
           <div className="table-wrap">
             <table>
               <thead><tr><th>{sortButton('Date / time (PHT)', 'timestamp')}</th><th>Tank</th>{parameter === 'all' ? <><th>{sortButton('Temperature (°C)', 'temperature')}</th><th>{sortButton('DO (mg/L)', 'do')}</th><th>{sortButton('pH', 'ph')}</th></> : <><th>Parameter</th><th>{sortButton(parameter === 'do' ? 'DO (mg/L)' : parameter === 'ph' ? 'pH' : 'Temperature (°C)', parameter)}</th></>}</tr></thead>
-              <tbody>{visible.map((row) => <tr key={row.id}><td>{formatManilaDateTime(row.timestamp)}</td><td>{row.tankId}</td>{parameter === 'all' ? <><td>{row.temperature.toFixed(2)}</td><td>{row.doMgL.toFixed(2)}</td><td>{row.ph.toFixed(2)}</td></> : <><td>{parameter === 'do' ? 'DO' : parameter === 'ph' ? 'pH' : 'Temperature'}</td><td>{parameterValue(row, parameter).toFixed(2)}</td></>}</tr>)}</tbody>
+              <tbody>{visible.map((row) => <tr key={row.id}><td>{formatManilaDateTime(row.timestamp)}</td><td>{tankLabel(tanks.find((tank) => tank.id === row.tankId)?.name)}</td>{parameter === 'all' ? <><td>{row.temperature.toFixed(2)}</td><td>{row.doMgL.toFixed(2)}</td><td>{row.ph.toFixed(2)}</td></> : <><td>{parameter === 'do' ? 'DO' : parameter === 'ph' ? 'pH' : 'Temperature'}</td><td>{parameterValue(row, parameter).toFixed(2)}</td></>}</tr>)}</tbody>
             </table>
           </div>
           <nav className="log-pagination" aria-label="Historical log pages"><button type="button" aria-label="Previous" title="Previous page" disabled={page === 0} onClick={() => setPage((value) => value - 1)}><ChevronLeft size={18} aria-hidden="true" /></button><span aria-current="page">Page {page + 1} of {Math.max(1, Math.ceil(rows.length / pageSize))}</span><button type="button" aria-label="Next" title="Next page" disabled={(page + 1) * pageSize >= rows.length} onClick={() => setPage((value) => value + 1)}><ChevronRight size={18} aria-hidden="true" /></button></nav>

@@ -64,6 +64,60 @@ afterEach(() => {
 });
 
 describe('themed dashboard routes', () => {
+  it.each([
+    ['operator', 'Tank 01', '01'],
+    ['manager', 'TANK 2', '02'],
+    ['admin', 'Tank 01', '01'],
+  ] as const)('shows the tank number in critical alerts for %s', async (role, tankName, number) => {
+    signInAs(role);
+    vi.spyOn(authService, 'getProfileSite').mockResolvedValue('Sagay');
+    vi.spyOn(api, 'listTanks').mockResolvedValue([{ id: 'internal-tank-uuid', name: tankName, site: 'Sagay', rearingStartDate: '2026-01-01', deviceId: 'device' }]);
+    vi.spyOn(api, 'listAlerts').mockResolvedValue([{
+      id: 'alert', tankId: 'internal-tank-uuid', parameter: 'ph', value: 4.2, threshold: '7–8', severity: 'critical', status: 'open', createdAt: new Date().toISOString(),
+    }]);
+    window.history.replaceState({}, '', '/history');
+    render(<App />);
+    const alert = await screen.findByRole('alertdialog', { name: 'Critical Alert' });
+    expect(alert).toHaveTextContent('4.2');
+    expect(alert).toHaveTextContent('7–8');
+    expect(alert).toHaveTextContent(`in ${number}.`);
+    expect(alert).not.toHaveTextContent('internal-tank-uuid');
+  });
+
+  it('lists critical alerts together and opens the relevant tank in Alerts Center without acknowledging', async () => {
+    signInAs('admin');
+    vi.spyOn(api, 'listTanks').mockResolvedValue([
+      { id: 'a', name: 'Tank 01', site: 'Sagay', rearingStartDate: '2026-01-01', deviceId: 'device-a' },
+      { id: 'b', name: 'Tank 2', site: 'Sagay', rearingStartDate: '2026-01-01', deviceId: 'device-b' },
+    ]);
+    const now = new Date().toISOString();
+    const alerts = [
+      { id: 'b-ph', tankId: 'b', parameter: 'ph', value: 4.2, threshold: '7–8', severity: 'critical' as const, status: 'open' as const, createdAt: now },
+      { id: 'a-do', tankId: 'a', parameter: 'do', value: 2, threshold: '>5', severity: 'critical' as const, status: 'open' as const, createdAt: now },
+    ];
+    vi.spyOn(api, 'listAlerts').mockImplementation(async (id) => id ? alerts.filter((alert) => alert.tankId === id) : alerts);
+    const acknowledge = vi.spyOn(api, 'acknowledgeAlert');
+    window.history.replaceState({}, '', '/history');
+    render(<App />);
+    const dialog = await screen.findByRole('alertdialog', { name: 'Critical Alerts' });
+    expect(within(dialog).getAllByRole('listitem')).toHaveLength(2);
+    expect(dialog).toHaveTextContent('in 02.');
+    expect(dialog).toHaveTextContent('in 01.');
+    expect(within(dialog).queryByRole('button', { name: /acknowledge/i })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('link', { name: 'View on Alerts' }));
+    expect(await screen.findByRole('heading', { name: 'Alerts Center' })).toBeInTheDocument();
+    expect(await screen.findByText('Tank 2 · All dates')).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(acknowledge).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Acknowledged (0)' }));
+    act(() => queryClient.setQueryData(['alerts', 'all'], [...alerts, { ...alerts[0], id: 'new-alert' }]));
+    const newDialog = await screen.findByRole('alertdialog', { name: 'Critical Alerts' });
+    fireEvent.click(within(newDialog).getByRole('link', { name: 'View on Alerts' }));
+    expect(await screen.findByRole('tab', { name: 'Open (1)', selected: true })).toBeInTheDocument();
+    expect(acknowledge).not.toHaveBeenCalled();
+  });
+
   it.each(['operator', 'manager', 'admin'] as const)('shows the shared welcome on the %s dashboard', async (role) => {
     signInAs(role);
     window.history.replaceState({}, '', '/');
@@ -133,6 +187,23 @@ describe('themed dashboard routes', () => {
     expect(screen.getByRole('combobox', { name: 'Parameter' })).toHaveTextContent('pH');
   });
 
+  it.each([
+    ['Tank 01', '01'],
+    ['TANK 2', '02'],
+    ['Tank 10', '10'],
+    ['Larval Tank A', 'Larval Tank A'],
+  ])('shows %s as %s in historical logs without changing the tank identifier', async (name, display) => {
+    const id = '00000000-0000-0000-0000-000000000001';
+    vi.spyOn(api, 'listTanks').mockResolvedValue([{ id, name, site: 'Sagay', rearingStartDate: '2026-01-01', deviceId: 'device' }]);
+    const readings = vi.spyOn(api, 'listReadings').mockResolvedValue([{
+      id: 'reading', tankId: id, timestamp: new Date().toISOString(), temperature: 27, doMgL: 5, ph: 7,
+    }]);
+    window.history.replaceState({}, '', '/history');
+    render(<App />);
+    expect(await screen.findByRole('cell', { name: display })).toBeInTheDocument();
+    expect(readings).toHaveBeenCalledWith(expect.objectContaining({ tankId: id }));
+  });
+
   it('resets historical pagination when the header hatchery changes', async () => {
     signInAs('admin');
     vi.spyOn(api, 'listTanks').mockResolvedValue([
@@ -149,7 +220,7 @@ describe('themed dashboard routes', () => {
     fireEvent.click(screen.getByRole('combobox', { name: 'Hatchery' }));
     fireEvent.click(screen.getByRole('option', { name: 'Camiguin, Benoni Experimental Station' }));
     await waitFor(() => expect(screen.getByRole('navigation', { name: 'Historical log pages' })).toHaveTextContent('1'));
-    expect(screen.getByRole('cell', { name: 'b' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'Benoni tank' })).toBeInTheDocument();
   });
 
   it('filters admin activity records and CSV by hatchery and hides worker actions', async () => {
@@ -518,7 +589,7 @@ describe('themed dashboard routes', () => {
     expect(await screen.findByRole('region', { name: 'Alert summary' })).toBeInTheDocument();
     expect(screen.getByText('Median time to acknowledge')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('tab', { name: 'Acknowledged (1)' }));
-    expect(await screen.findByRole('columnheader', { name: 'Date and time (PHT)' })).toBeInTheDocument();
+    expect(await screen.findByRole('columnheader', { name: 'Acknowledged at (PHT)' })).toBeInTheDocument();
     const pagination = screen.getByRole('navigation', { name: 'Alert history pages' });
     expect(within(pagination).getByText('Page 1 of 1')).toHaveAttribute('aria-current', 'page');
     expect(within(pagination).getByRole('button', { name: 'Previous' })).toBeDisabled();
@@ -540,6 +611,48 @@ describe('themed dashboard routes', () => {
     fireEvent.click(within(resolveConfirmation).getByRole('button', { name: 'Confirm resolve' }));
     expect(await screen.findByRole('tab', { name: 'Acknowledged (0)' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Resolved (1)' })).toBeInTheDocument();
+  });
+
+  it('shows older alert history and changes the selected tank', async () => {
+    vi.spyOn(api, 'listTanks').mockResolvedValue([
+      { id: 'a', name: 'Tank A', site: 'Sagay', rearingStartDate: '2026-01-01', deviceId: 'device-a' },
+      { id: 'b', name: 'Tank B', site: 'Sagay', rearingStartDate: '2026-01-01', deviceId: 'device-b' },
+    ]);
+    vi.spyOn(api, 'listAlerts').mockImplementation(async (tankId) => tankId === 'a' ? [{
+      id: 'old', tankId: 'a', parameter: 'ph', value: 9, threshold: '8',
+      severity: 'warning', status: 'acknowledged', createdAt: new Date(Date.now() - 10 * 86_400_000).toISOString(),
+    }] : [{
+      id: 'new', tankId: 'b', parameter: 'do', value: 2, threshold: '5',
+      severity: 'critical', status: 'open', createdAt: new Date().toISOString(),
+    }]);
+    window.history.replaceState({}, '', '/alerts');
+    render(<App />);
+    expect(await screen.findByText('Tank A · All dates')).toBeInTheDocument();
+    expect(await screen.findByRole('tab', { name: 'Acknowledged (1)' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Tank' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Tank B' }));
+    expect(await screen.findByText('Tank B · All dates')).toBeInTheDocument();
+    expect(await screen.findByRole('tab', { name: 'Open (1)' })).toBeInTheDocument();
+    expect(screen.getByText('2 mg/L')).toBeInTheDocument();
+  });
+
+  it('orders acknowledged alerts by acknowledgement time, with missing times last', async () => {
+    const now = Date.now();
+    const newestAck = new Date(now - 60_000).toISOString();
+    const olderAck = new Date(now - 120_000).toISOString();
+    vi.spyOn(api, 'listAlerts').mockResolvedValue([
+      { id: 'later-created', tankId: 'tank-a', parameter: 'ph', value: 8.1, threshold: '7', severity: 'warning', status: 'acknowledged', createdAt: new Date(now - 180_000).toISOString(), acknowledgedAt: olderAck },
+      { id: 'earlier-created', tankId: 'tank-a', parameter: 'ph', value: 8.2, threshold: '7', severity: 'warning', status: 'acknowledged', createdAt: new Date(now - 240_000).toISOString(), acknowledgedAt: newestAck },
+      { id: 'missing-time', tankId: 'tank-a', parameter: 'ph', value: 8.3, threshold: '7', severity: 'warning', status: 'acknowledged', createdAt: new Date(now - 30_000).toISOString() },
+    ]);
+    window.history.replaceState({}, '', '/alerts');
+    render(<App />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Acknowledged (3)' }));
+    const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1);
+    expect(rows.map((row) => within(row).getAllByRole('cell')[1].textContent)).toEqual(['8.2 pH', '8.1 pH', '8.3 pH']);
+    expect(rows[0].querySelector('time')).toHaveAttribute('datetime', newestAck);
+    expect(rows[1].querySelector('time')).toHaveAttribute('datetime', olderAck);
+    expect(within(rows[2]).getAllByRole('cell')[0]).toHaveTextContent('—');
   });
 
   it('paginates alert history with arrows and resets when the page size changes', async () => {
@@ -629,6 +742,29 @@ describe('themed dashboard routes', () => {
     expect(within(summary).getByRole('link', { name: 'Activity Logs' })).toHaveAttribute('href', '/entries');
     expect(within(summary).getByRole('link', { name: 'View trends' })).toHaveAttribute('href', '/trends');
     expect(screen.getByRole('region', { name: 'Recent Alerts' })).toBeInTheDocument();
+  });
+
+  it('shows the selected device connection even when there are no readings', async () => {
+    vi.spyOn(api, 'listTanks').mockResolvedValue([
+      { id: 'a', name: 'Tank A', site: 'Sagay', rearingStartDate: '2026-01-01', deviceId: 'device-a' },
+      { id: 'b', name: 'Tank B', site: 'Sagay', rearingStartDate: '2026-01-01', deviceId: 'device-b' },
+    ]);
+    vi.spyOn(api, 'getLatestReading').mockResolvedValue(null);
+    vi.spyOn(api, 'listDeviceStatuses').mockResolvedValue([
+      { deviceId: 'device-a', online: false, lastSeen: '2020-01-01T00:00:00Z', wifiRssi: 0, pendingSyncCount: 0, batteryPct: null, powerSource: 'grid' },
+      { deviceId: 'device-b', online: true, lastSeen: new Date().toISOString(), wifiRssi: -62, pendingSyncCount: 0, batteryPct: null, powerSource: 'grid', reportedFields: ['wifiRssi'], storageAvailable: false },
+    ]);
+    window.history.replaceState({}, '', '/');
+    render(<App />);
+    expect(await screen.findByText('No reading is available for this tank.')).toBeInTheDocument();
+    expect(screen.getByLabelText('ESP32 Offline')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Device Connection' })).getByText('Offline')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Tank B' }));
+    expect(await screen.findByLabelText('ESP32 Online')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Device Connection' })).getByText('Online')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Device Connection' })).getByText('-62 dBm')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Device Connection' })).getByText('SD unavailable')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Recent Alerts' }).compareDocumentPosition(screen.getByRole('region', { name: 'ESP32 Setup' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('retains the page heading when no tank is available', async () => {

@@ -224,6 +224,12 @@ contains the requested role; older signups that omitted it cannot be recovered.
 `GET /v1/profile` returns the authenticated approved user's profile details,
 including the hatchery/site assignment.
 
+`POST /v1/hardware/heartbeat` uses the hardware API key and a registered
+`deviceId` to update connection status without storing a reading. Apply the
+heartbeat defaults, reported-fields and device-storage-status migrations before
+deploying the API and updated firmware. Current heartbeats report Wi-Fi signal
+and report a pending count only when SD storage can be read.
+
 The hardware API accepts timestamped buffered readings with a `sourceId`,
 `recordedAt` (UTC), and `historical` flag. The `(tank_id, source_id)` key
 deduplicates retries. Historical readings are stored without generating
@@ -254,6 +260,11 @@ Tank creation body:
 ```
 
 ### Alerts
+
+Alerts are deduplicated per tank and parameter while open. After acknowledgement,
+another fresh out-of-range reading can create a new open alert; retries of the
+same reading do not. Apply the open-alert deduplication migration before
+deploying this API.
 
 New alerts queue SMS messages for distinct approved profile phone numbers in
 international E.164 format. The tank's provisioned ESP32 claims its messages

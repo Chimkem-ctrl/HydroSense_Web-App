@@ -1,5 +1,6 @@
 import type { ActivityLog, Tank } from '@hydrosense/shared';
 import { activityHatcheryName, toCsv } from '@hydrosense/shared';
+import { tankLabel } from '../app/tank/tankLabel';
 
 function manilaTimestamp(value: string) {
   const date = new Date(value);
@@ -37,7 +38,7 @@ export function activityLogCsv(logs: ActivityLog[], tanks: Tank[]) {
       manilaTimestamp(log.occurredAt),
       log.tankId === 'hatchery'
         ? 'Hatchery-wide'
-        : tanks.find((tank) => tank.id === log.tankId)?.name ?? log.tankId,
+        : tankLabel(tanks.find((tank) => tank.id === log.tankId)?.name),
       log.kind,
       log.type,
       log.operator,

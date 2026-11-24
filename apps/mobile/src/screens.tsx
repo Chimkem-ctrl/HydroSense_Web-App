@@ -1,6 +1,6 @@
 import { useContext, useMemo, useRef, useState, useEffect } from 'react';
 import type { ComponentRef, ReactNode } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import type { ViewStyle } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -161,6 +161,7 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
   const { user } = useSession();
   const [now, setNow] = useState(Date.now);
   const [networkConnected, setNetworkConnected] = useState<boolean | null>(null);
+  const [setupError, setSetupError] = useState('');
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(timer);
@@ -180,7 +181,7 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
   const recentAlerts = [...(alerts.data ?? [])].filter((alert) => alert.tankId === tankId).sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0)).slice(0, 4);
   const wifiSignal = device && hasReportedField(device, 'wifiRssi') && Number.isFinite(device.wifiRssi) ? `${device.wifiRssi} dBm` : 'Unavailable';
   const lastReport = device?.lastSeen && Number.isFinite(Date.parse(device.lastSeen)) ? `${formatManilaDateTime(device.lastSeen)} PHT` : 'Unavailable';
-  const pendingSync = device && hasReportedField(device, 'pendingSyncCount') && Number.isFinite(device.pendingSyncCount) ? `${device.pendingSyncCount}` : 'Unavailable';
+  const pendingSync = device && hasReportedField(device, 'pendingSyncCount') && Number.isFinite(device.pendingSyncCount) ? `${device.pendingSyncCount}` : device?.storageAvailable === false ? 'SD unavailable' : 'Unavailable';
   return <Page>
     <View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700', letterSpacing: 1 }}>WATER QUALITY MONITORING</Text><Text style={{ color: colors.ink, fontSize: uiScale.type.title, fontWeight: '500' }}>Welcome, {user?.name}.</Text></View>
     <Title icon={<Activity size={23} color={colors.teal} />} detail={tank ? hatcheryLabel(tank.site) : 'Live water-quality status'} >Live Monitor</Title>
@@ -211,6 +212,16 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
         </View>)}
       </Card>
     </>}
+    <Card title="ESP32 Setup">
+      <Text style={{ color: colors.ink }}>Connect to HydroSense-Setup-XXXX using password hydrosense. If it is not visible, press and release RESET, then immediately hold BOOT for about five seconds.</Text>
+      <Text style={{ color: colors.ink }}>Open the setup page and enter the Wi-Fi network, password and registered tank device ID{tank?.deviceId ? ` (${tank.deviceId})` : ''}. Setup sends credentials over an unencrypted local connection; use it only in a trusted environment.</Text>
+      <Button label="Open ESP32 setup page" secondary onPress={() => {
+        setSetupError('');
+        void Linking.openURL('http://192.168.4.1').catch(() => setSetupError('Could not open the setup page. Connect to the ESP32 hotspot and open http://192.168.4.1 in a browser.'));
+      }} />
+      {setupError ? <Text accessibilityLiveRegion="polite" style={{ color: colors.warning }}>{setupError}</Text> : null}
+      <Text style={{ color: colors.muted }}>The ESP32 restarts after saving. Reconnect your phone to its usual network afterward.</Text>
+    </Card>
   </Page>;
 }
 

@@ -30,7 +30,7 @@ import { NAV_ITEMS, ROLE_LABELS } from '../../app/config';
 import { useAuth, useRole } from '../../app/auth/RoleContext';
 import { signOut } from '../../services/authService';
 import { useSelectedTank } from '../../app/tank/TankContext';
-import { useLatestReading, useOpenAlerts, usePendingRequests, useProfileSite } from '../../app/data/hooks';
+import { useDeviceStatuses, useOpenAlerts, usePendingRequests, useProfileSite } from '../../app/data/hooks';
 import { formatManilaDateTime, formatMeasuredParameterLabel } from '@hydrosense/shared';
 import { CriticalAlertModal } from './CriticalAlertModal';
 import { HatcherySelect } from '../common/HatcherySelect';
@@ -73,8 +73,8 @@ export function AppShell() {
   const { role, userName } = useRole();
   const user = useAuth();
   if (!user) throw new Error('AppShell must be used by an authenticated user.');
-  const { tankId, hatchery, tanks } = useSelectedTank();
-  const latestReading = useLatestReading(tankId);
+  const { tankId, setTankId, hatchery, tanks } = useSelectedTank();
+  const devices = useDeviceStatuses();
   const alerts = useOpenAlerts();
   const pendingRequests = usePendingRequests();
   const chatThreads = useChatThreads();
@@ -88,22 +88,19 @@ export function AppShell() {
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
-  const [connection, setConnection] = useState(liveClient.getConnectionState());
-  const latestReadingIsRecent = Boolean(
-    latestReading.data &&
-    Date.now() - new Date(latestReading.data.timestamp).getTime() <= 15 * 60 * 1000,
-  );
-  const displayConnection = connection === 'connected' || latestReadingIsRecent ? 'connected' : connection;
+  const selectedTank = tanks.find((tank) => tank.id === tankId);
+  const device = devices.data?.find((item) => item.deviceId === selectedTank?.deviceId);
+  const deviceConnection = devices.isLoading ? 'Loading'
+    : devices.isError || !selectedTank?.deviceId ? 'Unavailable'
+    : device ? device.online ? 'Online' : 'Offline' : 'Awaiting device';
 
   useEffect(() => {
     setExportNotifications([]);
   }, [user.id]);
 
   useEffect(() => {
-    const unsubscribe = liveClient.subscribeConnection(setConnection);
     liveClient.connect();
     return () => {
-      unsubscribe();
       liveClient.disconnect();
     };
   }, []);
@@ -219,13 +216,13 @@ export function AppShell() {
       </aside>
 
       <div className="main-area">
-        {criticalAlerts.length > 0 && <CriticalAlertModal alert={criticalAlerts[0]} remaining={criticalAlerts.length} />}
+        {criticalAlerts.length > 0 && <CriticalAlertModal alerts={criticalAlerts} tanks={tanks} onView={setTankId} />}
         <main className="page-content glass-screen">
           <div className="page-controls" aria-label="Dashboard controls">
             <button type="button" className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMenuOpen(true)}><Menu size={19} /></button>
             {role === 'admin' && <HatcherySelect />}
-            <span className={`connection-pill ${displayConnection === 'connected' ? 'connection-online' : 'connection-offline'}`} aria-label={`Connection ${displayConnection}`}>
-              {displayConnection === 'connected' ? <Wifi size={16} aria-hidden="true" /> : <WifiOff size={16} aria-hidden="true" />}<span>{displayConnection === 'connected' ? 'Live' : displayConnection === 'connecting' ? 'Connecting' : 'Offline'}</span>
+            <span className={`connection-pill ${deviceConnection === 'Online' ? 'connection-online' : 'connection-offline'}`} aria-label={`ESP32 ${deviceConnection}`} title={selectedTank ? `${selectedTank.name} ESP32 connection` : 'ESP32 connection'}>
+              {deviceConnection === 'Online' ? <Wifi size={16} aria-hidden="true" /> : <WifiOff size={16} aria-hidden="true" />}<span>{deviceConnection}</span>
             </span>
             <Link to="/chat" className="icon-button header-alert-link" aria-label={chatThreads.isError ? 'Chat, unread messages unavailable' : `Chat, ${unreadMessages} unread messages`} onClick={() => { setNotificationsOpen(false); setAccountMenuOpen(false); }}>
               <MessageCircle size={18} aria-hidden="true" />{unreadMessages > 0 && <span className="header-alert-count">{unreadMessages}</span>}

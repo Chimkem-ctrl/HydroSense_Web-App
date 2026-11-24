@@ -34,6 +34,7 @@ export interface DeviceStatus {
   wifiRssi: number;
   pendingSyncCount: number;
   reportedFields?: Array<'batteryPct' | 'wifiRssi' | 'pendingSyncCount'>;
+  storageAvailable?: boolean | null;
   invalidParameters?: MeasuredParameter[];
   probeCheckedAt?: string;
 }

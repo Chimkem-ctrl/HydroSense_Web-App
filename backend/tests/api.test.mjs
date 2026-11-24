@@ -258,6 +258,68 @@ test('buffered readings preserve time, deduplicate retries, and never alert for 
   assert.equal((await app.hardwareRequest('/v1/hardware/thresholds', { deviceId: 'device-a' }, 'wrong')).status, 401);
 });
 
+test('heartbeats update only the registered device connection without readings', async () => {
+  const app = setup();
+  app.tables.device_statuses.push({ device_id: 'node', online: false, last_seen: '2020-01-01T00:00:00Z', wifi_rssi: -65, pending_sync_count: 7 });
+  assert.equal((await app.hardwareRequest('/v1/hardware/heartbeat', { deviceId: 'node' }, 'wrong')).status, 401);
+  assert.equal((await app.hardwareRequest('/v1/hardware/heartbeat', { deviceId: 'unknown' })).status, 404);
+  assert.equal((await app.hardwareRequest('/v1/hardware/heartbeat', {})).status, 400);
+  assert.equal((await app.hardwareRequest('/v1/hardware/heartbeat', { deviceId: 'node' })).status, 200);
+  assert.equal(app.tables.readings.length, 0);
+  assert.equal(app.tables.device_statuses[0].wifi_rssi, -65);
+  assert.equal(app.tables.device_statuses[0].pending_sync_count, 7);
+  const statuses = await (await app.request('/v1/devices/status')).json();
+  assert.equal(statuses[0].deviceId, 'node');
+  assert.equal(statuses[0].online, true);
+  app.failures.device_statuses = 'database unavailable';
+  assert.equal((await app.hardwareRequest('/v1/hardware/heartbeat', { deviceId: 'node' })).status, 500);
+});
+
+test('heartbeats expose only current, valid device telemetry', async () => {
+  const app = setup();
+  assert.equal((await app.hardwareRequest('/v1/hardware/heartbeat', {
+    deviceId: 'node', wifiRssi: -62, pendingSyncCount: 3, storageAvailable: true,
+  })).status, 200);
+  let [device] = await (await app.request('/v1/devices/status')).json();
+  assert.equal(device.wifiRssi, -62);
+  assert.equal(device.pendingSyncCount, 3);
+  assert.deepEqual(device.reportedFields, ['wifiRssi', 'pendingSyncCount']);
+  assert.equal(device.storageAvailable, true);
+
+  assert.equal((await app.hardwareRequest('/v1/hardware/heartbeat', { deviceId: 'node' })).status, 200);
+  [device] = await (await app.request('/v1/devices/status')).json();
+  assert.deepEqual(device.reportedFields, ['wifiRssi', 'pendingSyncCount']);
+
+  assert.equal((await app.hardwareRequest('/v1/hardware/heartbeat', {
+    deviceId: 'node', wifiRssi: -70, pendingSyncCount: null, storageAvailable: false,
+  })).status, 200);
+  [device] = await (await app.request('/v1/devices/status')).json();
+  assert.equal(device.wifiRssi, -70);
+  assert.equal(device.storageAvailable, false);
+  assert.deepEqual(device.reportedFields, ['wifiRssi']);
+  assert.equal((await app.hardwareRequest('/v1/hardware/heartbeat', {
+    deviceId: 'node', wifiRssi: -200, pendingSyncCount: 0, storageAvailable: true,
+  })).status, 400);
+  assert.equal((await app.hardwareRequest('/v1/hardware/heartbeat', {
+    deviceId: 'node', wifiRssi: -70, pendingSyncCount: 1, storageAvailable: false,
+  })).status, 400);
+});
+
+test('historical reading replay does not replace live device telemetry', async () => {
+  const app = setup();
+  await app.hardwareRequest('/v1/hardware/heartbeat', { deviceId: 'node', wifiRssi: -62, pendingSyncCount: 3, storageAvailable: true });
+  const response = await app.hardwareRequest('/v1/ingest/readings', {
+    deviceId: 'node', sourceId: '11111111-1111-4111-8111-111111111111',
+    recordedAt: new Date(Date.now() - 3600000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    historical: true, temperature: 29, ph: 7, doMgL: 5, wifiRssi: -90, pendingSyncCount: 20,
+  });
+  assert.equal(response.status, 201);
+  const [device] = await (await app.request('/v1/devices/status')).json();
+  assert.equal(device.wifiRssi, -62);
+  assert.equal(device.pendingSyncCount, 3);
+  assert.deepEqual(device.reportedFields, ['wifiRssi', 'pendingSyncCount']);
+});
+
 test('hardware SMS claims are scoped, single-use, and require the hardware key', async () => {
   const app = setup();
   const id = '11111111-1111-4111-8111-111111111111';
@@ -658,11 +720,25 @@ test('advisories ignore stale events and retain high impact above a watch base',
   assert.doesNotMatch(result[1].firedRule, /high feeding load/);
 });
 
-test('alert deduplication includes acknowledged alerts and tolerates a unique-index race', async () => {
+test('continuing readings create one new open alert after acknowledgement, but retries do not', async () => {
   const app = setup();
   app.tables.alerts.push({ tank_id: 'tank', parameter: 'temperature', status: 'acknowledged' });
-  assert.equal((await app.ingest({ deviceId: 'node', temperature: 33, doMgL: 5, ph: 7 })).status, 201);
-  assert.equal(app.tables.alerts.length, 1);
+  const reading = {
+    deviceId: 'node', temperature: 33, doMgL: 5, ph: 7,
+    sourceId: '11111111-1111-4111-8111-111111111111',
+    recordedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), historical: false,
+  };
+  assert.equal((await app.ingest(reading)).status, 201);
+  assert.equal(app.tables.alerts.length, 2);
+  assert.equal(app.tables.alerts[1].status, 'open');
+  assert.equal((await app.ingest({ ...reading, sourceId: '22222222-2222-4222-8222-222222222222' })).status, 201);
+  assert.equal(app.tables.alerts.length, 2);
+  app.tables.alerts[1].status = 'acknowledged';
+  assert.equal((await app.ingest(reading)).status, 201);
+  assert.equal(app.tables.alerts.length, 2);
+  assert.equal((await app.ingest({ ...reading, sourceId: '33333333-3333-4333-8333-333333333333' })).status, 201);
+  assert.equal(app.tables.alerts.length, 3);
+  assert.equal(app.tables.alerts[2].status, 'open');
   app.failures.alertInsert = { code: '23505', message: 'duplicate' };
   assert.equal((await app.ingest({ deviceId: 'node', temperature: 28, doMgL: 2, ph: 7 })).status, 201);
   assert.equal(app.tables.device_statuses.length, 1);

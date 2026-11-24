@@ -12,6 +12,7 @@ import { PageHeading } from '../components/common/PageHeading';
 import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
 import { activityLogCsv } from './activityLogs';
+import { tankLabel } from '../app/tank/tankLabel';
 
 type ExportType = 'readings' | 'alerts' | 'activity' | 'calibration' | 'validation';
 type FilterPopoverPosition = { top: number; left: number; width: number; maxHeight: number };
@@ -246,10 +247,11 @@ export default function ReportsPage() {
   const rows = useMemo((): unknown[][] => {
     if (!model) return [];
     const site = (id: string) => model.tanks.find((tank) => tank.id === id)?.site ?? '';
-    if (type === 'readings') return model.rawReadings.map((row) => [site(row.tankId), row.timestamp, row.tankId, row.temperature, row.doMgL, row.ph]);
-    if (type === 'alerts') return model.alerts.map((row) => [site(row.tankId), row.createdAt, row.tankId, formatMeasuredParameterLabel(row.parameter), row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? '']);
+    const tank = (id: string) => tankLabel(model.tanks.find((item) => item.id === id)?.name);
+    if (type === 'readings') return model.rawReadings.map((row) => [site(row.tankId), row.timestamp, tank(row.tankId), row.temperature, row.doMgL, row.ph]);
+    if (type === 'alerts') return model.alerts.map((row) => [site(row.tankId), row.createdAt, tank(row.tankId), formatMeasuredParameterLabel(row.parameter), row.value, row.threshold, row.severity, row.status, row.acknowledgedBy ?? '', row.note ?? '']);
     if (type === 'activity') return model.activityLogs.map((row) => [activityHatcheryName(row, model.tanks), row.occurredAt, row.kind, row.type, row.tankId, row.notes, row.operator]);
-    if (type === 'calibration') return model.calibrationLogs.map((row) => [site(row.tankId), row.date, row.tankId, formatMeasuredParameterLabel(row.parameter), row.standard, row.before, row.after, row.user, row.nextDue]);
+    if (type === 'calibration') return model.calibrationLogs.map((row) => [site(row.tankId), row.date, tank(row.tankId), formatMeasuredParameterLabel(row.parameter), row.standard, row.before, row.after, row.user, row.nextDue]);
     return model.validationRows.map((row) => [row.tankId ? site(row.tankId) : '', formatMeasuredParameterLabel(row.parameter), row.hydrosenseMean, row.reference, row.error, row.pctError, row.tolerance, row.pass ? 'pass' : 'fail']);
   }, [model, type]);
   const headers: Record<ExportType, string[]> = {

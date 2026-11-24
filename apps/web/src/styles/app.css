@@ -52,6 +52,8 @@ a { color: inherit; }
 .critical-modal p { margin: 0; color: var(--text); line-height: 1.5; }
 .critical-modal-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 14px; color: var(--critical); background: color-mix(in srgb, var(--critical) 14%, transparent); }
 .critical-modal .critical-modal-meta { color: var(--muted); font-size: 0.85rem; }
+.critical-modal-list { width: 100%; max-height: min(45vh, 360px); overflow-y: auto; display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; text-align: left; }
+.critical-modal-list li { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
 .critical-modal-action { width: 100%; min-height: 52px; margin-top: 8px; border-radius: 12px; font-size: 1rem; }
 .critical-modal .button-primary { border-color: var(--critical); background: var(--critical); color: var(--surface); }
 .critical-modal .button-primary:hover:not(:disabled) { border-color: var(--critical); background: color-mix(in srgb, var(--critical) 88%, var(--text)); box-shadow: 0 6px 18px color-mix(in srgb, var(--critical) 35%, transparent); }

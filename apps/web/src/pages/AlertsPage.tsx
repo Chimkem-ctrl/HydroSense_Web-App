@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { can, formatManilaDateTime, formatMeasuredParameterLabel, resolveAlertWithActivityLog, validateAcknowledgeNote } from '@hydrosense/shared';
 import type { AlertItem } from '@hydrosense/shared';
 import { api } from '../app/api';
+import { DATA_MODE } from '../app/config';
 import { useRole } from '../app/auth/RoleContext';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { PageHeading } from '../components/common/PageHeading';
@@ -31,14 +33,20 @@ function parameterUnit(parameter: string) {
   return name === 'Temperature' ? '°C' : name === 'DO' ? 'mg/L' : name === 'pH' ? 'pH' : '';
 }
 
+function acknowledgementTime(alert: AlertItem) {
+  const timestamp = alert.acknowledgedAt ? Date.parse(alert.acknowledgedAt) : NaN;
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 export default function AlertsPage() {
+  const location = useLocation();
   const { role, userName } = useRole();
-  const { tankId } = useSelectedTank();
+  const { tankId, setTankId, tanks: visibleTanks } = useSelectedTank();
   const tanks = useTanks();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<AlertTab>('open');
   const [severity, setSeverity] = useState<'all' | AlertItem['severity']>('all');
-  const [period, setPeriod] = useState<AlertPeriod>('7d');
+  const [period, setPeriod] = useState<AlertPeriod>('all');
   const [selected, setSelected] = useState<AlertItem | null>(null);
   const [note, setNote] = useState('');
   const [formError, setFormError] = useState('');
@@ -47,7 +55,7 @@ export default function AlertsPage() {
   const [resolveConfirmation, setResolveConfirmation] = useState(false);
   const [alertsPage, setAlertsPage] = useState(0);
   const [alertsPageSize, setAlertsPageSize] = useState(10);
-  const query = useQuery({ queryKey: ['alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
+  const query = useQuery({ queryKey: ['alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId), refetchInterval: DATA_MODE === 'api' ? 5_000 : false });
   const responses = useQuery({
     queryKey: ['alert-responses', selected?.id],
     queryFn: () => api.listAlertResponses(selected!.id),
@@ -84,7 +92,14 @@ export default function AlertsPage() {
   const items = rangeAlerts
     .filter((alert) => alert.status === tab &&
       (severity === 'all' || alert.severity === severity))
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    .sort((left, right) => {
+      if (tab === 'acknowledged') {
+        const leftTime = acknowledgementTime(left) ?? -Infinity;
+        const rightTime = acknowledgementTime(right) ?? -Infinity;
+        if (leftTime !== rightTime) return rightTime > leftTime ? 1 : -1;
+      }
+      return right.createdAt.localeCompare(left.createdAt);
+    });
   const statusCounts = rangeAlerts.reduce<Record<AlertTab, number>>((counts, alert) => {
     counts[alert.status] += 1;
     return counts;
@@ -104,6 +119,14 @@ export default function AlertsPage() {
   const currentAlertsPage = Math.min(alertsPage, alertsPageCount - 1);
   const visibleAlerts = items.slice(currentAlertsPage * alertsPageSize, (currentAlertsPage + 1) * alertsPageSize);
   const tankNames = new Map((tanks.data ?? []).map((tank) => [tank.id, tank.name]));
+
+  useEffect(() => {
+    if (location.state?.showOpenAlerts === true) {
+      setTab('open');
+      setSeverity('all');
+      setPeriod('all');
+    }
+  }, [location.key, location.state]);
 
   useEffect(() => {
     setAlertsPage(0);
@@ -137,6 +160,11 @@ export default function AlertsPage() {
   return (
     <div className="stack alerts-screen">
       <PageHeading title="Alerts Center" description={`Review alerts, record notes, and check response history for ${tankNames.get(tankId) ?? 'the selected tank'}.`} />
+      {visibleTanks.length > 0 && <label className="field alerts-tank-filter">Tank
+        <Select value={tankId} onChange={(event) => setTankId(event.target.value)}>
+          {visibleTanks.map((tank) => <option key={tank.id} value={tank.id}>{tank.name}</option>)}
+        </Select>
+      </label>}
       {activityError && <p className="state-error" role="alert">The alert was resolved, but its activity log could not be saved: {activityError}</p>}
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
          
@@ -173,7 +201,7 @@ export default function AlertsPage() {
               </Select>
             </label>
             <label className="field alerts-period-filter"><span className="sr-only">Date range</span>
-              <Select value={period === 'all' ? '' : period} clearable placeholder="Date range" onChange={(event) => { setPeriod((event.target.value || 'all') as AlertPeriod); setSelected(null); }}>
+              <Select value={period === 'all' ? '' : period} clearable placeholder="All dates" onChange={(event) => { setPeriod((event.target.value || 'all') as AlertPeriod); setSelected(null); }}>
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>
 
@@ -187,12 +215,13 @@ export default function AlertsPage() {
           <>
             <div className="table-wrap alerts-history-table-wrap">
               <table className="trends-alert-table alerts-history-table">
-                <thead><tr><th scope="col">Date and time (PHT)</th><th scope="col">pH</th><th scope="col">DO</th><th scope="col">Temp</th><th scope="col">Severity</th><th scope="col">Acknowledged by</th><th scope="col">Note</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+                <thead><tr><th scope="col">{tab === 'acknowledged' ? 'Acknowledged at (PHT)' : 'Date and time (PHT)'}</th><th scope="col">pH</th><th scope="col">DO</th><th scope="col">Temp</th><th scope="col">Severity</th><th scope="col">Acknowledged by</th><th scope="col">Note</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
                 <tbody>{visibleAlerts.map((alert) => {
                   const parameter = parameterName(alert.parameter);
+                  const time = tab === 'acknowledged' ? acknowledgementTime(alert) : Date.parse(alert.createdAt);
                   return (
                     <tr key={alert.id}>
-                      <td><time dateTime={alert.createdAt}>{formatManilaDateTime(new Date(alert.createdAt))}</time></td>
+                      <td>{time !== null ? <time dateTime={new Date(time).toISOString()}>{formatManilaDateTime(new Date(time))}</time> : '—'}</td>
                       <td>{parameter === 'pH' ? `${alert.value} pH` : '—'}</td>
                       <td>{parameter === 'DO' ? `${alert.value} mg/L` : '—'}</td>
                       <td>{parameter === 'Temperature' ? `${alert.value} °C` : '—'}</td>

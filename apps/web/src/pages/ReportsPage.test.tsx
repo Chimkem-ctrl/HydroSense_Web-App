@@ -116,6 +116,38 @@ describe('ReportsPage filters dropdown', () => {
     expect(chart.querySelectorAll('.report-bar-fill[style="width: 0%;"]')).toHaveLength(3);
   });
 
+  it.each([
+    ['Raw readings', 'Tank 01', '01'],
+    ['Raw readings', 'TANK 2', '02'],
+    ['Alerts', 'Tank 01', '01'],
+    ['Calibration log', 'TANK 2', '02'],
+  ])('exports %s with the displayed number for %s', async (dataset, name, number) => {
+    vi.mocked(api.listTanks).mockResolvedValue([{ id: 'tank-1', name, site: 'Test site', rearingStartDate: '2025-01-01', deviceId: 'device-1' }]);
+    vi.mocked(api.listAlerts).mockResolvedValue([{ id: 'alert', tankId: 'tank-1', parameter: 'ph', value: 6, threshold: '7', severity: 'warning', status: 'open', createdAt: new Date().toISOString() }]);
+    vi.mocked(api.listCalibrationLogs).mockResolvedValue([{ id: 'cal', tankId: 'tank-1', parameter: 'ph', standard: '7', before: 6, after: 7, date: new Date().toISOString(), user: 'Operator', nextDue: new Date().toISOString() }]);
+    vi.spyOn(api, 'saveReport').mockResolvedValue(undefined);
+    const createUrl = vi.fn((_blob: Blob) => 'blob:report');
+    vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: createUrl, revokeObjectURL: vi.fn() }));
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    renderReportsPage();
+    const download = await screen.findByRole('button', { name: 'Download CSV' });
+    await waitFor(() => expect(download).toBeEnabled());
+    if (dataset !== 'Raw readings') {
+      fireEvent.click(screen.getByRole('combobox', { name: 'CSV dataset' }));
+      fireEvent.click(screen.getByRole('option', { name: dataset }));
+      await waitFor(() => expect(download).toBeEnabled());
+    }
+    fireEvent.click(download);
+    const text = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(createUrl.mock.calls[0][0]);
+    });
+    expect(text).toContain(`,"${number}",`);
+    expect(text).not.toContain('tank-1');
+  });
+
   it('exports the activity dataset with its hatchery and full activity columns', async () => {
     vi.mocked(api.listTanks).mockResolvedValue([{ id: 'tank-1', name: 'Tank 01', site: 'Benoni', rearingStartDate: '2025-01-01', deviceId: 'device-1' }]);
     vi.mocked(api.listActivityLogs).mockResolvedValue([{ id: 'log', tankId: 'hatchery', hatcheryId: 'camiguin-benoni', kind: 'ENVIRONMENT', type: 'Rainfall', occurredAt: new Date().toISOString(), operator: 'Operator', notes: 'Heavy rain', waterSource: 'Sea' }]);
@@ -166,7 +198,7 @@ describe('ReportsPage filters dropdown', () => {
       reader.readAsText(blob);
     });
     expect(text).toContain('"Benoni"');
-    expect(text).toContain('"tank-2"');
+    expect(text).toContain('"Benoni tank"');
     expect(text).not.toContain('tank-1');
     expect(api.listReadings).not.toHaveBeenCalledWith(expect.objectContaining({ tankId: 'tank-1' }));
 

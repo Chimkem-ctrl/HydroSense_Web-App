@@ -4,11 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../app/api';
+import { DATA_MODE } from '../app/config';
 import { useRole } from '../app/auth/RoleContext';
 import { useDeviceStatuses, useLatestReading, useTanks } from '../app/data/hooks';
 import { useSelectedTank } from '../app/tank/TankContext';
 import { ReadingCard } from '../components/readings/ReadingCard';
 import { StatusBadge } from '../components/readings/StatusBadge';
+import { Esp32Setup } from '../components/readings/Esp32Setup';
 import { PageHeading } from '../components/common/PageHeading';
 import { EmptyState, ErrorState, LoadingState, StaleState } from '../components/common/States';
 
@@ -23,7 +25,7 @@ export default function LiveMonitorPage() {
   const tanks = useTanks();
   const tank = tanks.data?.find((item) => item.id === tankId);
   const reading = useLatestReading(tankId);
-  const alerts = useQuery({ queryKey: ['alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
+  const alerts = useQuery({ queryKey: ['alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId), refetchInterval: DATA_MODE === 'api' ? 5_000 : false });
   const devices = useDeviceStatuses();
   const thresholds = useQuery({ queryKey: ['thresholds'], queryFn: () => api.listThresholds() });
   const device = devices.data?.find((item) => item.deviceId === tank?.deviceId);
@@ -31,7 +33,7 @@ export default function LiveMonitorPage() {
   const connectionStatus = typeof device?.online === 'boolean' ? deviceOnline ? 'Online' : 'Offline' : 'Unavailable';
   const wifiSignal = device?.reportedFields?.includes('wifiRssi') && Number.isFinite(device.wifiRssi) ? `${device.wifiRssi} dBm` : 'Unavailable';
   const lastReport = device?.lastSeen && Number.isFinite(Date.parse(device.lastSeen)) ? `${formatManilaDateTime(device.lastSeen)} PHT` : 'Unavailable';
-  const pendingSync = device?.reportedFields?.includes('pendingSyncCount') && Number.isFinite(device.pendingSyncCount) ? `${device.pendingSyncCount}` : 'Unavailable';
+  const pendingSync = device?.reportedFields?.includes('pendingSyncCount') && Number.isFinite(device.pendingSyncCount) ? `${device.pendingSyncCount}` : device?.storageAvailable === false ? 'SD unavailable' : 'Unavailable';
   const freshness = reading.data ? readingFreshness(reading.data.timestamp, device?.online, now) : null;
   const invalidReading = reading.data && (['temperature', 'do', 'ph'] as const).some((parameter) =>
     !isValidMeasurement(parameter, parameter === 'do' ? reading.data!.doMgL : reading.data![parameter]));
@@ -80,7 +82,8 @@ export default function LiveMonitorPage() {
           <ReadingCard parameter="ph" reading={reading.data} threshold={thresholds.data?.find((item) => item.parameter === 'ph')} showRangeMeter showUpdatedTimestamp={false} stale={freshness?.stale} />
         </div>
       </section>
-      <div className="live-overview-grid">
+      </>}
+      {tank && <div className="live-overview-grid">
       <section className="card live-panel" aria-labelledby="live-device-title">
         <div className="live-section-heading"><div><h2 id="live-device-title">Device Connection</h2><p>{tank.deviceId || 'Device ID unavailable'}</p></div></div>
         {devices.isLoading ? <LoadingState label="Loading device status" /> : devices.isError ? <ErrorState error={devices.error} onRetry={() => void devices.refetch()} /> : device ? (
@@ -90,7 +93,7 @@ export default function LiveMonitorPage() {
             <div><span>Last report</span><strong className="live-device-time">{lastReport}</strong></div>
             <div><span>Pending sync</span><strong>{pendingSync}</strong></div>
           </div>
-        ) : <EmptyState>No device is assigned to this tank.</EmptyState>}
+        ) : <EmptyState>{tank.deviceId ? 'Waiting for the device to report.' : 'No device is assigned to this tank.'}</EmptyState>}
       </section>
       <section className="card live-panel" aria-labelledby="live-alerts-title">
         <div className="live-section-heading">
@@ -107,8 +110,8 @@ export default function LiveMonitorPage() {
           ))}</div>
         ) : <EmptyState>No alerts are recorded for this tank.</EmptyState>}
       </section>
-      </div>
-      </>}
+      </div>}
+      <Esp32Setup deviceId={tank?.deviceId} />
     </div>
   );
 }

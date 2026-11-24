@@ -45,6 +45,23 @@ backend and cached in flash; before the first successful fetch, readings are
 stored but held from upload. Thresholds can be up to five minutes old during
 normal operation and remain stale throughout an outage.
 
+If SD storage is unavailable or a write fails, a valid regular or alert reading
+is sent directly to Supabase when Wi-Fi and the clock are available. No SD
+backup exists for that reading, and a failed upload cannot be replayed; the
+firmware attempts another sensor check later. Look for `Live reading uploaded
+without SD storage.` in Serial Monitor.
+
+Independently of sensor readings and SD storage, the ESP32 sends an authenticated
+heartbeat approximately every minute when Wi-Fi and its clock are available.
+The dashboard reports the selected device online after a successful heartbeat;
+the backend marks it offline after 15 minutes without a report. A heartbeat
+does not mean sensors or SD storage are working. Apply the heartbeat defaults
+migration and deploy the API before uploading the updated firmware. Check
+Serial Monitor for `Device heartbeat accepted.` or hardware API errors.
+Heartbeats also report Wi-Fi signal and, when SD storage is accessible, the
+number of timestamped records awaiting synchronization. With no accessible SD
+card the pending count is unknown, not zero.
+
 If Wi-Fi is unavailable at startup, a provisioned device keeps recording and
 reconnects instead of entering the setup hotspot. An external backup supply
 must power the ESP32, sensors, and SD module during an electrical outage.
@@ -113,6 +130,11 @@ The SIM900 can block sensor polling for up to 30 seconds during SMS submission.
 6. Open `http://192.168.4.1`, enter the Wi-Fi network, Wi-Fi password, and registered tank device ID, then submit.
 7. The ESP32 saves the values, connects to Wi-Fi, and sends readings to Supabase.
 
+ESP32 Setup is also available on Live Monitor in the web and mobile apps. Both
+open the ESP32's setup page in a browser. The setup connection is unencrypted;
+enter credentials only in a trusted environment, then reconnect the phone or
+computer to its usual network.
+
 The device ID must exactly match the tank's `device_id` in HydroSense. Example values are `HS-001`, `HS-002`, and `HS-003`.
 
 After provisioning, Serial Monitor prints water temperature, pH and sensor
@@ -159,7 +181,7 @@ Connect to that hotspot from a phone or computer, then open `http://192.168.4.1`
 Enter the local Wi-Fi network name and password. The ESP32 stores them in flash and
 restarts automatically. Wi-Fi can be changed later from the same setup hotspot:
 
-1. Hold the BOOT button, reset the ESP32, and keep holding it for about three seconds.
+1. Press and release RESET, then immediately hold BOOT for about five seconds. Do not hold BOOT during reset, as this can enter flashing mode.
 2. Connect to `HydroSense-Setup-XXXX`.
 3. Open `http://192.168.4.1`.
 

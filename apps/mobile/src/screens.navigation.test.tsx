@@ -22,6 +22,7 @@ const state = vi.hoisted(() => ({
   listReadings: vi.fn(),
   shareAsync: vi.fn(),
   writeAsStringAsync: vi.fn(),
+  openURL: vi.fn(),
 }));
 vi.mock('react', async (importOriginal) => ({
   ...await importOriginal<typeof import('react')>(),
@@ -34,7 +35,7 @@ vi.mock('react', async (importOriginal) => ({
   },
 }));
 vi.mock('react-native', () => ({
-  Alert: {}, Modal: 'Modal', Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text',
+  Alert: {}, Linking: { openURL: state.openURL }, Modal: 'Modal', Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text',
   TextInput: 'TextInput', View: 'View', StyleSheet: { create: (styles: object) => styles },
   Platform: { OS: 'android' },
   useWindowDimensions: () => ({ width: 390, height: 844 }),
@@ -118,6 +119,7 @@ beforeEach(() => {
   state.listReadings.mockReset();
   state.writeAsStringAsync.mockReset();
   state.shareAsync.mockReset();
+  state.openURL.mockReset();
   state.profile = { site: 'camiguin-sagay' };
   state.profileError = null;
   state.createTank.mockReset();
@@ -137,6 +139,27 @@ describe('monitoring and report views', () => {
   });
   const renderHome = () => HomeScreen(props as unknown as BottomTabScreenProps<MainTabParamList, 'Home'>);
   const textValues = (nodes: ReactElement<Record<string, unknown>>[]) => nodes.filter((node) => node.type === 'Text').map((node) => node.props.children);
+
+  it('offers ESP32 setup without a reading and opens the device page', async () => {
+    state.queryData['latest-reading'] = null;
+    state.openURL.mockResolvedValue(undefined);
+    const nodes = elements(renderHome());
+    const cards = nodes.filter((node) => node.type === 'Card');
+    expect(cards.map((node) => node.props.title)).toEqual(['Device Connection', 'Recent Alerts', 'ESP32 Setup']);
+    const card = cards.find((node) => node.props.title === 'ESP32 Setup')!;
+    expect(textValues(elements(card)).join(' ')).toContain('device-a');
+    const button = elements(card).find((node) => node.type === 'Button' && node.props.label === 'Open ESP32 setup page')!;
+    (button.props.onPress as () => void)();
+    expect(state.openURL).toHaveBeenCalledWith('http://192.168.4.1');
+  });
+
+  it('distinguishes an unavailable SD card from an empty sync queue', () => {
+    state.queryData['device-statuses'] = [{ ...device, reportedFields: ['wifiRssi'], storageAvailable: false }];
+    const connection = elements(renderHome()).find((node) => node.type === 'Card' && node.props.title === 'Device Connection')!;
+    const rows = elements(connection).filter((node) => node.type === 'DataRow');
+    expect(rows.find((node) => node.props.label === 'Wi-Fi')?.props.value).toBe('-60 dBm');
+    expect(rows.find((node) => node.props.label === 'Pending sync')?.props.value).toBe('SD unavailable');
+  });
 
   it('shows stale or invalid banners directly after the selector and default device telemetry', () => {
     state.values = [Date.parse('2024-01-02T00:00:00Z'), null];

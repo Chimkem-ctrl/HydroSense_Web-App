@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getAddressByBarangayCode } from "npm:@aivangogh/ph-address@2026.2.4";
 import { timingSafeEqual } from "node:crypto";
+import { reportedDeviceFields } from "./reportedFields.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -206,7 +207,7 @@ Deno.serve(async (request) => {
       });
     }
 
-    if ((action === "/v1/ingest/readings" || action === "/v1/hardware/thresholds" || action === "/v1/hardware/sms/claim" ||
+    if ((action === "/v1/ingest/readings" || action === "/v1/hardware/heartbeat" || action === "/v1/hardware/thresholds" || action === "/v1/hardware/sms/claim" ||
          action === "/v1/hardware/sms/complete") && request.method === "POST") {
       const hardwareKey = Deno.env.get("HARDWARE_INGEST_API_KEY");
       const suppliedKey = request.headers.get("x-hardware-api-key");
@@ -222,6 +223,31 @@ Deno.serve(async (request) => {
           .select("id").eq("device_id", deviceId).maybeSingle();
         if (tankError) return serverError(tankError);
         if (!tank) return json({ error: "Device is not linked to a tank." }, 404);
+        if (action === "/v1/hardware/heartbeat") {
+          const wifiRssi = reading.wifiRssi;
+          const pending = reading.pendingSyncCount;
+          const storageAvailable = reading.storageAvailable;
+          const hasTelemetry = "wifiRssi" in reading || "pendingSyncCount" in reading || "storageAvailable" in reading;
+          if ((wifiRssi != null && (!isNumber(wifiRssi) || !Number.isInteger(wifiRssi) || wifiRssi < -127 || wifiRssi > 0)) ||
+              (pending != null && (!isNumber(pending) || !Number.isInteger(pending) || pending < 0 || pending > 2147483647)) ||
+              (storageAvailable != null && typeof storageAvailable !== "boolean") ||
+              (storageAvailable === false && pending != null)) {
+            return json({ error: "Invalid device telemetry." }, 400);
+          }
+          const { error } = await admin.from("device_statuses").upsert({
+            device_id: deviceId,
+            online: true,
+            last_seen: new Date().toISOString(),
+            ...(hasTelemetry ? {
+              reported_fields: reportedDeviceFields(true, null, wifiRssi ?? null, pending ?? null),
+              storage_available: storageAvailable ?? null,
+            } : {}),
+            ...(wifiRssi != null ? { wifi_rssi: wifiRssi } : {}),
+            ...(pending != null ? { pending_sync_count: pending } : {}),
+          }, { onConflict: "device_id" });
+          if (error) return serverError(error);
+          return json({ accepted: true });
+        }
         if (action === "/v1/hardware/thresholds") {
           const { data, error } = await admin.from("thresholds").select("parameter,min_value,max_value");
           if (error) return serverError(error);
@@ -295,7 +321,9 @@ Deno.serve(async (request) => {
         ...(buffered ? { source_id: reading.sourceId, timestamp: recordedAt } : {}),
       };
       let { data, error } = await admin.from("readings").insert(row).select("id,timestamp").single();
+      let duplicate = false;
       if (error && buffered && error.code === "23505") {
+        duplicate = true;
         const existing = await admin.from("readings").select("id,timestamp")
           .eq("tank_id", tank.id).eq("source_id", reading.sourceId).single();
         data = existing.data;
@@ -303,7 +331,7 @@ Deno.serve(async (request) => {
       }
       if (error || !data) return json({ error: error?.message ?? "Reading not found after insert." }, 400);
 
-      const { data: thresholds, error: thresholdsError } = live
+      const { data: thresholds, error: thresholdsError } = live && !duplicate
         ? await admin.from("thresholds").select("*") : { data: [], error: null };
       if (thresholdsError) console.error("Could not load thresholds after storing reading:", thresholdsError);
       const checkAndCreateAlert = async (parameter: string, value: number, thresholdRow: { min_value?: number; max_value?: number } | undefined) => {
@@ -319,7 +347,7 @@ Deno.serve(async (request) => {
           .select("id")
           .eq("tank_id", tank.id)
           .eq("parameter", parameter)
-          .in("status", ["open", "acknowledged"])
+          .eq("status", "open")
           .limit(1);
         if (recentAlertError) throw recentAlertError;
         if (recentAlert?.length) return;
@@ -364,14 +392,19 @@ Deno.serve(async (request) => {
 
       const wifiRssi = optionalNumber(reading.wifiRssi);
       const batteryPct = optionalNumber(reading.batteryPct);
+      const pendingSyncCount = optionalNumber(reading.pendingSyncCount);
+      const reportedFields = reportedDeviceFields(live, batteryPct, wifiRssi, pendingSyncCount);
       const { error: deviceError } = await admin.from("device_statuses").upsert({
         device_id: deviceId,
         online: true,
         last_seen: new Date().toISOString(),
-        power_source: String(reading.powerSource ?? "grid"),
-        wifi_rssi: wifiRssi ?? 0,
-        pending_sync_count: optionalNumber(reading.pendingSyncCount) ?? 0,
-        battery_pct: batteryPct ?? null,
+        ...(live ? {
+          power_source: String(reading.powerSource ?? "grid"),
+          wifi_rssi: wifiRssi ?? 0,
+          pending_sync_count: reportedFields.includes("pendingSyncCount") ? pendingSyncCount : 0,
+          battery_pct: reportedFields.includes("batteryPct") ? batteryPct : null,
+          reported_fields: reportedFields,
+        } : {}),
       }, { onConflict: "device_id" });
       if (deviceError) {
         console.error(`Reading ${data.id} was stored, but device status could not be updated:`, deviceError);
@@ -586,6 +619,8 @@ Deno.serve(async (request) => {
           powerSource: status?.power_source ?? "grid",
           wifiRssi: status?.wifi_rssi ?? 0,
           pendingSyncCount: status?.pending_sync_count ?? 0,
+          reportedFields: status?.reported_fields ?? [],
+          storageAvailable: status?.storage_available ?? null,
           ...(latestReading ? {
             invalidParameters: invalidProbeParameters(latestReading.temperature, latestReading.do_mg_l, latestReading.ph),
             probeCheckedAt: latestReading.timestamp,

@@ -35,6 +35,8 @@ const char* SMS_COMPLETE_URL =
   "https://iafooterjwbihuzwakoc.supabase.co/functions/v1/api/v1/hardware/sms/complete";
 const char* THRESHOLDS_URL =
   "https://iafooterjwbihuzwakoc.supabase.co/functions/v1/api/v1/hardware/thresholds";
+const char* HEARTBEAT_URL =
+  "https://iafooterjwbihuzwakoc.supabase.co/functions/v1/api/v1/hardware/heartbeat";
 const char* SMS_ROOT_CA = R"EOF(
 -----BEGIN CERTIFICATE-----
 MIIDdTCCAl2gAwIBAgILBAAAAAABFUtaw5QwDQYJKoZIhvcNAQEFBQAwVzELMAkGA1UEBhMC
@@ -147,6 +149,7 @@ unsigned long lastRegular = 0;
 unsigned long lastSync = 0;
 unsigned long lastThresholdRefresh = 0;
 unsigned long lastSms = 0;
+unsigned long lastHeartbeat = 0;
 unsigned long lastMountAttempt = 0;
 bool firstSample = true;
 struct Threshold {
@@ -167,8 +170,9 @@ void loadThresholds();
 void refreshThresholds();
 void sampleAndStore();
 void replayOne();
+bool findOldestRecord(char state, String& path, unsigned long& count);
 uint64_t highestStoredSequence();
-bool smsApiPost(const char* url, const String& body, String& response);
+bool hardwareApiPost(const char* url, const String& body, String& response);
 void connectSavedWiFi();
 void loadDeviceId();
 void startWiFiProvisioning();
@@ -229,6 +233,21 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED && !clockConfigured) {
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
     clockConfigured = true;
+  }
+  if (WiFi.status() == WL_CONNECTED && time(nullptr) >= 1700000000 &&
+      (lastHeartbeat == 0 || now - lastHeartbeat >= 60000)) {
+    lastHeartbeat = now;
+    StaticJsonDocument<256> heartbeat;
+    heartbeat["deviceId"] = savedDeviceId;
+    heartbeat["wifiRssi"] = WiFi.RSSI();
+    heartbeat["storageAvailable"] = sdReady;
+    String oldest;
+    unsigned long pending;
+    if (sdReady && findOldestRecord('p', oldest, pending)) heartbeat["pendingSyncCount"] = pending;
+    else heartbeat["pendingSyncCount"] = nullptr;
+    String body, response;
+    serializeJson(heartbeat, body);
+    if (hardwareApiPost(HEARTBEAT_URL, body, response)) Serial.println("Device heartbeat accepted.");
   }
   if (WiFi.status() == WL_CONNECTED && time(nullptr) >= 1700000000 &&
       (!thresholdsReady || !thresholdsRefreshed || now - lastThresholdRefresh >= 300000) &&
@@ -489,7 +508,7 @@ void refreshThresholds() {
   request["deviceId"] = savedDeviceId;
   String body, response;
   serializeJson(request, body);
-  if (!smsApiPost(THRESHOLDS_URL, body, response)) return;
+  if (!hardwareApiPost(THRESHOLDS_URL, body, response)) return;
   if (!parseThresholds(response)) {
     Serial.println("Invalid threshold response; retaining previous thresholds.");
     return;
@@ -636,6 +655,26 @@ bool thresholdViolated(int index, float value) {
          (limits[index].hasMax && value > limits[index].max);
 }
 
+bool postReading(const String& body) {
+  WiFiClientSecure client;
+  client.setCACert(SMS_ROOT_CA);
+  HTTPClient http;
+  if (!http.begin(client, HYDROSENSE_API_URL)) {
+    Serial.println("Could not initialize reading API connection.");
+    return false;
+  }
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Hardware-Api-Key", HARDWARE_API_KEY);
+  int status = http.POST(body);
+  if (status != 201) {
+    Serial.printf("Reading upload failed: HTTP/client status %d\n", status);
+    http.end();
+    return false;
+  }
+  http.end();
+  return true;
+}
+
 bool postStoredRecord(const String& path, bool historical, unsigned long pending) {
   File file = SD.open(path, FILE_READ);
   if (!file) {
@@ -655,22 +694,7 @@ bool postStoredRecord(const String& path, bool historical, unsigned long pending
   record["pendingSyncCount"] = pending > 0 ? pending - 1 : 0;
   String body;
   serializeJson(record, body);
-  WiFiClientSecure client;
-  client.setCACert(SMS_ROOT_CA);
-  HTTPClient http;
-  if (!http.begin(client, HYDROSENSE_API_URL)) {
-    Serial.println("Could not initialize reading API connection.");
-    return false;
-  }
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-Hardware-Api-Key", HARDWARE_API_KEY);
-  int status = http.POST(body);
-  if (status != 201) {
-    Serial.printf("SD reading upload failed: HTTP/client status %d\n", status);
-    http.end();
-    return false;
-  }
-  http.end();
+  if (!postReading(body)) return false;
   String sentPath = path;
   sentPath[10] = 's';
   if (!SD.rename(path, sentPath)) {
@@ -703,29 +727,7 @@ void sampleAndStore() {
   bool alert = thresholdsReady && (thresholdViolated(0, currentTemp) ||
     thresholdViolated(1, currentDO_mgL) || thresholdViolated(2, currentPH));
   if (!regular && !alert) return;
-  if (!sdReady || !reserveSdSpace()) {
-    Serial.println("Reading not saved: SD storage unavailable.");
-    return;
-  }
-  if (!preferences.begin("sdlog", false)) {
-    Serial.println("Cannot open SD record sequence in flash; reading not saved.");
-    return;
-  }
-  uint64_t sequence = nextSequence + 1;
-  size_t stored = preferences.putULong64("sequence", sequence);
-  preferences.end();
-  if (stored != sizeof(sequence)) {
-    Serial.println("Could not persist SD record sequence; reading not saved.");
-    return;
-  }
-  nextSequence = sequence;
-  if (SD.exists(recordPath('p', sequence)) || SD.exists(recordPath('s', sequence)) ||
-      SD.exists(recordPath('u', sequence))) {
-    Serial.println("SD record sequence collision; reading not saved.");
-    return;
-  }
-  char seq[17], id[37], timestamp[21];
-  snprintf(seq, sizeof(seq), "%016llx", sequence);
+  char id[37], timestamp[21];
   uint32_t a = esp_random(), b = esp_random(), c = esp_random(), d = esp_random();
   snprintf(id, sizeof(id), "%08lx-%04lx-4%03lx-%04lx-%04lx%08lx",
     (unsigned long)a, (unsigned long)(b >> 16), (unsigned long)(b & 0x0fff),
@@ -738,7 +740,6 @@ void sampleAndStore() {
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", &utc);
   }
   StaticJsonDocument<768> record;
-  record["sequence"] = seq;
   record["sourceId"] = id;
   record["deviceId"] = savedDeviceId;
   if (timed) record["recordedAt"] = timestamp;
@@ -750,16 +751,62 @@ void sampleAndStore() {
   record["doProbeTemperature"] = currentDO_temp;
   record["wifiRssi"] = WiFi.RSSI();
   record["powerSource"] = "grid";
+  auto uploadWithoutStorage = [&]() {
+    if (WiFi.status() != WL_CONNECTED || !timed) {
+      Serial.println("Reading not saved or uploaded: SD unavailable, and Wi-Fi or time is unavailable.");
+      return;
+    }
+    record.remove("sequence");
+    record["historical"] = false;
+    String body;
+    serializeJson(record, body);
+    if (postReading(body)) {
+      if (regular) lastRegular = now;
+      Serial.println("Live reading uploaded without SD storage.");
+    } else {
+      Serial.println("Reading was not stored; upload will be attempted again on a later sensor check.");
+    }
+  };
+  if (!sdReady || !reserveSdSpace()) {
+    Serial.println("SD storage unavailable; attempting a direct upload.");
+    uploadWithoutStorage();
+    return;
+  }
+  if (!preferences.begin("sdlog", false)) {
+    Serial.println("Cannot open SD record sequence in flash.");
+    uploadWithoutStorage();
+    return;
+  }
+  uint64_t sequence = nextSequence + 1;
+  size_t stored = preferences.putULong64("sequence", sequence);
+  preferences.end();
+  if (stored != sizeof(sequence)) {
+    Serial.println("Could not persist SD record sequence.");
+    uploadWithoutStorage();
+    return;
+  }
+  nextSequence = sequence;
+  if (SD.exists(recordPath('p', sequence)) || SD.exists(recordPath('s', sequence)) ||
+      SD.exists(recordPath('u', sequence))) {
+    Serial.println("SD record sequence collision.");
+    uploadWithoutStorage();
+    return;
+  }
+  char seq[17];
+  snprintf(seq, sizeof(seq), "%016llx", sequence);
+  record["sequence"] = seq;
   const char* temporary = "/readings/temp.json";
   if (SD.exists(temporary)) {
     Serial.println("SD temporary record requires recovery; new record not saved.");
     sdReady = false;
+    uploadWithoutStorage();
     return;
   }
   File file = SD.open(temporary, FILE_WRITE);
   if (!file) {
     Serial.println("Cannot create SD record.");
     sdReady = false;
+    uploadWithoutStorage();
     return;
   }
   size_t expected = measureJson(record);
@@ -771,6 +818,7 @@ void sampleAndStore() {
   if (written != expected || writeError || !SD.rename(temporary, path)) {
     Serial.println("SD write incomplete; new records paused for recovery.");
     sdReady = false;
+    uploadWithoutStorage();
     return;
   }
   if (regular) lastRegular = now;
@@ -829,19 +877,19 @@ bool simReady() {
   return true;
 }
 
-bool smsApiPost(const char* url, const String& body, String& response) {
+bool hardwareApiPost(const char* url, const String& body, String& response) {
   WiFiClientSecure client;
   client.setCACert(SMS_ROOT_CA);
   HTTPClient http;
   if (!http.begin(client, url)) {
-    Serial.println("Could not initialize SMS API connection.");
+    Serial.println("Could not initialize hardware API connection.");
     return false;
   }
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-Hardware-Api-Key", HARDWARE_API_KEY);
   int status = http.POST(body);
   if (status != 200) {
-    Serial.printf("SMS API request failed: HTTP/client status %d\n", status);
+    Serial.printf("Hardware API request failed: HTTP/client status %d\n", status);
     http.end();
     return false;
   }
@@ -896,7 +944,7 @@ void processSms() {
   String body;
   serializeJson(request, body);
   String response;
-  if (!smsApiPost(SMS_CLAIM_URL, body, response)) return;
+  if (!hardwareApiPost(SMS_CLAIM_URL, body, response)) return;
   StaticJsonDocument<512> result;
   DeserializationError error = deserializeJson(result, response);
   if (error) {
@@ -927,7 +975,7 @@ void processSms() {
   completion["status"] = sent ? "sent" : "failed";
   body = "";
   serializeJson(completion, body);
-  if (!smsApiPost(SMS_COMPLETE_URL, body, response)) {
+  if (!hardwareApiPost(SMS_COMPLETE_URL, body, response)) {
     Serial.println("SMS completion was not recorded; message will not be retried.");
   }
 }
