@@ -31,6 +31,14 @@ export interface AcknowledgeAlertInput {
 
 export interface CreateCalibrationInput extends Omit<CalibrationLog, 'id'> {}
 
+export interface SaveReportInput {
+  id: string;
+  reportType: 'pdf' | 'csv' | 'xlsx';
+  tankIds: string[];
+  rangeFrom: string | null;
+  rangeTo: string | null;
+}
+
 export interface HydroSenseApi {
   listTanks(): Promise<Tank[]>;
   createTank(tank: Omit<Tank, 'id'>, changedBy: string): Promise<Tank>;
@@ -59,4 +67,5 @@ export interface HydroSenseApi {
   listUsers(): Promise<DashboardUser[]>;
   updateUserRole(userId: string, role: Exclude<DashboardUser['role'], 'admin'>, changedBy: string): Promise<DashboardUser>;
   listAuditLogs(): Promise<AuditLog[]>;
+  saveReport(report: SaveReportInput): Promise<void>;
 }

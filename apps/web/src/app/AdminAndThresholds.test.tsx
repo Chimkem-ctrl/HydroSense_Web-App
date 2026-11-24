@@ -123,7 +123,7 @@ describe('users and roles', () => {
     expect(within(adminAccounts).getByText('ADM-001')).toBeInTheDocument();
     expect(within(adminAccounts).getByText('+639175550999')).toBeInTheDocument();
     expect(Array.from(document.querySelectorAll('.admin-users-panel h2')).map((heading) => heading.textContent))
-      .toEqual(['Pending requests', 'Admin accounts', 'Team accounts']);
+      .toEqual(['Pending Requests', 'Admin Accounts', 'Team Accounts']);
   });
 
   it('filters pending requests and account lists using the header hatchery', async () => {
@@ -250,11 +250,11 @@ describe('threshold review', () => {
     vi.spyOn(api, 'getAdvisorySettings').mockResolvedValue({ ...DEFAULT_ADVISORY_RULES });
     window.history.replaceState({}, '', '/calibration');
     render(<App />);
-    const heading = await screen.findByRole('heading', { name: 'Measured parameter thresholds' });
+    const heading = await screen.findByRole('heading', { name: 'Measured Parameter Thresholds' });
     expect(await screen.findByText('Reference values only. Calibration is logged above.')).toBeInTheDocument();
     expect(screen.getByText('Reference values only. Calibration is logged above.').parentElement).toBe(heading.parentElement);
     expect(screen.getByRole('row', { name: 'Temperature (°C) 26 °C 30 °C' })).toBeInTheDocument();
-    expect(screen.getByRole('row', { name: 'Dissolved oxygen (mg/L) 4 mg/L Not set' })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: 'DO (mg/L) 4 mg/L Not set' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Minimum')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Maximum')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Review and save' })).not.toBeInTheDocument();

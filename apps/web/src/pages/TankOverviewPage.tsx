@@ -14,8 +14,8 @@ import { PageHeading } from '../components/common/PageHeading';
 import { ConfirmActionDialog } from '../components/common/ConfirmActionDialog';
 import { Select } from '../components/common/Select';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
-import { calculateTrendStatistics, countMissingSamples, prepareTrendRows, threeHourTicks } from './trendData';
-import type { TrendParameter } from './trendData';
+import { calculateTrendStatistics, countMissingSamples, prepareTrendRows, threeHourTicks } from '@hydrosense/shared';
+import type { TrendParameter } from '@hydrosense/shared';
 
 interface TankSummary {
   tank: Tank;

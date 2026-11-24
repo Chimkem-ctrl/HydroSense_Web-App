@@ -7,11 +7,13 @@ vi.mock('react', async (importOriginal) => ({
   ...await importOriginal<typeof import('react')>(),
   useContext: vi.fn(),
   useRef: () => ({ current: null }),
+  useEffect: vi.fn(),
   useState: (initial: unknown) => [typeof initial === 'function' ? (initial as () => unknown)() : initial, vi.fn()],
 }));
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Image: 'Image',
+  Keyboard: { addListener: vi.fn(() => ({ remove: vi.fn() })) },
   KeyboardAvoidingView: 'KeyboardAvoidingView',
   Modal: 'Modal',
   Platform: { get OS() { return themeState.platform; } },
@@ -36,7 +38,7 @@ vi.mock('../theme', () => ({
 
 import { BlurTargetContext, Brand, CalendarFilterField, Card, Chip, FilterField, GlassDialog, Page } from './ui';
 
-type ElementProps = { children?: ReactNode; style?: unknown; contentContainerStyle?: unknown; resizeMode?: string; intensity?: number; blurReductionFactor?: number; tint?: string; ref?: unknown; accessibilityLabel?: string; accessibilityState?: unknown; onChangeText?: (value: string) => void; onPress?: () => void; edges?: string[] };
+type ElementProps = { children?: ReactNode; style?: unknown; contentContainerStyle?: unknown; resizeMode?: string; intensity?: number; blurReductionFactor?: number; tint?: string; ref?: unknown; accessibilityLabel?: string; accessibilityState?: unknown; onChangeText?: (value: string) => void; onPress?: () => void; edges?: string[]; behavior?: string; keyboardShouldPersistTaps?: string; keyboardDismissMode?: string; automaticallyAdjustKeyboardInsets?: boolean; onFocusCapture?: unknown; pointerEvents?: string };
 
 function findElement(node: ReactNode, type: string): ReactElement<ElementProps> | undefined {
   if (!isValidElement<ElementProps>(node)) return undefined;
@@ -67,6 +69,24 @@ describe('log filter controls', () => {
     expect(findElement(field, 'TextInput')?.props.accessibilityLabel).toBe('From date (PHT)');
     expect(findElement(field, 'CalendarDays')).toBeDefined();
     expect(findElement(field, 'Pressable')?.props.accessibilityLabel).toBe('Choose from date (pht)');
+  });
+
+  it('disables calendar dates outside the supplied bounds', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2024, 0, 15));
+    try {
+      const field = CalendarFilterField({ label: 'Date', value: '2024-01-15', onChangeText: vi.fn(), min: '2024-01-10', max: '2024-01-20' });
+      function presses(node: ReactNode): ReactElement<ElementProps>[] {
+        if (!isValidElement<ElementProps>(node)) return [];
+        return [...(node.type === 'Pressable' ? [node] : []), ...Children.toArray(node.props.children).flatMap(presses)];
+      }
+      const buttons = presses(field);
+      expect(buttons.find((button) => button.props.accessibilityLabel === new Date(2024, 0, 9).toLocaleDateString())?.props.accessibilityState).toEqual({ selected: false, disabled: true });
+      expect(buttons.find((button) => button.props.accessibilityLabel === new Date(2024, 0, 15).toLocaleDateString())?.props.accessibilityState).toEqual({ selected: true, disabled: false });
+      expect(buttons.find((button) => button.props.accessibilityLabel === new Date(2024, 0, 21).toLocaleDateString())?.props.accessibilityState).toEqual({ selected: false, disabled: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps the calendar modal within safe screen bounds with a padded, scrollable panel', () => {
@@ -112,6 +132,23 @@ describe('header brand', () => {
 });
 
 describe('page background layers', () => {
+  it('avoids the keyboard and keeps scroll inputs accessible', () => {
+    const page = Page({ children: 'Content' });
+    const scroll = findElement(page, 'ScrollView');
+    expect(findElement(page, 'KeyboardAvoidingView')?.props.behavior).toBe('height');
+    expect(scroll?.props.keyboardShouldPersistTaps).toBe('handled');
+    expect(scroll?.props.keyboardDismissMode).toBe('on-drag');
+    expect(scroll?.props.automaticallyAdjustKeyboardInsets).toBe(true);
+    expect(typeof scroll?.props.onFocusCapture).toBe('function');
+
+    themeState.platform = 'ios';
+    try {
+      expect(findElement(Page({ children: 'Content' }), 'KeyboardAvoidingView')?.props.behavior).toBe('padding');
+    } finally {
+      themeState.platform = 'android';
+    }
+  });
+
   it('lets the tab bar own the bottom inset while keeping it for stack and auth screens', () => {
     vi.mocked(useContext).mockReturnValueOnce(true);
     expect(findElement(Page({ children: 'Tab' }), 'SafeAreaView')?.props.edges).toEqual(['left', 'right']);

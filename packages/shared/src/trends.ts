@@ -1,5 +1,6 @@
-import { getManilaDateString, isValidMeasurement as isValidSensorMeasurement, SAMPLE_INTERVAL_MS } from '@hydrosense/shared';
-import type { MeasuredParameter, Reading } from '@hydrosense/shared';
+import { getManilaDateString } from './format';
+import { isValidMeasurement as isValidSensorMeasurement, SAMPLE_INTERVAL_MS } from './rules/reading';
+import type { MeasuredParameter, Reading } from './types';
 
 export { SAMPLE_INTERVAL_MS };
 const MAX_CONTIGUOUS_INTERVAL_MS = SAMPLE_INTERVAL_MS + 30 * 60 * 1000;

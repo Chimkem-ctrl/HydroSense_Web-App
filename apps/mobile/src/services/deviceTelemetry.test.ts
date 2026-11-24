@@ -8,14 +8,16 @@ const device: DeviceStatus = {
 };
 
 describe('device telemetry provenance', () => {
-  it('only includes assigned devices, sorted by tank name', () => {
+  it('includes every tank, sorted by name, without unassigned device statuses', () => {
     const tanks: Tank[] = [
       { id: '1', name: 'Tank B', deviceId: 'device-1', site: '', rearingStartDate: '' },
       { id: '2', name: 'Tank A', deviceId: 'device-2', site: '', rearingStartDate: '' },
+      { id: '3', name: 'Tank C', deviceId: 'missing', site: '', rearingStartDate: '' },
+      { id: '4', name: 'Tank D', deviceId: '', site: '', rearingStartDate: '' },
     ];
     const devices = [device, { ...device, deviceId: 'device-2' }, { ...device, deviceId: 'unassigned' }];
-    expect(getAssignedDevices(devices, tanks).map(({ tank, device: status }) => [tank.name, status.deviceId]))
-      .toEqual([['Tank A', 'device-2'], ['Tank B', 'device-1']]);
+    expect(getAssignedDevices(devices, tanks).map(({ tank, device: status }) => [tank.name, status?.deviceId]))
+      .toEqual([['Tank A', 'device-2'], ['Tank B', 'device-1'], ['Tank C', undefined], ['Tank D', undefined]]);
     expect(getAssignedDevices(devices, [])).toEqual([]);
   });
 
@@ -24,10 +26,12 @@ describe('device telemetry provenance', () => {
     expect(pendingRecordTotal([device])).toBeNull();
   });
 
-  it('counts reported zeroes and refuses an incomplete total', () => {
+  it('sums only finite reported counts, including zero', () => {
     const reported: DeviceStatus = { ...device, reportedFields: ['batteryPct', 'pendingSyncCount'] };
     expect(hasReportedField(reported, 'batteryPct')).toBe(true);
     expect(pendingRecordTotal([reported])).toBe(0);
-    expect(pendingRecordTotal([reported, device])).toBeNull();
+    expect(pendingRecordTotal([reported, device, { ...reported, pendingSyncCount: 4 }])).toBe(4);
+    expect(pendingRecordTotal([{ ...reported, pendingSyncCount: Number.NaN }])).toBeNull();
+    expect(pendingRecordTotal([])).toBeNull();
   });
 });

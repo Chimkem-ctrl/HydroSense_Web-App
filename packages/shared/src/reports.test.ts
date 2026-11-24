@@ -1,6 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { buildReport, calculateParameterStatistics } from './reports';
-import { formatMeasuredParameterLabel } from './rules/status';
+import { describe, expect, it, vi } from 'vitest';
+import { buildReport, calculateParameterStatistics, generateReportId, loadAllReadings } from './reports';
 import type { ReportData, ReportSpec } from './reports';
 
 const spec: ReportSpec = {
@@ -31,12 +30,75 @@ const data: ReportData = {
   deviceStatuses: [],
 };
 
-describe('formatMeasuredParameterLabel', () => {
-  it('uses the conventional casing for water-quality parameters', () => {
-    expect(formatMeasuredParameterLabel('do')).toBe('DO');
-    expect(formatMeasuredParameterLabel('PH')).toBe('pH');
-    expect(formatMeasuredParameterLabel('temperature')).toBe('Temperature');
-    expect(formatMeasuredParameterLabel('custom')).toBe('custom');
+describe('loadAllReadings', () => {
+  it('returns a short first page without requesting another page', async () => {
+    const listReadings = vi.fn().mockResolvedValue(data.readings);
+    const result = await loadAllReadings({ listReadings }, { tankId: 'tank-a', from: spec.from, to: spec.to });
+
+    expect(result).toEqual({ rows: data.readings, truncated: false });
+    expect(listReadings).toHaveBeenCalledOnce();
+    expect(listReadings).toHaveBeenCalledWith({ tankId: 'tank-a', from: spec.from, to: spec.to, limit: 2000 });
+  });
+
+  it('pages backward and deduplicates the inclusive timestamp boundary', async () => {
+    const firstPage = Array.from({ length: 2000 }, (_, index) => ({
+      ...data.readings[0],
+      id: `recent-${index}`,
+      timestamp: new Date(Date.UTC(2026, 0, 1, 6) - index * 1000).toISOString(),
+    }));
+    const secondPage = [
+      firstPage[firstPage.length - 1],
+      ...Array.from({ length: 1999 }, (_, index) => ({
+        ...data.readings[0],
+        id: `older-${index}`,
+        timestamp: new Date(Date.UTC(2026, 0, 1, 5, 26, 40) - index * 1000).toISOString(),
+      })),
+    ];
+    const listReadings = vi.fn()
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(secondPage)
+      .mockResolvedValueOnce([]);
+
+    const result = await loadAllReadings({ listReadings }, { tankId: 'tank-a', from: spec.from, to: spec.to });
+
+    expect(result.rows).toHaveLength(3999);
+    expect(new Set(result.rows.map((reading) => reading.id)).size).toBe(3999);
+    expect(result.truncated).toBe(false);
+    expect(listReadings).toHaveBeenCalledTimes(3);
+    expect(listReadings.mock.calls[1][0]?.to).toBe(firstPage[firstPage.length - 1].timestamp);
+  });
+
+  it('stops and marks the result truncated when duplicate timestamps yield no new IDs', async () => {
+    const page = Array.from({ length: 2000 }, (_, index) => ({
+      ...data.readings[0],
+      id: `same-time-${index}`,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    }));
+    const listReadings = vi.fn().mockResolvedValue(page);
+
+    const result = await loadAllReadings({ listReadings }, { tankId: 'tank-a', from: spec.from, to: spec.to });
+
+    expect(result.rows).toHaveLength(2000);
+    expect(result.truncated).toBe(true);
+    expect(listReadings).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops at 20,000 rows and marks the result truncated', async () => {
+    let pageNumber = 0;
+    const listReadings = vi.fn().mockImplementation(async () => {
+      const currentPage = pageNumber++;
+      return Array.from({ length: 2000 }, (_, index) => ({
+        ...data.readings[0],
+        id: `capped-${currentPage}-${index}`,
+        timestamp: new Date(Date.UTC(2026, 0, 1, 6) - currentPage * 2_000_000 - index * 1000).toISOString(),
+      }));
+    });
+
+    const result = await loadAllReadings({ listReadings }, { tankId: 'tank-a', from: spec.from, to: spec.to });
+
+    expect(result.rows).toHaveLength(20_000);
+    expect(result.truncated).toBe(true);
+    expect(listReadings).toHaveBeenCalledTimes(10);
   });
 });
 
@@ -60,11 +122,15 @@ describe('buildReport', () => {
     expect(report.dataQuality).toEqual({ expectedReadings: 3, receivedReadings: 3, receivedPercent: 100 });
     expect(report.generatedBy).toEqual(spec.generatedBy);
     expect(report.sections).toEqual(spec.sections);
-    expect(report.id).toContain('HS-20260101080000');
-    expect(report.summary).toContain('DO');
-    expect(report.summary).toContain('pH');
-    expect(report.summary).not.toContain(' do ');
-    expect(report.summary).not.toContain(' ph ');
+    expect(report.id).toMatch(/^RPT-\d{8}-[A-HJ-NP-Z2-9]{6}$/);
+    expect(report.id).not.toContain('tank-a');
+  });
+
+  it('generates report IDs with the Manila date and uses an explicitly supplied ID', () => {
+    const reportId = generateReportId(new Date('2025-12-31T16:30:00.000Z'));
+    expect(reportId).toMatch(/^RPT-20260101-[A-HJ-NP-Z2-9]{6}$/);
+    expect(reportId).not.toContain('tank-a');
+    expect(buildReport(spec, data, '2026-01-01T08:00:00.000Z', reportId).id).toBe(reportId);
   });
 
   it('rejects invalid date ranges and unknown tanks', () => {

@@ -1,6 +1,7 @@
-import { createContext, useContext, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ComponentProps, ComponentRef, PropsWithChildren, ReactNode, RefObject } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import type { TextInputFocusEvent } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,6 +16,7 @@ import oceanImage from '../../../web/public/assets/images/deep-blue-ocean.jpg';
 export const BlurTargetContext = createContext<RefObject<ComponentRef<typeof View> | null> | null>(null);
 export const TabBarVisibleContext = createContext(false);
 export const RedesignedContext = createContext(false);
+export const primaryButtonGradient = ['#1d4ed8', '#0369a1'] as const;
 const CardContext = createContext(false);
 // Android's default tint is 44% of intensity; 9 / 0.45 preserves a 20px blur with about 4% tint.
 const androidBlurIntensity = 9;
@@ -37,16 +39,32 @@ function glassBlur(blurTarget: RefObject<ComponentRef<typeof View> | null> | nul
     : <BlurView blurTarget={blurTarget ?? undefined} blurMethod="dimezisBlurView" tint={auth ? 'dark' : Platform.OS === 'ios' ? 'systemUltraThinMaterial' : 'default'} intensity={auth ? 8 : Platform.OS === 'android' ? androidBlurIntensity : 25} blurReductionFactor={auth ? 1 : androidBlurReduction} style={[StyleSheet.absoluteFill, styles.cardBlur]} pointerEvents="none" />;
 }
 
+export function scrollFocusedInputIntoView(scrollRef: RefObject<ComponentRef<typeof ScrollView> | null>, event: TextInputFocusEvent) {
+  if (Platform.OS === 'web') return;
+  scrollRef.current?.scrollResponderScrollNativeHandleToKeyboard(event.nativeEvent.target, uiScale.spacing[5], true);
+}
+
 export function Page({ children, auth = false, redesigned = false, bottomPadding, maxWidth }: PropsWithChildren<{ auth?: boolean; redesigned?: boolean; bottomPadding?: number; maxWidth?: number }>) {
   const { width, height } = useWindowDimensions();
   const { colors } = useTheme();
   const tabBarVisible = useContext(TabBarVisibleContext);
   const authBlurTarget = useRef<ComponentRef<typeof View> | null>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const styles = createStyles(colors);
-  const content = <KeyboardAvoidingView style={styles.background} behavior={auth && Platform.OS === 'ios' ? 'padding' : undefined}>
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    const show = Keyboard.addListener('keyboardDidShow', (event) => setKeyboardHeight(event.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  const content = <KeyboardAvoidingView style={styles.background} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
       <SafeAreaView style={styles.safe} edges={auth ? ['top', 'left', 'right', 'bottom'] : tabBarVisible ? ['left', 'right'] : ['left', 'right', 'bottom']}>
-        <ScrollView style={styles.background} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, auth && styles.authScroll]}>
-          <View style={[styles.page, redesigned && { gap: uiScale.spacing[4] }, { paddingHorizontal: width >= 600 ? uiScale.spacing[6] : uiScale.spacing[4] }, bottomPadding !== undefined && { paddingBottom: bottomPadding }, auth && styles.authPage, maxWidth !== undefined && { maxWidth }]}>{children}</View>
+        <ScrollView ref={scrollRef} style={styles.background} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.scroll, auth && styles.authScroll, { paddingBottom: keyboardHeight }]} onFocusCapture={(event) => scrollFocusedInputIntoView(scrollRef, event)}>
+          <View style={[styles.page, redesigned && { gap: uiScale.spacing[2] }, { paddingHorizontal: width >= 600 ? uiScale.spacing[6] : uiScale.spacing[4] }, bottomPadding !== undefined && { paddingBottom: bottomPadding }, auth && styles.authPage, maxWidth !== undefined && { maxWidth }]}>{children}</View>
         </ScrollView>
       </SafeAreaView>
     </KeyboardAvoidingView>;
@@ -83,7 +101,7 @@ export function Title({ children, detail, centered = false, icon }: { children: 
   return <View style={[styles.heading, centered && styles.centered]}><View style={styles.titleRow}>{icon}<Text style={[styles.title, centered && styles.centerText]}>{children}</Text></View>{detail ? <Text style={[styles.muted, centered && styles.centerText]}>{detail}</Text> : null}</View>;
 }
 
-export function Card({ children, title, action, auth = false, toneColor }: { children: ReactNode; title?: string; action?: ReactNode; auth?: boolean; toneColor?: string }) {
+export function Card({ children, title, action, auth = false, toneColor, style }: { children: ReactNode; title?: string; action?: ReactNode; auth?: boolean; toneColor?: string; style?: StyleProp<ViewStyle> }) {
   const { colors, reduceTransparency } = useTheme();
   const blurTarget = useContext(BlurTargetContext);
   const nested = useContext(CardContext);
@@ -91,7 +109,7 @@ export function Card({ children, title, action, auth = false, toneColor }: { chi
   const styles = createStyles(colors);
   const solidFallback = needsSolidFallback(reduceTransparency) || (Platform.OS === 'android' && !blurTarget && !nested);
   return <CardContext.Provider value>
-    <View style={[styles.card, redesigned && { borderColor: colors.border }, nested && styles.nestedCard, solidFallback && !nested && { backgroundColor: colors.surface }, auth && styles.authCard, auth && solidFallback && { backgroundColor: authColors.solidPanel }, toneColor && { borderColor: toneColor }]}>
+    <View style={[styles.card, redesigned && { borderColor: colors.border }, nested && styles.nestedCard, solidFallback && !nested && { backgroundColor: colors.surface }, auth && styles.authCard, auth && solidFallback && { backgroundColor: authColors.solidPanel }, toneColor && { borderColor: toneColor }, style]}>
       {!nested && !solidFallback && glassBlur(blurTarget, styles, auth)}
       {auth && !solidFallback && <LinearGradient colors={[authColors.panelTop, authColors.panel]} style={[StyleSheet.absoluteFill, styles.cardBlur]} pointerEvents="none" />}
       {toneColor && <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.cardBlur, { backgroundColor: `${toneColor}20` }]} />}
@@ -107,10 +125,12 @@ export function GlassDialog({ children, visible, onDismiss, solid = false }: { c
   const solidFallback = solid || needsSolidFallback(reduceTransparency);
   if (Platform.OS === 'android' && !blurTarget && !solidFallback) throw new Error('GlassDialog requires a blur target.');
   return <Portal>
-    <Dialog visible={visible} onDismiss={onDismiss} style={[styles.dialog, solidFallback && { backgroundColor: colors.surface }]}>
-      {!solidFallback && <DialogBlur blurTarget={blurTarget} />}
-      {children}
-    </Dialog>
+    <KeyboardAvoidingView pointerEvents="box-none" style={StyleSheet.absoluteFill} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
+      <Dialog visible={visible} onDismiss={onDismiss} style={[styles.dialog, solidFallback && { backgroundColor: colors.surface }]}>
+        {!solidFallback && <DialogBlur blurTarget={blurTarget} />}
+        {children}
+      </Dialog>
+    </KeyboardAvoidingView>
   </Portal>;
 }
 
@@ -127,17 +147,17 @@ export function Button({ label, onPress, disabled, secondary, soft, style, icon 
   const outlined = secondary || soft;
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, outlined && styles.secondaryButton, soft && styles.softActionButton, redesigned && outlined && { backgroundColor: colors.glassControl }, disabled && styles.disabled, pressed && !reduceMotion && styles.pressed, style]}>
     {outlined ? <View style={styles.buttonContent}>{icon}<Text style={styles.secondaryText}>{label}</Text></View> :
-      <LinearGradient colors={['#1d4ed8', '#0369a1']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.buttonGradient}><View style={styles.buttonContent}>{icon}<Text style={styles.buttonText}>{label}</Text></View></LinearGradient>}
+      <LinearGradient colors={primaryButtonGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.buttonGradient}><View style={styles.buttonContent}>{icon}<Text style={styles.buttonText}>{label}</Text></View></LinearGradient>}
   </Pressable>;
 }
 
-export function FilterField({ label, value, onChangeText, placeholder }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string }) {
+export function FilterField({ label, value, onChangeText, placeholder, compact = false }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; compact?: boolean }) {
   const { colors } = useTheme();
   const redesigned = useContext(RedesignedContext);
   const styles = createStyles(colors);
   return <View style={styles.filterField}>
     <Text style={styles.filterLabel}>{label}</Text>
-    <TextInput accessibilityLabel={label} style={[styles.filterInput, redesigned && { backgroundColor: colors.glassControl }]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} autoCapitalize="none" />
+    <TextInput accessibilityLabel={label} style={[styles.filterInput, redesigned && { backgroundColor: colors.glassControl }, compact && styles.compactFilterInput]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} autoCapitalize="none" />
   </View>;
 }
 
@@ -152,7 +172,7 @@ function calendarDateKey(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-export function CalendarFilterField({ label, value, onChangeText, placeholder }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string }) {
+export function CalendarFilterField({ label, value, onChangeText, placeholder, min, max }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; min?: string; max?: string }) {
   const { colors } = useTheme();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -181,9 +201,9 @@ export function CalendarFilterField({ label, value, onChangeText, placeholder }:
 
   return <View style={styles.filterField}>
     <Text style={styles.filterLabel}>{label}</Text>
-    <View style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface }}>
+    <View style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface }}>
       <TextInput accessibilityLabel={label} style={[styles.filterInput, { flex: 1, borderWidth: 0, backgroundColor: 'transparent' }]} value={value} onChangeText={onChangeText} placeholder={placeholder ?? 'YYYY-MM-DD'} placeholderTextColor={colors.muted} autoCapitalize="none" />
-      <Pressable accessibilityRole="button" accessibilityLabel={`Choose ${label.toLowerCase()}`} onPress={openCalendar} style={{ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Choose ${label.toLowerCase()}`} onPress={openCalendar} style={{ width: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' }}>
         <CalendarDays size={18} color={colors.teal} />
       </Pressable>
     </View>
@@ -208,9 +228,10 @@ export function CalendarFilterField({ label, value, onChangeText, placeholder }:
                 const day = index + 1;
                 const dateKey = calendarDateKey(year, month, day);
                 const selected = dateKey === value;
+                const disabled = Boolean((min && dateKey < min) || (max && dateKey > max));
                 const dateLabel = new Date(year, month, day).toLocaleDateString();
-                return <Pressable key={dateKey} accessibilityRole="button" accessibilityLabel={dateLabel} accessibilityState={{ selected }} onPress={() => { onChangeText(dateKey); setVisible(false); }} style={{ width: '14.28%', height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.pill, backgroundColor: selected ? colors.selected : 'transparent' }}>
-                  <Text style={{ color: selected ? colors.teal : colors.ink, fontWeight: selected ? '700' : '400' }}>{day}</Text>
+                return <Pressable key={dateKey} accessibilityRole="button" accessibilityLabel={dateLabel} accessibilityState={{ selected, disabled }} disabled={disabled} onPress={() => { onChangeText(dateKey); setVisible(false); }} style={{ width: '14.28%', height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: uiScale.radius.pill, backgroundColor: selected ? colors.selected : 'transparent' }}>
+                  <Text style={{ color: disabled ? colors.muted : selected ? colors.teal : colors.ink, fontWeight: selected ? '700' : '400' }}>{day}</Text>
                 </Pressable>;
               })}
             </View>
@@ -221,22 +242,50 @@ export function CalendarFilterField({ label, value, onChangeText, placeholder }:
   </View>;
 }
 
-export function Chip({ label, selected, onPress }: { label: string; selected?: boolean; onPress?: () => void }) {
+export function Chip({ label, selected, onPress, compact = false }: { label: string; selected?: boolean; onPress?: () => void; compact?: boolean }) {
   const { colors } = useTheme();
   const redesigned = useContext(RedesignedContext);
   const styles = createStyles(colors);
   const content = <Text style={[styles.chipText, selected && styles.chipSelectedText]}>{label}</Text>;
   return onPress
-    ? <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.chip, redesigned && { backgroundColor: colors.glassControl }, styles.selectableChip, selected && styles.chipSelected]}>{content}</Pressable>
+    ? <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.chip, redesigned && { backgroundColor: colors.glassControl }, styles.selectableChip, selected && styles.chipSelected, compact && styles.compactChip]}>{content}</Pressable>
     : <View style={[styles.chip, redesigned && { backgroundColor: colors.glassControl }]}>{content}</View>;
 }
 
+export function RecordRow({ icon, title, caption, right, rightCaption, children }: { icon: ReactNode; title: string; caption?: string; right?: ReactNode; rightCaption?: string; children?: ReactNode }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+  return <View style={styles.recordRow}>
+    <View style={styles.recordHeader}>
+      <View style={styles.recordIcon}>{icon}</View>
+      <View style={styles.recordMiddle}>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.recordTitle}>{title}</Text>
+        {caption ? <Text numberOfLines={1} ellipsizeMode="tail" style={styles.recordCaption}>{caption}</Text> : null}
+      </View>
+      {(right != null || rightCaption) && <View style={styles.recordRight}>
+        {typeof right === 'string' || typeof right === 'number' ? <Text style={styles.recordValue}>{right}</Text> : right != null ? <View style={styles.recordRightContent}>{right}</View> : null}
+        {rightCaption ? <Text style={[styles.recordCaption, styles.recordRightText]}>{rightCaption}</Text> : null}
+      </View>}
+    </View>
+    {children}
+  </View>;
+}
+
+export function RecordMetrics({ items }: { items: { label: string; value: ReactNode }[] }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+  return <View style={styles.recordMetrics}>
+    <View style={styles.recordMetricLine}>{items.map((item) => <Text key={item.label} style={[styles.recordCaption, styles.recordMetric]}>{item.label}</Text>)}</View>
+    <View style={styles.recordMetricLine}>{items.map((item) => <Text key={item.label} style={[styles.recordValue, styles.recordMetric]}>{item.value}</Text>)}</View>
+  </View>;
+}
+
 export const createRecordStyles = (colors: Palette) => StyleSheet.create({
-  row: { gap: uiScale.spacing[1], paddingVertical: uiScale.spacing[3], borderBottomWidth: 1, borderBottomColor: colors.border },
+  row: { gap: uiScale.spacing[1], paddingVertical: uiScale.spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] },
   title: { color: colors.ink, fontWeight: '700', flexShrink: 1 },
   caption: { color: colors.muted, fontSize: uiScale.type.caption, flexShrink: 1 },
-  body: { color: colors.ink },
+  body: { color: colors.ink, flexShrink: 1 },
   metrics: { flexDirection: 'row', gap: uiScale.spacing[2], marginTop: uiScale.spacing[1] },
   metric: { flex: 1, minWidth: 0, gap: uiScale.spacing[1] },
   value: { color: colors.ink, fontWeight: '700', fontVariant: ['tabular-nums'] },
@@ -257,7 +306,7 @@ export function DataRow({ label, value, detail, valueColor }: { label: string; v
 export const createFormStyles = (colors: Palette) => StyleSheet.create({
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3], paddingVertical: uiScale.spacing[2], minHeight: 48, backgroundColor: colors.surface, color: colors.ink, fontSize: uiScale.type.body },
   label: { color: colors.ink, fontWeight: '700', marginBottom: uiScale.spacing[1], fontSize: 14 },
-  formField: { gap: uiScale.spacing[2], marginBottom: uiScale.spacing[3] },
+  formField: { gap: uiScale.spacing[1], marginBottom: uiScale.spacing[2] },
 });
 
 const createStyles = (colors: Palette) => StyleSheet.create({
@@ -268,8 +317,8 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: 'transparent' },
   scroll: { flexGrow: 1, backgroundColor: 'transparent' },
   authScroll: { justifyContent: 'center' },
-  page: { width: '100%', maxWidth: 1100, alignSelf: 'center', paddingTop: uiScale.spacing[5], paddingBottom: uiScale.spacing[6], gap: uiScale.spacing[3], backgroundColor: 'transparent' },
-  authPage: { maxWidth: 480, paddingTop: uiScale.spacing[6], paddingBottom: uiScale.spacing[6], backgroundColor: 'transparent' },
+  page: { width: '100%', maxWidth: 1100, alignSelf: 'center', paddingTop: uiScale.spacing[4], paddingBottom: uiScale.spacing[5], gap: uiScale.spacing[2], backgroundColor: 'transparent' },
+  authPage: { maxWidth: 480, paddingTop: uiScale.spacing[4], paddingBottom: uiScale.spacing[4], backgroundColor: 'transparent' },
   brand: { alignItems: 'center', gap: uiScale.spacing[2], marginBottom: uiScale.spacing[2] },
   brandCompact: { flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2], minWidth: 0 },
   brandTextCompact: { flexShrink: 1, minWidth: 0 },
@@ -290,8 +339,8 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   centerText: { textAlign: 'center' },
   title: { color: colors.ink, fontSize: uiScale.type.title, lineHeight: 34, fontWeight: '700', letterSpacing: -0.4, flexShrink: 1 },
   muted: { color: colors.muted, fontSize: uiScale.type.body, lineHeight: 24 },
-  card: { backgroundColor: Platform.OS === 'android' ? 'transparent' : 'rgba(255,255,255,0.04)', borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: uiScale.spacing[4], gap: uiScale.spacing[3], boxShadow: '0px 8px 32px rgba(0,0,0,0.25)' },
-  authCard: { backgroundColor: 'transparent', borderColor: authColors.border, padding: uiScale.spacing[5], gap: uiScale.spacing[5] },
+  card: { backgroundColor: Platform.OS === 'android' ? 'transparent' : 'rgba(255,255,255,0.04)', borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: uiScale.spacing[3], gap: uiScale.spacing[2], boxShadow: '0px 8px 32px rgba(0,0,0,0.25)' },
+  authCard: { backgroundColor: 'transparent', borderColor: authColors.border, padding: uiScale.spacing[4], gap: uiScale.spacing[3] },
   dialog: { backgroundColor: Platform.OS === 'android' ? 'transparent' : 'rgba(255,255,255,0.04)', borderRadius: uiScale.radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', elevation: 0, boxShadow: '0px 8px 32px rgba(0,0,0,0.25)' },
   cardBlur: { borderRadius: uiScale.radius.card, overflow: 'hidden' },
   nestedCard: { backgroundColor: 'transparent', boxShadow: 'none' },
@@ -304,19 +353,34 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   secondaryButton: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, paddingVertical: 10 },
   softActionButton: { borderColor: colors.teal, backgroundColor: colors.selected, shadowColor: colors.teal, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 1 },
   secondaryText: { color: colors.ink, fontWeight: '700', fontSize: 14, textAlign: 'center', flexShrink: 1 },
-  filterField: { flex: 1, minWidth: 0, gap: 6 },
-  filterLabel: { color: colors.muted, fontSize: uiScale.type.caption },
-  filterInput: { minHeight: 44, minWidth: 0, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3], paddingVertical: uiScale.spacing[2], backgroundColor: colors.surface, color: colors.ink, fontSize: 14 },
+  filterField: { flex: 1, minWidth: 0, gap: uiScale.spacing[1] },
+  filterLabel: { color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '600' },
+  filterInput: { minHeight: 36, minWidth: 0, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: 10, paddingVertical: uiScale.spacing[1], backgroundColor: colors.surface, color: colors.ink, fontSize: uiScale.type.caption + 2 },
+  compactFilterInput: { minHeight: 36, fontSize: uiScale.type.caption + 2 },
   chip: { alignSelf: 'flex-start', flexShrink: 1, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.pill, paddingHorizontal: uiScale.spacing[3], paddingVertical: uiScale.spacing[1], backgroundColor: colors.surface },
   selectableChip: { minHeight: 44, justifyContent: 'center' },
+  compactChip: { minHeight: 32, paddingHorizontal: uiScale.spacing[2] + uiScale.spacing[1] / 2 },
   chipSelected: { borderColor: colors.teal, backgroundColor: colors.selected },
   chipText: { color: colors.ink, fontSize: uiScale.type.caption, fontWeight: '600' },
   chipSelectedText: { color: colors.teal },
+  recordRow: { backgroundColor: colors.glassControl, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.card, padding: uiScale.spacing[4], gap: uiScale.spacing[3] },
+  recordHeader: { flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[3] },
+  recordIcon: { width: 40, height: 40, borderRadius: uiScale.radius.pill, backgroundColor: colors.selected, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  recordMiddle: { flex: 1, minWidth: 0, gap: uiScale.spacing[1] },
+  recordTitle: { color: colors.ink, fontWeight: '700' },
+  recordCaption: { color: colors.muted, fontSize: uiScale.type.caption },
+  recordRight: { minWidth: 96, maxWidth: '40%', alignItems: 'flex-end', gap: uiScale.spacing[1] },
+  recordRightContent: { alignSelf: 'flex-end', maxWidth: '100%' },
+  recordRightText: { textAlign: 'right', fontVariant: ['tabular-nums'] },
+  recordValue: { color: colors.ink, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'right' },
+  recordMetrics: { gap: uiScale.spacing[1] },
+  recordMetricLine: { flexDirection: 'row', gap: uiScale.spacing[1] },
+  recordMetric: { flex: 1, minWidth: 0, textAlign: 'center' },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
-  state: { padding: 18, alignItems: 'center', gap: 10 },
+  state: { padding: uiScale.spacing[3], alignItems: 'center', gap: uiScale.spacing[2] },
   spaciousState: { padding: uiScale.spacing[5] },
-  dataRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: uiScale.spacing[3], gap: uiScale.spacing[2] },
+  dataRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: uiScale.spacing[2], gap: uiScale.spacing[2] },
   dataDetail: { color: colors.muted, fontSize: uiScale.type.caption, lineHeight: 18 },
   dataLabel: { color: colors.ink, fontWeight: '700', fontSize: 14 },
   dataValue: { color: colors.ink, fontWeight: '700', fontSize: uiScale.type.body, flexShrink: 1, textAlign: 'right', fontVariant: ['tabular-nums'] },

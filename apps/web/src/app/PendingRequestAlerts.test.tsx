@@ -49,15 +49,13 @@ describe('admin account request alerts', () => {
   it('distinguishes account requests from reading alerts with icons', async () => {
     window.localStorage.setItem(accountsKey, JSON.stringify([pendingAccount]));
     render(<App />);
-    const request = await screen.findByText('New account request: Jane Smith');
-    expect(request.closest('.account-request-alert')?.querySelector('svg.lucide-user-round')).not.toBeNull();
-    const requestCard = screen.getByRole('region', { name: 'Pending account requests' });
-    expect(within(requestCard).getByRole('link', { name: 'Review account requests' }).closest('header')).toContainElement(within(requestCard).getByRole('heading', { name: 'Pending account requests' }));
-
     fireEvent.click(await screen.findByRole('button', { name: /including 1 pending account request/ }));
     const notifications = screen.getByRole('dialog', { name: 'Current notifications' });
-    expect(within(notifications).getByRole('link', { name: /1 pending account request/ }).querySelector('svg.lucide-user-round')).not.toBeNull();
-    expect(within(notifications).getByRole('link', { name: /1 pending account request/ })).toHaveClass('notification-item');
+    const request = within(notifications).getByRole('link', { name: /1 pending account request/ });
+    expect(request.querySelector('svg.lucide-user-round')).not.toBeNull();
+    expect(request).toHaveClass('notification-item');
+    expect(request).toHaveAttribute('href', '/admin/users');
+    expect(screen.queryByRole('region', { name: 'Pending account requests' })).not.toBeInTheDocument();
     await waitFor(() => expect(notifications.querySelector('a[href="/alerts"] svg.lucide-triangle-alert')).not.toBeNull());
   });
 
@@ -68,16 +66,15 @@ describe('admin account request alerts', () => {
 
     window.localStorage.setItem(accountsKey, JSON.stringify([pendingAccount]));
 
-    expect(await screen.findByText('New account request: Jane Smith', {}, { timeout: tierConfig.refreshIntervalMs + 3000 })).not.toBeNull();
-    expect(screen.getByRole('button', { name: /including 1 pending account request/ })).not.toBeNull();
-    expect(screen.getByRole('link', { name: 'Review account requests' }).getAttribute('href')).toBe('/admin/users');
+    fireEvent.click(await screen.findByRole('button', { name: /including 1 pending account request/ }, { timeout: tierConfig.refreshIntervalMs + 3000 }));
+    expect(within(screen.getByRole('dialog', { name: 'Current notifications' })).getByRole('link', { name: /1 pending account request/ })).toHaveAttribute('href', '/admin/users');
   }, tierConfig.refreshIntervalMs + 5000);
 
   it.each(['Approve', 'Reject'] as const)('removes a request alert after an admin selects %s', async (action) => {
     window.localStorage.setItem(accountsKey, JSON.stringify([pendingAccount]));
     render(<App />);
-    await screen.findByText('New account request: Jane Smith');
-    fireEvent.click(screen.getByRole('link', { name: 'Review account requests' }));
+    fireEvent.click(await screen.findByRole('button', { name: /including 1 pending account request/ }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Current notifications' })).getByRole('link', { name: /1 pending account request/ }));
     await screen.findByRole('heading', { name: 'Users & Roles' });
     if (action === 'Approve') {
       fireEvent.click(screen.getByRole('combobox', { name: 'Review role for Jane Smith' }));
@@ -90,7 +87,7 @@ describe('admin account request alerts', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /^\d+ open alerts?$/ })).not.toBeNull());
     fireEvent.click(screen.getByRole('link', { name: 'Alerts Center' }));
     await screen.findByRole('heading', { name: 'Alerts Center' });
-    expect(screen.queryByText('New account request: Jane Smith')).toBeNull();
+    expect(screen.queryByRole('button', { name: /pending account request/ })).toBeNull();
   });
 
   it('does not fetch or display requests for a non-admin', async () => {
@@ -108,22 +105,25 @@ describe('admin account request alerts', () => {
     window.localStorage.setItem(accountsKey, JSON.stringify([pendingAccount, operatorAccount]));
     const listRequests = vi.spyOn(authService, 'listPendingRequests');
     render(<App />);
-    await screen.findByText('New account request: Jane Smith');
+    await screen.findByRole('button', { name: /including 1 pending account request/ });
     listRequests.mockClear();
 
     window.sessionStorage.setItem(sessionKey, JSON.stringify({ userId: 'operator' }));
     fireEvent(window, new Event('hydrosense:auth-change'));
 
-    await waitFor(() => expect(screen.queryByText('New account request: Jane Smith')).toBeNull());
-    expect(screen.queryByRole('button', { name: /pending account request/ })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('button', { name: /pending account request/ })).toBeNull());
     expect(listRequests).not.toHaveBeenCalled();
   });
 
   it('reports an error when account requests cannot be loaded', async () => {
-    vi.spyOn(authService, 'listPendingRequests').mockRejectedValue(new Error('Account requests could not be loaded.'));
+    const listRequests = vi.spyOn(authService, 'listPendingRequests').mockRejectedValue(new Error('Account requests could not be loaded.'));
     render(<App />);
-    expect(await screen.findByText('Account requests could not be loaded.')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /account requests unavailable/ })).not.toBeNull();
-    expect(screen.getByRole('button', { name: /Retry/ })).not.toBeNull();
+    expect(await screen.findByRole('button', { name: /account requests unavailable/ })).not.toBeNull();
+    fireEvent.click(screen.getByRole('link', { name: 'Users & Roles' }));
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent('Account requests could not be loaded.');
+    listRequests.mockResolvedValue([]);
+    fireEvent.click(within(error).getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('No account requests are awaiting review.')).toBeInTheDocument();
   });
 });

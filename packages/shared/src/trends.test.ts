@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Reading } from '@hydrosense/shared';
-import { calculateTrendStatistics, chartTimeDomain, comparisonStatistics, countMissingSamples, gapRanges, nightRanges, prepareParameterRows, prepareTrendRows, rearingDay, sampleParameterReadings, threeHourTicks, trendYAxisDomain } from './trendData';
+import type { Reading } from './types';
+import { calculateTrendStatistics, chartTimeDomain, comparisonStatistics, countMissingSamples, gapRanges, nightRanges, prepareParameterRows, prepareTrendRows, rearingDay, sampleParameterReadings, threeHourTicks, trendYAxisDomain } from './trends';
 
 function reading(timestamp: string): Reading {
   return { id: timestamp, tankId: 'tank-a', timestamp, temperature: 30, doMgL: 5, ph: 7 };

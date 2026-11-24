@@ -1,13 +1,13 @@
-import { useContext, useMemo, useState, useEffect } from 'react';
-import type { ReactNode } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { useContext, useMemo, useRef, useState, useEffect } from 'react';
+import type { ComponentRef, ReactNode } from 'react';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import type { ViewStyle } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Dialog, Portal } from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Dialog } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ClipboardList, Database, Droplets, Eye, FileDown, FileText, ListFilter, MapPin, Maximize2, MessageCircle, MoreHorizontal, Plus, Printer, Trash2, UserRound, Users, Waves, Wifi } from 'lucide-react-native';
+import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ClipboardList, CloudSun, Database, Droplets, Eye, FileDown, FileText, ListFilter, MapPin, Maximize2, MessageCircle, MoreHorizontal, Plus, Printer, Trash2, UserRound, Users, Waves, Wifi } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { fromByteArray } from 'base64-js';
@@ -20,19 +20,26 @@ import {
   activityHatcheryName,
   activityInHatchery,
   buildReport,
-  calculateParameterStatistics,
+  calculateTrendStatistics,
   can,
+  comparisonStatistics,
+  countMissingSamples,
   formatManilaDateTime,
   formatMeasuredParameterLabel,
   formatParameter,
+  generateReportId,
   getManilaDateString,
   getParameterStatus,
   getReadingStatuses,
   getRaisingDay,
   hatcheryId,
   isValidMeasurement,
+  loadAllReadings,
+  parameterValue,
+  prepareTrendRows,
   readingAge,
   readingFreshness,
+  rearingDay,
   resolveAlertWithActivityLog,
   safeRangeGauge,
   DEFAULT_THRESHOLDS,
@@ -40,18 +47,19 @@ import {
   validateAcknowledgeNote,
   validateActivityLog,
 } from '@hydrosense/shared';
-import type { ActivityLog, ActivityLogKind, AlertItem, CalibrationLog, MeasuredParameter, Reading, ReportSection, Threshold } from '@hydrosense/shared';
+import type { ActivityLog, ActivityLogKind, AlertItem, CalibrationLog, MeasuredParameter, Reading, ReportModel, ReportSection, Threshold, TrendParameter } from '@hydrosense/shared';
 import type { MainTabParamList, RootStackParamList } from './navigation';
 import { api, getAccountProfile, getConfiguredThreshold, listConfiguredThresholds } from './services/client';
 import { canAccess } from './access';
 import { hatcheryLabel } from './management';
 import { HATCHERIES } from './services/auth';
 import { useSession, useTankSelection } from './state';
-import { Button, CalendarFilterField, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, GlassDialog, Page, RedesignedContext, StateMessage, Title } from './components/ui';
+import { Button, CalendarFilterField, Card, Chip, createFormStyles, DataRow, GlassDialog, Page, primaryButtonGradient, RecordMetrics, RecordRow, RedesignedContext, scrollFocusedInputIntoView, StateMessage, Title } from './components/ui';
+import { FilterDropdown } from './components/FilterDropdown';
 import { AlertFilters } from './components/AlertFilters';
 import { HatcheryPicker } from './components/HatcheryPicker';
 import { RangeBar } from './components/RangeBar';
-import { uiScale, useTheme } from './theme';
+import { authColors, uiScale, useTheme } from './theme';
 import type { Palette, ThemeChoice } from './theme';
 import { createReportFile, reportDatasetRows } from './services/reportFiles';
 import type { ReportDataset } from './services/reportFiles';
@@ -59,7 +67,6 @@ import { getAssignedDevices, hasReportedField, pendingRecordTotal } from './serv
 import { TrendChart } from './components/TrendChart';
 import { TrendFilters } from './components/TrendFilters';
 import { ActivityLogActions } from './components/ActivityLogActions';
-import { FilterDropdown } from './components/FilterDropdown';
 import { ReportChoice } from './components/ReportChoice';
 
 type Props<T extends keyof MainTabParamList> = BottomTabScreenProps<MainTabParamList, T>;
@@ -85,28 +92,33 @@ function TankPicker({ horizontal = false }: { horizontal?: boolean }) {
   if (isLoading) return <StateMessage message="Loading tanks…" loading />;
   if (error) return <Card><StateMessage message={`Could not load tanks: ${error.message}`} /><Button label="Retry tank list" onPress={refetch} secondary /></Card>;
   if (tanks.length === 0) return <StateMessage message="No tanks are available for this account." />;
-  const chips = tanks.map((tank) => <Pressable accessibilityRole="button" accessibilityState={{ selected: tank.id === tankId }} key={tank.id} onPress={() => setTankId(tank.id)} style={{ minHeight: horizontal ? 44 : 48, justifyContent: 'center', borderRadius: uiScale.radius.pill, borderWidth: 1, borderColor: tank.id === tankId ? colors.teal : colors.border, paddingVertical: uiScale.spacing[2], paddingHorizontal: uiScale.spacing[4], backgroundColor: tank.id === tankId ? colors.selected : colors.surface }}><Text style={{ color: tank.id === tankId ? colors.teal : colors.ink, fontWeight: '700', fontSize: uiScale.type.body }}>{tank.name}</Text></Pressable>);
+  const chips = tanks.map((tank) => <Pressable accessibilityRole="button" accessibilityState={{ selected: tank.id === tankId }} key={tank.id} onPress={() => setTankId(tank.id)} style={{ minHeight: horizontal ? 34 : 48, height: horizontal ? 34 : undefined, alignItems: horizontal ? 'center' : undefined, justifyContent: 'center', borderRadius: horizontal ? uiScale.radius.control : uiScale.radius.pill, borderWidth: 1, borderColor: tank.id === tankId ? colors.teal : colors.border, paddingVertical: uiScale.spacing[1], paddingHorizontal: uiScale.spacing[3], backgroundColor: tank.id === tankId ? colors.selected : horizontal ? colors.glassControl : colors.surface }}><Text numberOfLines={1} style={{ color: tank.id === tankId ? colors.teal : colors.ink, fontWeight: '700', fontSize: horizontal ? uiScale.type.caption : uiScale.type.body }}>{horizontal && tank.name === tank.name.toLocaleUpperCase() ? tank.name.toLocaleLowerCase().replace(/\b\w/g, (letter) => letter.toLocaleUpperCase()) : tank.name}</Text></Pressable>);
   return horizontal
     ? <ScrollView horizontal showsHorizontalScrollIndicator accessibilityLabel="Select tank" contentContainerStyle={{ gap: uiScale.spacing[2], alignItems: 'stretch' }}>{chips}</ScrollView>
     : <View accessibilityLabel="Select tank" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>{chips}</View>;
 }
 
 const createLogScreenStyles = (colors: Palette) => StyleSheet.create({
-  cards: { gap: uiScale.spacing[4] },
-  filters: { gap: uiScale.spacing[3] },
-  dates: { flexDirection: 'row', gap: uiScale.spacing[3], alignItems: 'flex-start' },
+  cards: { gap: uiScale.spacing[3] },
+  filters: { gap: uiScale.spacing[2] },
+  dates: { flexDirection: 'row', gap: uiScale.spacing[2], alignItems: 'flex-start' },
   label: { color: colors.muted, fontSize: uiScale.type.caption },
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] },
-  actions: { flexDirection: 'row', alignItems: 'stretch', gap: uiScale.spacing[3] },
+  actions: { flexDirection: 'row', alignItems: 'stretch', gap: uiScale.spacing[2] },
   stackedActions: { flexDirection: 'column', alignItems: 'stretch' },
-  actionButton: { flex: 1, minHeight: 48 },
+  glassAction: { flex: 1, minWidth: 0, minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: uiScale.spacing[2], paddingHorizontal: uiScale.spacing[3], paddingVertical: uiScale.spacing[1], borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.glassControl },
+  glassActionLabel: { color: colors.ink, fontSize: uiScale.type.caption, fontWeight: '600', flexShrink: 1, textAlign: 'center' },
   count: { color: colors.muted, fontSize: uiScale.type.caption },
-  modalOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: uiScale.spacing[4] },
-  modalScroll: { width: '100%', maxHeight: '90%' },
-  modalInput: { position: 'relative', zIndex: 1, minHeight: 44, color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, padding: uiScale.spacing[2] },
-  modalNotes: { minHeight: 96, textAlignVertical: 'top' },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+  modalSheet: { flexShrink: 1, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderTopLeftRadius: uiScale.spacing[5], borderTopRightRadius: uiScale.spacing[5], overflow: 'hidden' },
+  modalScroll: { flexGrow: 0, flexShrink: 1 },
+  modalContent: { padding: uiScale.spacing[4], gap: uiScale.spacing[3] },
+  modalField: { gap: uiScale.spacing[1], flex: 1, minWidth: 0 },
+  modalInput: { height: 44, color: colors.ink, backgroundColor: colors.glassControl, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, paddingHorizontal: uiScale.spacing[3], paddingVertical: uiScale.spacing[2] },
+  modalNotes: { height: 96, textAlignVertical: 'top' },
   modalTitle: { color: colors.ink, fontSize: uiScale.type.section, fontWeight: '700' },
   modalError: { color: colors.critical },
+  modalButton: { flex: 1, minWidth: 0, height: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: uiScale.spacing[2], borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, overflow: 'hidden' },
 });
 
 function ReadingCard({ parameter, reading, threshold, stale }: { parameter: MeasuredParameter; reading: Reading; threshold: Threshold; stale: boolean }) {
@@ -138,12 +150,17 @@ function ReadingCard({ parameter, reading, threshold, stale }: { parameter: Meas
   </Card>;
 }
 
-export function HomeScreen() {
-  const { colors, mode } = useTheme();
+function SeverityBadge({ severity }: { severity: AlertItem['severity'] }) {
+  const { colors } = useTheme();
+  const color = severity === 'critical' ? colors.critical : colors.warning;
+  return <View style={{ alignSelf: 'flex-start', borderWidth: 1, borderColor: color, borderRadius: uiScale.radius.pill, paddingHorizontal: uiScale.spacing[2], paddingVertical: uiScale.spacing[1] }}><Text style={{ color, fontSize: uiScale.type.caption, fontWeight: '700' }}>{severity === 'critical' ? 'Critical' : 'Warning'}</Text></View>;
+}
+
+export function HomeScreen({ navigation }: Props<'Home'>) {
+  const { colors } = useTheme();
   const { user } = useSession();
   const [now, setNow] = useState(Date.now);
   const [networkConnected, setNetworkConnected] = useState<boolean | null>(null);
-  const [deviceExpanded, setDeviceExpanded] = useState(false);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(timer);
@@ -159,28 +176,41 @@ export function HomeScreen() {
   const statuses = reading && thresholds.data ? getReadingStatuses(reading, thresholds.data) : null;
   const device = devices.data?.find((item) => item.deviceId === tank?.deviceId);
   const freshness = reading ? readingFreshness(reading.timestamp, networkConnected === false ? false : device?.online, now) : null;
-  const openCount = alerts.data?.filter((item) => item.status !== 'resolved').length ?? 0;
+  const invalidReading = reading && (['temperature', 'do', 'ph'] as const).some((parameter) => !isValidMeasurement(parameter, parameterValue(reading, parameter)));
+  const recentAlerts = [...(alerts.data ?? [])].filter((alert) => alert.tankId === tankId).sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0)).slice(0, 4);
+  const wifiSignal = device && hasReportedField(device, 'wifiRssi') && Number.isFinite(device.wifiRssi) ? `${device.wifiRssi} dBm` : 'Unavailable';
+  const lastReport = device?.lastSeen && Number.isFinite(Date.parse(device.lastSeen)) ? `${formatManilaDateTime(device.lastSeen)} PHT` : 'Unavailable';
+  const pendingSync = device && hasReportedField(device, 'pendingSyncCount') && Number.isFinite(device.pendingSyncCount) ? `${device.pendingSyncCount}` : 'Unavailable';
   return <Page>
     <View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700', letterSpacing: 1 }}>WATER QUALITY MONITORING</Text><Text style={{ color: colors.ink, fontSize: uiScale.type.title, fontWeight: '500' }}>Welcome, {user?.name}.</Text></View>
     <Title icon={<Activity size={23} color={colors.teal} />} detail={tank ? hatcheryLabel(tank.site) : 'Live water-quality status'} >Live Monitor</Title>
     <TankPicker />
+    {reading && (freshness?.stale || invalidReading) && <View accessibilityLiveRegion="polite" style={{ backgroundColor: colors.glassControl, borderColor: colors.warning, borderWidth: 1, borderRadius: uiScale.radius.control, padding: uiScale.spacing[3], gap: uiScale.spacing[1] }}>
+      <Text style={{ color: colors.warning, fontWeight: '700' }}>{freshness?.stale ? 'Reading status unavailable while offline' : 'Check probe: invalid sensor reading'}</Text>
+      <Text style={{ color: colors.ink }}>{freshness?.stale ? `Last reading ${readingAge(freshness.ageMs)}.` : 'Invalid readings are excluded from analysis.'}</Text>
+    </View>}
     {tanksLoading || (Boolean(tankId) && isLoading) || (Boolean(tankId) && thresholds.isLoading) ? <StateMessage message="Loading latest readings and thresholds…" loading /> : tanksError ? null : !tankId ? null : isError || thresholds.isError ? <Card><StateMessage message={`Could not load readings or thresholds: ${(readingError ?? thresholds.error)?.message ?? 'Check your connection.'}`} /><Button label="Retry" onPress={() => { void refetch(); void thresholds.refetch(); }} secondary /></Card> : reading && statuses && thresholds.data ? <>
-      {freshness?.stale && <View accessibilityLiveRegion="polite" style={{ backgroundColor: mode === 'dark' ? '#3d354d' : '#fff7e6', borderColor: mode === 'dark' ? '#b5a68f' : '#d4bd94', borderWidth: 1, borderRadius: uiScale.radius.control, paddingVertical: uiScale.spacing[3], paddingHorizontal: uiScale.spacing[4] }}>
-        <Text style={{ color: colors.ink, lineHeight: 20 }}><Text style={{ color: colors.warning, fontWeight: '700' }}>Offline, last reading {readingAge(freshness.ageMs)}.</Text>{' '}Showing the latest available values.</Text>
-      </View>}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>
         {(['temperature', 'do', 'ph'] as const).map((parameter) => <View key={parameter} style={{ width: width >= 950 ? '32%' : width >= 600 ? '48%' : '100%' }}><ReadingCard parameter={parameter} reading={reading} threshold={getConfiguredThreshold(thresholds.data, parameter)} stale={freshness?.stale ?? false} /></View>)}
       </View>
-      <Card title="Last Update"><View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{formatManilaDateTime(reading.timestamp)} PHT</Text><Text style={{ color: colors.muted }}>Times shown in Asia/Manila.</Text></View></Card>
-      <Card title="Device Connection">
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: deviceExpanded }} onPress={() => setDeviceExpanded((current) => !current)} hitSlop={{ top: 8, bottom: 8 }} style={{ paddingVertical: uiScale.spacing[1] }}><Text style={{ color: colors.teal }}>{deviceExpanded ? 'Hide device details' : 'Show device details'}</Text></Pressable>
-        {deviceExpanded && (devices.isLoading ? <StateMessage message="Loading device status…" loading /> : devices.isError ? <StateMessage message={`Could not load device status: ${devices.error.message}`} /> : !device ? <StateMessage message="No device is registered for this tank." /> : <>
-          <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} valueColor={device.online ? colors.normal : colors.critical} />
-          {device.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.map(formatMeasuredParameterLabel).join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
-          {alerts.isError ? <StateMessage message="Could not load alerts." /> : <DataRow label="Active alerts" value={alerts.isLoading ? 'Loading…' : `${openCount}`} />}
-        </>)}
-      </Card>
     </> : <StateMessage message="No reading is available for this tank." />}
+    {Boolean(tankId) && !tanksError && <>
+      <Card title="Device Connection">
+        {devices.isLoading ? <StateMessage message="Loading device status…" loading /> : devices.isError ? <><StateMessage message={`Could not load device status: ${devices.error.message}`} /><Button label="Retry" secondary onPress={() => void devices.refetch()} /></> : <>
+          <DataRow label="Connection" value={typeof device?.online === 'boolean' ? device.online ? 'Online' : 'Offline' : 'Unavailable'} />
+          <DataRow label="Wi-Fi" value={wifiSignal} />
+          <DataRow label="Last report" value={lastReport} />
+          <DataRow label="Pending sync" value={pendingSync} />
+        </>}
+      </Card>
+      <Card title="Recent Alerts" action={<Pressable accessibilityRole="link" accessibilityLabel="View all alerts" onPress={() => navigation.navigate('Alerts')} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: colors.teal, fontWeight: '700' }}>View all</Text></Pressable>}>
+        {alerts.isLoading ? <StateMessage message="Loading recent alerts…" loading /> : alerts.isError ? <><StateMessage message={`Could not load alerts: ${alerts.error.message}`} /><Button label="Retry" secondary onPress={() => void alerts.refetch()} /></> : recentAlerts.length === 0 ? <StateMessage message="No alerts are recorded for this tank." /> : recentAlerts.map((alert) => <View key={alert.id} style={{ minWidth: 0, borderBottomWidth: 1, borderColor: colors.border, paddingVertical: uiScale.spacing[2], gap: uiScale.spacing[1] }}>
+          <SeverityBadge severity={alert.severity} />
+          <Text style={{ color: colors.ink }}>{formatMeasuredParameterLabel(alert.parameter)} · {alert.value} · {alert.threshold}</Text>
+          <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{Number.isFinite(Date.parse(alert.createdAt)) ? `${formatManilaDateTime(alert.createdAt)} PHT` : 'Unavailable time'}</Text>
+        </View>)}
+      </Card>
+    </>}
   </Page>;
 }
 
@@ -273,7 +303,7 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
         <Page>
           <Title icon={<Waves size={23} color={colors.teal} />} detail="Link monitoring hardware to a tank">Register Tank</Title>
           <Field label="Tank name" value={name} onChangeText={setName} />
-            {user?.role === 'manager' ? profile.isLoading ? <StateMessage message="Loading assigned hatchery…" loading /> : profile.isError ? <><StateMessage message={`Could not load assigned hatchery: ${profile.error.message}`} /><Button label="Retry hatchery" secondary onPress={() => void profile.refetch()} /></> : <DataRow label="Hatchery" value={hatcheryLabel(profile.data?.site)} /> : <View style={{ flexDirection: 'row' }}><FilterDropdown label="Hatchery location" summary={site || 'Select a location'} icon={<MapPin size={16} color={colors.teal} />} options={HATCHERIES.map((item) => ({ value: item.name, label: item.name }))} value={site} expanded={siteOpen} onToggle={() => setSiteOpen((open) => !open)} onChange={(value) => { setSite(value); setSiteOpen(false); }} /></View>}
+            {user?.role === 'manager' ? profile.isLoading ? <StateMessage message="Loading assigned hatchery…" loading /> : profile.isError ? <><StateMessage message={`Could not load assigned hatchery: ${profile.error.message}`} /><Button label="Retry hatchery" secondary onPress={() => void profile.refetch()} /></> : <DataRow label="Hatchery" value={hatcheryLabel(profile.data?.site)} /> : <View style={{ flexDirection: 'row' }}><FilterDropdown label="Hatchery location" summary={site || 'Select a location'} icon={<MapPin size={14} color={colors.teal} />} options={HATCHERIES.map((item) => ({ value: item.name, label: item.name }))} value={site} expanded={siteOpen} onToggle={() => setSiteOpen((open) => !open)} onChange={(value) => { setSite(value); setSiteOpen(false); }} /></View>}
         <Field label="Rearing start date (YYYY-MM-DD)" value={rearingStartDate} onChangeText={setRearingStartDate} />
         <Field label="Hardware ID" value={deviceId} onChangeText={setDeviceId} />
           {register.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>{register.error.message}</Text>}
@@ -329,11 +359,6 @@ export function MoreScreen({ navigation }: Props<'More'>) {
   </Page>;
 }
 
-function alertTitle(alert: AlertItem) {
-  const parameter = formatMeasuredParameterLabel(alert.parameter);
-  return `${parameter} · ${alert.severity[0].toUpperCase()}${alert.severity.slice(1)}`;
-}
-
 function alertParameterKey(parameter: string) {
   const normalized = parameter.trim().toLowerCase();
   if (normalized === 'do' || normalized.includes('oxygen')) return 'do';
@@ -350,7 +375,6 @@ function alertParameterLabel(parameter: string) {
 
 export function AlertsScreen({ navigation }: Props<'Alerts'>) {
   const { colors } = useTheme();
-  const { user } = useSession();
   const { tanks, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const [statusFilter, setStatusFilter] = useState<AlertItem['status'] | 'all'>('all');
   const [severityFilter, setSeverityFilter] = useState<AlertItem['severity'] | 'all'>('all');
@@ -419,8 +443,8 @@ export function AlertsScreen({ navigation }: Props<'Alerts'>) {
 
 export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
   const { colors } = useTheme();
-  const record = createRecordStyles(colors);
   const { user } = useSession();
+  const { allTanks, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const queryClient = useQueryClient();
   const alertQuery = useQuery({ queryKey: ['alert-detail', route.params.alertId], queryFn: async () => (await api.listAlerts()).find((item) => item.id === route.params.alertId) ?? null });
   const responses = useQuery({ queryKey: ['alert-responses', route.params.alertId], queryFn: () => api.listAlertResponses(route.params.alertId) });
@@ -454,22 +478,39 @@ export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
     },
   });
   const alert = alertQuery.data;
+  const responseTime = (status: AlertItem['status']) => (responses.data ?? [])
+    .filter((response) => response.status === status && Number.isFinite(Date.parse(response.createdAt)))
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))[0]?.createdAt;
+  const timelineTime = (value?: string) => {
+    if (!value) return responses.isLoading ? 'Loading…' : responses.isError ? 'Unavailable' : '—';
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return 'Unavailable';
+    const day = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+    const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
+    return `${day} · ${time} PHT`;
+  };
   return <Page>
     <Title icon={<AlertTriangle size={23} color={colors.teal} />} detail="Review the alert and record verified actions">Alert Detail</Title>
-    {alertQuery.isLoading ? <StateMessage message="Loading alert…" loading /> : alertQuery.isError ? <StateMessage message="Could not load alert details." /> : !alert ? <StateMessage message="Alert was not found." /> : <Card title={alertTitle(alert)}>
-      <DataRow label="Tank" value={alert.tankId} />
-      <DataRow label="Value" value={`${alert.value}`} detail={`Threshold: ${alert.threshold}`} />
-      <DataRow label="Status" value={alert.status} detail={`Created ${formatManilaDateTime(alert.createdAt)} PHT`} />
+    {alertQuery.isLoading ? <StateMessage message="Loading alert…" loading /> : alertQuery.isError ? <StateMessage message="Could not load alert details." /> : !alert ? <StateMessage message="Alert was not found." /> : <Card>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: uiScale.spacing[2] }}><SeverityBadge severity={alert.severity} /><Text style={{ color: colors.ink, fontSize: uiScale.type.section, fontWeight: '700', flexShrink: 1 }}>{formatMeasuredParameterLabel(alert.parameter)}</Text></View>
+      {tanksError && <><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry tank list" secondary onPress={refetchTanks} /></>}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>
+        {[['Tank', tanksLoading ? 'Loading…' : allTanks.find((tank) => tank.id === alert.tankId)?.name ?? 'Unknown tank'], ['Value', String(alert.value)], ['Threshold', alert.threshold], ['Status', alert.status]].map(([label, value]) => <View key={label} style={{ flexBasis: '48%', flexGrow: 1, minWidth: 0, backgroundColor: colors.glassControl, borderRadius: uiScale.radius.control, padding: uiScale.spacing[2], gap: uiScale.spacing[1] }}><Text style={{ color: colors.muted }}>{label}</Text><Text style={{ color: colors.ink, fontWeight: '700' }}>{value}</Text></View>)}
+      </View>
+      <View style={{ gap: uiScale.spacing[1] }}>
+        <Text style={{ color: colors.ink, fontWeight: '700' }}>Timeline</Text>
+        {[['Created', timelineTime(alert.createdAt)], ['Acknowledged', timelineTime(alert.acknowledgedAt ?? responseTime('acknowledged'))], ['Resolved', timelineTime(responseTime('resolved'))]].map(([label, value]) => <View key={label} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: uiScale.spacing[2], paddingVertical: uiScale.spacing[1] }}><Text style={{ color: colors.muted, flexShrink: 1 }}>{label}</Text><Text style={{ color: colors.ink, flex: 1, minWidth: 0, textAlign: 'right' }}>{value}</Text></View>)}
+      </View>
+      <Text style={{ color: colors.ink, fontWeight: '700', marginTop: uiScale.spacing[2] }}>Response History</Text>
+      {responses.isLoading ? <StateMessage message="Loading responses…" loading /> : responses.isError ? <><StateMessage message={`Could not load responses: ${responses.error.message}`} /><Button label="Retry responses" secondary onPress={() => void responses.refetch()} /></> : (responses.data ?? []).length === 0 ? <Text style={{ color: colors.muted }}>No responses recorded.</Text> : responses.data?.map((response) => <View key={response.id} style={{ minWidth: 0, backgroundColor: colors.glassControl, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, padding: uiScale.spacing[3], gap: uiScale.spacing[1] }}>
+        <Text style={{ color: colors.ink, fontWeight: '700' }}>{response.status.charAt(0).toUpperCase() + response.status.slice(1)} by {response.createdBy}</Text>
+        <Text style={{ color: colors.muted }}>{timelineTime(response.createdAt)}</Text>
+        {response.note ? <Text style={{ color: colors.ink }}>{response.note}</Text> : null}
+      </View>)}
       {alert.status !== 'resolved' && <Field label={alert.status === 'open' ? 'Acknowledgement note (optional)' : 'Resolution note'} value={note} onChangeText={setNote} placeholder="What did you observe or verify?" />}
       {alert.status === 'open' && <Button label="Acknowledge" icon={<CheckCircle2 size={18} color={colors.teal} />} disabled={mutation.isPending} onPress={() => mutation.mutate('acknowledge')} secondary />}
       {alert.status === 'acknowledged' && can(user?.role, 'resolveAlert') &&             <Button label="Resolve alert" icon={<CheckCircle2 size={18} color={colors.critical} />} disabled={mutation.isPending} onPress={() => setResolveConfirmation(true)} soft />}
       {mutation.isError && <Text style={{ color: colors.critical }}>{mutation.error.message}</Text>}
-      <Text style={{ color: colors.ink, fontWeight: '800', marginTop: 8 }}>Response History</Text>
-      {responses.isLoading ? <StateMessage message="Loading responses…" loading /> : responses.isError ? <><StateMessage message={`Could not load responses: ${responses.error.message}`} /><Button label="Retry responses" secondary onPress={() => void responses.refetch()} /></> : (responses.data ?? []).length === 0 ? <Text style={{ color: colors.muted }}>No responses recorded.</Text> : responses.data?.map((response) => <View key={response.id} style={record.row}>
-        <Text style={record.title}>{response.status.charAt(0).toUpperCase() + response.status.slice(1)} by {response.createdBy}</Text>
-        <Text style={record.caption}>{formatManilaDateTime(response.createdAt)} PHT</Text>
-        {response.note ? <Text style={record.body}>{response.note}</Text> : null}
-      </View>)}
     </Card>}
     <GlassDialog solid visible={resolveConfirmation} onDismiss={() => { if (!mutation.isPending) setResolveConfirmation(false); }}>
       <Dialog.Title style={{ marginTop: 24, color: colors.ink }}>Resolve Alert?</Dialog.Title>
@@ -487,26 +528,123 @@ export function AlertDetailScreen({ route }: RootProps<'AlertDetail'>) {
 
 export function TrendsScreen() {
   const { colors } = useTheme();
+  const { user } = useSession();
   const { tanks, tankId, setTankId, isLoading: tanksLoading, error: tanksError, refetch: refetchTanks } = useTankSelection();
   const [days, setDays] = useState(1);
+  const [customFrom, setCustomFrom] = useState(() => getManilaDateString(new Date(Date.now() - 6 * 86_400_000)));
+  const [customTo, setCustomTo] = useState(() => getManilaDateString());
   const [expanded, setExpanded] = useState<MeasuredParameter | null>(null);
-  const from = useMemo(() => new Date(Date.now() - days * 86_400_000).toISOString(), [days]);
-  const readings = useQuery({ queryKey: ['mobile-trends', tankId, from], queryFn: () => api.listReadings({ tankId, from }), enabled: Boolean(tankId) });
+  const [exporting, setExporting] = useState(false);
+  const today = getManilaDateString();
+  const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00+08:00`)) && getManilaDateString(new Date(`${value}T00:00:00+08:00`)) === value;
+  const validRange = days !== 0 || (validDate(customFrom) && validDate(customTo) && customFrom <= customTo && customTo <= today);
+  const dates = useMemo(() => {
+    if (days === 0) return { from: `${customFrom}T00:00:00+08:00`, to: `${customTo}T23:59:59.999+08:00` };
+    const now = Date.now();
+    return { from: new Date(now - days * 86_400_000).toISOString(), to: new Date(now).toISOString() };
+  }, [days, customFrom, customTo]);
+  const readings = useQuery({ queryKey: ['mobile-trends', tankId, dates.from, dates.to], queryFn: () => loadAllReadings(api, { tankId: tankId!, ...dates }), enabled: Boolean(tankId) && validRange });
+  const alerts = useQuery({ queryKey: ['mobile-trend-alerts', tankId, dates.from, dates.to], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) && validRange });
   const thresholds = useQuery({ queryKey: ['configured-thresholds'], queryFn: listConfiguredThresholds });
-  const parameters = [{ key: 'temperature', label: 'Temperature', unit: '°C' }, { key: 'do', label: 'DO', unit: 'mg/L' }, { key: 'ph', label: 'pH', unit: 'pH' }] as const;
+  const parameters: TrendParameter[] = ([{ key: 'temperature', title: 'Temperature', unit: '°C' }, { key: 'do', title: 'DO', unit: 'mg/L' }, { key: 'ph', title: 'pH', unit: 'pH' }] as const).map((parameter) => {
+    const threshold = thresholds.data?.find((item) => item.parameter === parameter.key) ?? DEFAULT_THRESHOLDS.find((item) => item.parameter === parameter.key);
+    return { ...parameter, safeMin: threshold?.min, safeMax: threshold?.max };
+  });
+  const rows = useMemo(() => prepareTrendRows(readings.data?.rows ?? []).rows, [readings.data]);
+  const stats = parameters.map((parameter) => calculateTrendStatistics(rows, parameter));
+  const selectedTank = tanks.find((tank) => tank.id === tankId);
+  const currentDay = selectedTank ? rearingDay(selectedTank.rearingStartDate) : null;
+  const dailyRows = new Map<string, Reading[]>();
+  rows.forEach((row) => {
+    const day = getManilaDateString(new Date(row.timestamp));
+    const group = dailyRows.get(day) ?? [];
+    group.push(row);
+    dailyRows.set(day, group);
+  });
+  const alertCounts = new Map<string, { warning: number; critical: number }>();
+  (alerts.data ?? []).forEach((alert) => {
+    const time = Date.parse(alert.createdAt);
+    if (!Number.isFinite(time) || time < Date.parse(dates.from) || time > Date.parse(dates.to)) return;
+    const day = getManilaDateString(new Date(time));
+    const count = alertCounts.get(day) ?? { warning: 0, critical: 0 };
+    count[alert.severity] += 1;
+    alertCounts.set(day, count);
+  });
+  const frequency = [...alertCounts.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const maxAlerts = Math.max(1, ...frequency.map(([, count]) => count.warning + count.critical));
   const tankOptions = tanks.map((tank) => ({ value: tank.id, label: tank.name }));
+  const number = (value: number | null, digits = 2) => value === null || !Number.isFinite(value) ? '—' : value.toFixed(digits);
+  const safeRange = (parameter: TrendParameter) => parameter.safeMin === undefined ? parameter.safeMax === undefined ? 'Not configured' : `≤${parameter.safeMax} ${parameter.unit}` : parameter.safeMax === undefined ? `≥${parameter.safeMin} ${parameter.unit}` : `${parameter.safeMin}–${parameter.safeMax} ${parameter.unit}`;
+  const selectedParameter = parameters.find((parameter) => parameter.key === expanded);
+  const selectedStats = stats.find((item) => item.parameter === expanded);
+  const latest = expanded ? [...rows].reverse().find((row) => isValidMeasurement(expanded, parameterValue(row, expanded))) : undefined;
+  const latestRows = parameters.map((parameter) => [...rows].reverse().find((row) => isValidMeasurement(parameter.key, parameterValue(row, parameter.key))));
+  const metricGrid = (items: Array<[string, string]>) => <View style={{ flexDirection: 'row', flexWrap: 'wrap', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: uiScale.spacing[3], rowGap: uiScale.spacing[3] }}>{items.map(([label, value]) => <View key={label} style={{ width: '50%', minWidth: 0, gap: uiScale.spacing[1] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{label}</Text><Text style={{ color: colors.ink, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{value}</Text></View>)}</View>;
+  async function shareTrends() {
+    setExporting(true);
+    try {
+      if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
+      const csv = toCsv([['Time PHT', 'Temperature', 'DO', 'pH'], ...rows.map((row) => [formatManilaDateTime(row.timestamp), row.temperature, row.doMgL, row.ph])]);
+      const encoded = encodeURIComponent(csv).replace(/%([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+      const fileUri = `${FileSystem.documentDirectory}hydrosense-trends-${Date.now()}.csv`;
+      await FileSystem.writeAsStringAsync(fileUri, fromByteArray(Uint8Array.from(encoded, (character) => character.charCodeAt(0))), { encoding: FileSystem.EncodingType.Base64 });
+      await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Share trend readings' });
+    } catch (error) {
+      Alert.alert('Export failed', error instanceof Error ? error.message : 'Could not share trend readings.');
+    } finally {
+      setExporting(false);
+    }
+  }
+  const exportDisabled = exporting || !validRange || readings.isLoading || readings.isError || !rows.length || Boolean(readings.data?.truncated);
   return <Page>
-    <Title icon={<Activity size={23} color={colors.teal} />} detail="Sensor readings">Trends</Title>
-    <TrendFilters tanks={tankOptions} tankId={tankId ?? ''} onTankChange={setTankId} days={days} onDaysChange={setDays} />
-    {tanksLoading || (Boolean(tankId) && readings.isLoading) || thresholds.isLoading ? <StateMessage message="Loading trend data…" loading /> : tanksError ? <Card><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry" secondary onPress={refetchTanks} /></Card> : !tankId ? <StateMessage message="No tanks are available for the selected hatchery." /> : readings.isError || thresholds.isError ? <Card><StateMessage message={`Could not load trends: ${(readings.error ?? thresholds.error)?.message}`} /><Button label="Retry" secondary onPress={() => { void readings.refetch(); void thresholds.refetch(); }} /></Card> : (readings.data?.length ?? 0) >= 500 ? <StateMessage message="The reading limit was reached; trends may be incomplete. Choose a shorter range." /> : parameters.map(({ key, label, unit }) => {
-      const stats = calculateParameterStatistics(key, readings.data ?? [], thresholds.data ?? []);
-      return <Card key={key} title={`${label} · ${unit}`} action={<Pressable accessibilityRole="button" accessibilityLabel={`Expand ${label} chart`} onPress={() => setExpanded(key)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface }}><Maximize2 size={18} color={colors.teal} /></Pressable>}>
-        <TrendChart readings={readings.data ?? []} parameter={key} />
-        <Text style={{ color: colors.muted }}>Mean {stats.mean === null ? '—' : stats.mean.toFixed(2)} · In range {stats.percentInRange === null ? '—' : `${stats.percentInRange.toFixed(1)}%`} · {stats.readings} valid</Text>
-        {stats.invalidReadings > 0 && <Text style={{ color: colors.warning }}>{stats.invalidReadings} invalid readings excluded. Check probe.</Text>}
-      </Card>;
-    })}
-    <Modal visible={expanded !== null} animationType="slide" onRequestClose={() => setExpanded(null)}><SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}><Page><Title icon={<Activity size={23} color={colors.teal} />} >{`${parameters.find((item) => item.key === expanded)?.label ?? 'Trend'} Trend`}</Title>{expanded && <Card><TrendChart readings={readings.data ?? []} parameter={expanded} expanded /></Card>}<Button label="Close" secondary onPress={() => setExpanded(null)} /></Page></SafeAreaView></Modal>
+    <Title icon={<Activity size={23} color={colors.teal} />} detail={selectedTank ? `${hatcheryLabel(selectedTank.site)} · ${selectedTank.name}${rows.length ? ` · Last reading ${formatManilaDateTime(rows[rows.length - 1].timestamp)} PHT` : ''}` : 'Sensor readings'}>Trends</Title>
+    <TrendFilters tanks={tankOptions} tankId={tankId ?? ''} onTankChange={setTankId} days={days} onDaysChange={setDays} from={customFrom} to={customTo} onFromChange={setCustomFrom} onToChange={setCustomTo} today={today} action={user && can(user.role, 'exportReports') ? <Pressable accessibilityRole="button" accessibilityLabel="Export CSV" accessibilityState={{ disabled: exportDisabled }} disabled={exportDisabled} onPress={() => void shareTrends()} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface, opacity: exportDisabled ? 0.5 : 1 }}><FileDown size={18} color={colors.teal} /></Pressable> : undefined} />
+    {!validRange ? <StateMessage message="Enter valid dates in YYYY-MM-DD format, from no later than to, and not after today (PHT)." /> : tanksLoading || (Boolean(tankId) && (readings.isLoading || alerts.isLoading)) || thresholds.isLoading ? <StateMessage message="Loading trend data…" loading /> : tanksError ? <Card><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry" secondary onPress={refetchTanks} /></Card> : !tankId ? <StateMessage message="No tanks are available for the selected hatchery." /> : readings.isError || thresholds.isError || alerts.isError ? <Card><StateMessage message={`Could not load trends: ${(readings.error ?? thresholds.error ?? alerts.error)?.message}`} /><Button label="Retry" secondary onPress={() => { void readings.refetch(); void thresholds.refetch(); void alerts.refetch(); }} /></Card> : <>
+      {readings.data?.truncated && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Some readings could not be loaded. Statistics are incomplete; select a shorter range to export.</Text>}
+      <View accessibilityLabel="Latest sensor readings" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>
+        {parameters.map((parameter, index) => <Card key={parameter.key} style={{ flexGrow: 1, flexBasis: '47%', minWidth: 0 }}>
+          <Text style={{ color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700' }}>{parameter.title}</Text>
+          <Text style={{ color: colors.ink, fontSize: uiScale.type.title, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{number(stats[index].latest)} <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{parameter.unit}</Text></Text>
+          <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{latestRows[index] ? `Latest valid · ${formatManilaDateTime(latestRows[index]!.timestamp)} PHT` : 'No valid sensor reading in this period'}</Text>
+        </Card>)}
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}><Chip compact label="Safe bands use configured thresholds" /><Chip compact label="Overnight 22:00–06:00 PHT" /></View>
+      <Card title="Range Statistics">
+        <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{days === 1 ? 'Last 24 hours' : days === 7 ? 'Last 7 days' : days === 21 ? 'Full cycle' : 'Custom range'} · {stats.reduce((total, stat) => total + stat.invalidReadings, 0)} invalid readings excluded</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator accessibilityLabel="Range statistics table">
+          <View>
+            <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderColor: colors.border, paddingVertical: uiScale.spacing[2] }}>{['Parameter', 'Latest', 'Min', 'Max', 'Mean', 'Std dev', 'In range', 'Excursions', 'Longest (h)', 'Safe range'].map((label, index) => <Text key={label} style={{ width: index === 0 || index === 9 ? 120 : 85, color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700' }}>{label}</Text>)}</View>
+            {parameters.map((parameter, index) => {
+              const stat = stats[index];
+              return <View key={parameter.key} style={{ flexDirection: 'row', borderBottomWidth: 1, borderColor: colors.border, paddingVertical: uiScale.spacing[3] }}>{[`${parameter.title} (${parameter.unit})`, number(stat.latest), number(stat.minimum), number(stat.maximum), number(stat.mean), number(stat.standardDeviation), stat.percentInRange === null ? '—' : `${number(stat.percentInRange, 1)}%`, stat.readings ? String(stat.excursions) : '—', stat.readings ? number(stat.longestExcursionHours, 1) : '—', safeRange(parameter)].map((value, cell) => <Text key={cell} style={{ width: cell === 0 || cell === 9 ? 120 : 85, color: colors.ink, fontSize: uiScale.type.caption, fontWeight: cell === 0 ? '700' : '400' }}>{value}</Text>)}</View>;
+            })}
+          </View>
+        </ScrollView>
+      </Card>
+      {parameters.map((parameter, index) => {
+        const stat = stats[index];
+        return <Card key={parameter.key} title={`${parameter.title} · ${parameter.unit}`} action={<Pressable accessibilityRole="button" accessibilityLabel={`Expand ${parameter.title} chart`} onPress={() => setExpanded(parameter.key)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface }}><Maximize2 size={18} color={colors.teal} /></Pressable>}>
+          <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>Safe range: {safeRange(parameter)}</Text>
+          <TrendChart readings={rows} parameter={parameter} />
+          {metricGrid([['Latest', `${number(stat.latest)} ${parameter.unit}`], ['Min / max', `${number(stat.minimum)} / ${number(stat.maximum)}`], ['Mean', number(stat.mean)], ['In range', stat.percentInRange === null ? '—' : `${number(stat.percentInRange, 1)}%`]])}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[3] }}>{[['In-range reading', colors.teal], ['Out-of-range reading', colors.critical], ['Safe range', colors.normal], ['Overnight', colors.teal], ['Offline gap', colors.muted]].map(([label, color]) => <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[1] }}><View style={{ width: 10, height: 8, borderRadius: label === 'Out-of-range reading' ? uiScale.radius.pill : 2, backgroundColor: color, opacity: label === 'Overnight' || label === 'Offline gap' ? 0.4 : 1 }} /><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{label}</Text></View>)}</View>
+          {stat.invalidReadings > 0 && <Text style={{ color: colors.warning }}>{stat.invalidReadings} invalid readings excluded. Check probe.</Text>}
+        </Card>;
+      })}
+      <Card title="Overnight vs Daytime"><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>Day 06:00–22:00 · night 22:00–06:00 PHT · change = night mean − day mean</Text>{parameters.map((parameter) => {
+        const { day, night } = comparisonStatistics(rows, parameter.key);
+        return <View key={parameter.key} style={{ paddingVertical: uiScale.spacing[2], gap: uiScale.spacing[2] }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{parameter.title} ({parameter.unit})</Text>{metricGrid([['Day mean / min', `${number(day.mean)} / ${number(day.min)}`], ['Night mean / min', `${number(night.mean)} / ${number(night.min)}`], ['Change', number(day.mean === null || night.mean === null ? null : night.mean - day.mean)]])}</View>;
+      })}</Card>
+      <Card title="Rearing Day View"><Text style={{ color: colors.ink }}>{currentDay === null ? 'Start date unavailable' : currentDay < 0 ? `Starts in ${-currentDay} days` : currentDay > 21 ? `Day ${currentDay} · cycle ended` : `Day ${currentDay} of 21`}</Text><View accessibilityLabel={currentDay === null ? 'Rearing start date unavailable' : `Rearing day ${currentDay}; harvest window begins on day 21`} style={{ flexDirection: 'row', gap: 2 }}>{Array.from({ length: 22 }, (_, day) => <View key={day} style={{ flex: 1, height: uiScale.spacing[2], borderRadius: 2, backgroundColor: currentDay !== null && day === currentDay ? colors.ink : currentDay !== null && day < currentDay ? colors.teal : colors.border }} />)}</View><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>Day 0</Text><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>Day 21 harvest window</Text></View><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>Daily means in the selected range (PHT)</Text>{dailyRows.size === 0 ? <StateMessage message="No readings in this range." /> : [...dailyRows.entries()].map(([day, dayRows]) => <View key={day} style={{ paddingVertical: uiScale.spacing[1] }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{day}{selectedTank && rearingDay(selectedTank.rearingStartDate, new Date(`${day}T12:00:00+08:00`)) !== null ? ` · Day ${rearingDay(selectedTank.rearingStartDate, new Date(`${day}T12:00:00+08:00`))}` : ''}</Text><Text style={{ color: colors.muted }}>{parameters.map((parameter) => `${parameter.title} ${number(calculateTrendStatistics(dayRows, parameter).mean)}`).join(' · ')}</Text></View>)}</Card>
+      <Card title="Alert Frequency"><Text style={{ color: colors.muted }}>Alerts per day · selected range</Text>{frequency.length === 0 ? <StateMessage message="No alerts occurred in this range." /> : frequency.map(([day, count]) => <View key={day} style={{ gap: uiScale.spacing[1], paddingVertical: uiScale.spacing[1] }}><Text style={{ color: colors.ink }}>{day} · {count.warning} warning · {count.critical} critical</Text><View style={{ flexDirection: 'row', height: uiScale.spacing[2] }}><View style={{ width: `${count.warning / maxAlerts * 100}%`, backgroundColor: colors.warning }} /><View style={{ width: `${count.critical / maxAlerts * 100}%`, backgroundColor: colors.critical }} /></View></View>)}</Card>
+    </>}
+    <Modal visible={expanded !== null} animationType="slide" onRequestClose={() => setExpanded(null)}><SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}><Page><Title icon={<Activity size={23} color={colors.teal} />}>{`${selectedParameter?.title ?? 'Trend'} Trend`}</Title>{expanded && selectedParameter && selectedStats && <Card><TrendChart readings={rows} parameter={selectedParameter} expanded /><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>{[
+      ['Latest valid', `${number(selectedStats.latest)} ${selectedParameter.unit}${latest ? ` · ${formatManilaDateTime(latest.timestamp)} PHT` : ''}`],
+      ['Mean', number(selectedStats.mean)], ['Min / Max', `${number(selectedStats.minimum)} / ${number(selectedStats.maximum)}`],
+      ['Std dev', number(selectedStats.standardDeviation)], ['In range', selectedStats.percentInRange === null ? '—' : `${number(selectedStats.percentInRange, 1)}%`],
+      ['Excursions', selectedStats.readings ? String(selectedStats.excursions) : '—'], ['Longest excursion (h)', selectedStats.readings ? number(selectedStats.longestExcursionHours, 1) : '—'],
+      ['Safe range', safeRange(selectedParameter)], ['Valid / invalid', `${selectedStats.readings} / ${selectedStats.invalidReadings}`], ['Missing samples', String(countMissingSamples(rows))],
+    ].map(([label, value]) => <View key={label} style={{ width: '48%', flexGrow: 1, minWidth: 0, borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.glassControl, padding: uiScale.spacing[3], gap: uiScale.spacing[1] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{label}</Text><Text style={{ color: colors.ink, fontWeight: '700' }}>{value}</Text></View>)}</View></Card>}<Button label="Close" secondary onPress={() => setExpanded(null)} /></Page></SafeAreaView></Modal>
   </Page>;
 }
 
@@ -516,17 +654,18 @@ export function StatusScreen() {
   const statuses = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses() });
   const devices = getAssignedDevices(statuses.data ?? [], tanks)
     .filter(({ tank }) => hatchery === 'all' || hatcheryId(tank.site) === hatchery);
-  const pendingTotal = pendingRecordTotal(devices.map(({ device }) => device));
+  const reportedDevices = devices.flatMap(({ device }) => device ? [device] : []);
+  const pendingTotal = pendingRecordTotal(reportedDevices);
   return <Page>
     <Title icon={<Wifi size={23} color={colors.teal} />} detail="Sensor and connectivity health">System Health</Title>
     {statuses.isLoading || isLoading ? <StateMessage message="Loading device status…" loading /> : statuses.isError || error ? <Card><StateMessage message={`Could not load device status: ${(statuses.error ?? error)?.message}`} /><Button label="Retry" secondary onPress={() => { void statuses.refetch(); refetch(); }} /></Card> : devices.length === 0 ? <StateMessage message="No device status is available." /> : <>
-      <Card title="Overview"><DataRow label="Devices" value={`${devices.length}`} /><DataRow label="Online" value={`${devices.filter(({ device }) => device.online).length}`} /><DataRow label="Offline" value={`${devices.filter(({ device }) => !device.online).length}`} /><DataRow label="Pending offline records" value={pendingTotal === null ? 'Unavailable' : `${pendingTotal}`} /></Card>
-      {devices.map(({ device, tank }) => <Card key={device.deviceId} title={tank.name}>
-        <DataRow label="Device" value={device.deviceId} />
-        <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} detail={`Last seen ${formatManilaDateTime(device.lastSeen)} PHT`} />
-        <DataRow label="Wi-Fi signal" value={hasReportedField(device, 'wifiRssi') ? `${device.wifiRssi} dBm` : 'Unavailable'} />
-        <DataRow label="Pending offline records" value={hasReportedField(device, 'pendingSyncCount') ? `${device.pendingSyncCount}` : 'Unavailable'} />
-        {device.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.map(formatMeasuredParameterLabel).join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
+      <Card title="Overview"><DataRow label="Devices" value={`${devices.length}`} /><DataRow label="Online" value={`${reportedDevices.filter((device) => device.online === true).length}`} /><DataRow label="Offline" value={`${reportedDevices.filter((device) => device.online === false).length}`} /><DataRow label="Pending offline records" value={pendingTotal === null ? 'Unavailable' : `${pendingTotal}`} /></Card>
+      {devices.map(({ device, tank }) => <Card key={tank.id} title={tank.name}>
+        <DataRow label="Device" value={tank.deviceId || 'No device assigned'} />
+        <DataRow label="Connection" value={!device ? 'Never reported' : typeof device.online !== 'boolean' ? 'Unavailable' : device.online ? 'Online' : 'Offline'} detail={device?.lastSeen && Number.isFinite(Date.parse(device.lastSeen)) ? `Last seen ${formatManilaDateTime(device.lastSeen)} PHT` : undefined} />
+        <DataRow label="Wi-Fi signal" value={device && hasReportedField(device, 'wifiRssi') && Number.isFinite(device.wifiRssi) ? `${device.wifiRssi} dBm` : 'Unavailable'} />
+        <DataRow label="Pending offline records" value={device && hasReportedField(device, 'pendingSyncCount') && Number.isFinite(device.pendingSyncCount) ? `${device.pendingSyncCount}` : 'Unavailable'} />
+        {device?.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.map(formatMeasuredParameterLabel).join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
       </Card>)}
     </>}
   </Page>;
@@ -562,10 +701,10 @@ export function ManagerReviewScreen() {
 
 export function ActivityLogsScreen() {
   const { colors } = useTheme();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const layout = createLogScreenStyles(colors);
-  const record = createRecordStyles(colors);
   const { tankId, hatchery, allTanks } = useTankSelection();
   const { user } = useSession();
   const queryClient = useQueryClient();
@@ -580,10 +719,12 @@ export function ActivityLogsScreen() {
   const [impact, setImpact] = useState('Moderate');
   const [kindFilter, setKindFilter] = useState<ActivityLogKind | 'all'>('all');
   const [expandedFilter, setExpandedFilter] = useState<'kind' | 'dates' | null>(null);
+  const [expandedFormFilter, setExpandedFormFilter] = useState<'scope' | 'type' | 'impact' | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [formError, setFormError] = useState('');
   const [exportingLogs, setExportingLogs] = useState(false);
+  const logScrollRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
   const createLog = useMutation({
     mutationFn: (entry: Omit<ActivityLog, 'id' | 'occurredAt'>) => api.createActivityLog(entry),
     onSuccess: async () => {
@@ -630,6 +771,7 @@ export function ActivityLogsScreen() {
   }
   function openLog(kind: 'OPERATION' | 'ENVIRONMENT') {
     setModalKind(kind);
+    setExpandedFormFilter(null);
     setScope(kind === 'ENVIRONMENT' ? 'hatchery' : tankId);
     setActivityType(kind === 'OPERATION' ? ACTIVITY_OPERATION_TYPES[0] : ACTIVITY_EVENT_TYPES[0]);
     setNotes('');
@@ -670,51 +812,88 @@ export function ActivityLogsScreen() {
     createLog.mutate(entry);
   }
   return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
+    <View style={{ gap: uiScale.spacing[3] }}>
     <Title detail="Log operations and environmental events">Activity Logs</Title>
     <TankPicker horizontal />
     <ActivityLogActions role={user?.role ?? null} width={width} onOpen={openLog} />
     <View style={layout.cards}>
-      <Card title="Filters">
+      <Card title="Filters" style={{ padding: uiScale.spacing[3] }}>
         <View style={{ gap: uiScale.spacing[3] }}>
-          <FilterDropdown label="Kind" summary={kindFilter === 'all' ? 'All kinds' : kindFilter === 'OPERATION' ? 'Operation' : kindFilter === 'ENVIRONMENT' ? 'Environment' : 'Alert resolution'} icon={<ListFilter size={16} color={colors.teal} />} options={[{ value: 'all', label: 'All kinds' }, { value: 'OPERATION', label: 'Operation' }, { value: 'ENVIRONMENT', label: 'Environment' }, { value: 'ALERT RESOLUTION', label: 'Alert resolution' }]} value={kindFilter} expanded={expandedFilter === 'kind'} onToggle={() => setExpandedFilter((current) => current === 'kind' ? null : 'kind')} onChange={(value) => { setKindFilter(value as ActivityLogKind | 'all'); setExpandedFilter(null); }} />
-          <FilterDropdown label="Date range" summary={dateFrom || dateTo ? `${dateFrom || 'Any'} to ${dateTo || 'Any'}` : 'Any date'} icon={<CalendarDays size={16} color={colors.teal} />} expanded={expandedFilter === 'dates'} onToggle={() => setExpandedFilter((current) => current === 'dates' ? null : 'dates')}>
-            <View style={layout.dates}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: uiScale.spacing[2] }}>
+          <FilterDropdown label="Kind" summary={kindFilter === 'all' ? 'All kinds' : kindFilter === 'OPERATION' ? 'Operation' : kindFilter === 'ENVIRONMENT' ? 'Environment' : 'Alert resolution'} icon={<ListFilter size={14} color={colors.teal} />} triggerStyle={{ height: 38 }} singleLine options={[{ value: 'all', label: 'All kinds' }, { value: 'OPERATION', label: 'Operation' }, { value: 'ENVIRONMENT', label: 'Environment' }, { value: 'ALERT RESOLUTION', label: 'Alert resolution' }]} value={kindFilter} expanded={expandedFilter === 'kind'} onToggle={() => setExpandedFilter((current) => current === 'kind' ? null : 'kind')} onChange={(value) => { setKindFilter(value as ActivityLogKind | 'all'); setExpandedFilter(null); }} />
+          <FilterDropdown label="Date range" summary={dateFrom || dateTo ? `${dateFrom || 'Any'} to ${dateTo || 'Any'}` : 'Any date'} icon={<CalendarDays size={14} color={colors.teal} />} triggerStyle={{ height: 38 }} singleLine expanded={expandedFilter === 'dates'} onToggle={() => setExpandedFilter((current) => current === 'dates' ? null : 'dates')}>
+            <View style={[layout.dates, width < 600 && { flexDirection: 'column', alignItems: 'stretch' }]}>
               <View style={{ flex: 1, minWidth: 0 }}><CalendarFilterField label="From date (PHT)" value={dateFrom} onChangeText={setDateFrom} /></View>
               <View style={{ flex: 1, minWidth: 0 }}><CalendarFilterField label="To date (PHT)" value={dateTo} onChangeText={setDateTo} /></View>
             </View>
           </FilterDropdown>
+          </View>
         </View>
       </Card>
-      <Card title="Activity Records" action={user?.role === 'admin' ? <Pressable accessibilityRole="button" accessibilityLabel={exportingLogs ? 'Preparing CSV' : 'Share CSV'} accessibilityState={{ disabled: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 }} disabled={exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0} onPress={() => void shareLogs()} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface, opacity: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 ? 0.5 : 1 }}><FileDown size={18} color={colors.teal} /></Pressable> : undefined}>
-        {logs.isLoading || tanks.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message={`Could not load activity logs: ${logs.error.message}`} /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : tanks.error ? <StateMessage message={`Could not load tanks: ${tanks.error.message}`} /> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." spacious /> : <View style={{ gap: uiScale.spacing[3] }}>{filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={[record.row, { padding: uiScale.spacing[3], borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.glassControl }]}>
-          <View style={[record.top, { flexWrap: 'wrap' }]}>
-            <Text style={record.caption}>{log.occurredAt && Number.isFinite(Date.parse(log.occurredAt)) ? `${formatManilaDateTime(log.occurredAt)} PHT` : 'Unavailable'}</Text>
-              <Chip label={String(log.kind ?? 'Activity').charAt(0).toUpperCase() + String(log.kind ?? 'Activity').slice(1).toLowerCase()} />
+      <View style={{ gap: uiScale.spacing[2] }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: uiScale.spacing[2] }}>
+          <View style={{ flex: 1, minWidth: 0, gap: uiScale.spacing[1] }}>
+            <Text accessibilityRole="header" style={{ color: colors.ink, fontSize: uiScale.type.section, fontWeight: '700' }}>Activity Records</Text>
+            <Text style={layout.label}>Times in PHT</Text>
           </View>
-            <Text style={record.title}>{log.type ?? '—'}</Text>
-            <Text style={record.caption}>{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId ?? '—'} · {log.operator ?? '—'}</Text>
-            <Text style={record.body} numberOfLines={3}>{log.notes ?? '—'}</Text>
+          {user?.role === 'admin' ? <Pressable accessibilityRole="button" accessibilityLabel={exportingLogs ? 'Preparing CSV' : 'Share CSV'} accessibilityState={{ disabled: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 }} disabled={exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0} onPress={() => void shareLogs()} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface, opacity: exportingLogs || logs.isLoading || logs.isError || tanks.isLoading || Boolean(tanks.error) || filteredLogs.length === 0 ? 0.5 : 1 }}><FileDown size={18} color={colors.teal} /></Pressable> : null}
+        </View>
+        {logs.isLoading || tanks.isLoading ? <StateMessage message="Loading activity logs…" loading /> : logs.isError ? <><StateMessage message={`Could not load activity logs: ${logs.error.message}`} /><Button label="Retry" secondary onPress={() => void logs.refetch()} /></> : tanks.error ? <StateMessage message={`Could not load tanks: ${tanks.error.message}`} /> : filteredLogs.length === 0 ? <StateMessage message="No activity logs match the selected filters." spacious /> : <View style={{ gap: uiScale.spacing[2] + 2 }}>{filteredLogs.slice(0, 20).map((log) => <View key={log.id} style={{ padding: uiScale.spacing[3], borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.spacing[4], backgroundColor: colors.card }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2] }}>
+            <View style={{ width: 36, height: 36, borderRadius: uiScale.radius.pill, backgroundColor: colors.selected, alignItems: 'center', justifyContent: 'center' }}>
+              {log.kind === 'OPERATION' ? <ClipboardList size={16} color={colors.teal} /> : log.kind === 'ENVIRONMENT' ? <CloudSun size={16} color={colors.teal} /> : <CheckCircle2 size={16} color={colors.teal} />}
+            </View>
+            <View style={{ flex: 1, minWidth: 0, gap: uiScale.spacing[1] }}>
+              <Text numberOfLines={2} style={{ color: colors.ink, fontWeight: '700' }}>{log.type ?? '—'}</Text>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={layout.label}>{log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? 'Unknown tank'} · {log.operator ?? '—'}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end', maxWidth: '40%', gap: uiScale.spacing[1] }}>
+              <Chip label={String(log.kind ?? 'Activity').charAt(0).toUpperCase() + String(log.kind ?? 'Activity').slice(1).toLowerCase()} />
+              <Text numberOfLines={1} style={layout.label}>{log.occurredAt && Number.isFinite(Date.parse(log.occurredAt)) ? formatManilaDateTime(log.occurredAt, { year: undefined }).replace(', ', ' · ') : 'Unavailable'}</Text>
+            </View>
+          </View>
+          <Text style={{ color: colors.ink, marginTop: uiScale.spacing[2] }} numberOfLines={3}>{log.notes ?? '—'}</Text>
         </View>)}</View>}
-      </Card>
+      </View>
+    </View>
     </View>
     {modalKind && (
-      <Portal>
-        <View style={layout.modalOverlay}>
-          <ScrollView style={layout.modalScroll} keyboardShouldPersistTaps="handled">
-          <Card>
-            <Text style={layout.modalTitle}>{modalKind === 'OPERATION' ? 'Log operation' : 'Log weather / event'}</Text>
-            <TextInput accessibilityLabel="Tank or scope" placeholder="Tank or scope" style={layout.modalInput} placeholderTextColor={colors.muted} value={scope} onChangeText={setScope} />
-            <TextInput accessibilityLabel="Type" placeholder="Type" style={layout.modalInput} placeholderTextColor={colors.muted} value={activityType} onChangeText={setActivityType} />
-            <TextInput accessibilityLabel="Notes" placeholder="Notes" style={[layout.modalInput, layout.modalNotes]} placeholderTextColor={colors.muted} value={notes} onChangeText={setNotes} multiline />
-            {formError ? <Text style={layout.modalError}>{formError}</Text> : null}
-            <View style={[layout.actions, width < 360 && layout.stackedActions]}>
-              <Button style={layout.actionButton} label="Cancel" secondary onPress={() => setModalKind(null)} />
-              <Button style={layout.actionButton} label="Submit" disabled={createLog.isPending} onPress={submitLog} />
+      <Modal transparent visible onRequestClose={() => setModalKind(null)} statusBarTranslucent>
+        <KeyboardAvoidingView style={layout.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close activity form" onPress={() => setModalKind(null)} style={[StyleSheet.absoluteFill, { backgroundColor: authColors.scrimBottom }]} />
+          <View style={[layout.modalSheet, { maxHeight: Math.min(height * 0.85, height - insets.top - uiScale.spacing[5]) }]}>
+          <ScrollView ref={logScrollRef} style={layout.modalScroll} contentContainerStyle={[layout.modalContent, { paddingBottom: insets.bottom + uiScale.spacing[4], paddingLeft: Math.max(insets.left, uiScale.spacing[4]), paddingRight: Math.max(insets.right, uiScale.spacing[4]) }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets onFocusCapture={(event) => scrollFocusedInputIntoView(logScrollRef, event)}>
+            <View style={{ width: 36, height: 4, alignSelf: 'center', borderRadius: uiScale.radius.pill, backgroundColor: colors.border }} />
+            <View style={{ gap: uiScale.spacing[1] }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2] }}>
+                {modalKind === 'OPERATION' ? <ClipboardList size={20} color={colors.teal} /> : <CloudSun size={20} color={colors.teal} />}
+                <Text style={[layout.modalTitle, { flexShrink: 1 }]}>{modalKind === 'OPERATION' ? 'Log Hatchery Operation' : 'Log Weather or Event'}</Text>
+              </View>
+              <Text style={layout.label}>Add an activity record for shift handover.</Text>
             </View>
-          </Card>
+            <View style={{ flexDirection: width < 360 ? 'column' : 'row', alignItems: width < 360 ? 'stretch' : 'flex-start', gap: uiScale.spacing[2] }}>
+              <FilterDropdown label={modalKind === 'OPERATION' ? 'Tank or scope' : 'Event scope'} summary={scope === 'hatchery' ? 'Entire hatchery' : tanks.tanks.find((tank) => tank.id === scope)?.name ?? 'Unknown tank'} icon={<Droplets size={16} color={colors.teal} />} triggerStyle={{ height: 44, backgroundColor: colors.glassControl }} singleLine value={scope} expanded={expandedFormFilter === 'scope'} onToggle={() => setExpandedFormFilter((current) => current === 'scope' ? null : 'scope')} onChange={(value) => { setScope(value); setExpandedFormFilter(null); }} options={[{ value: 'hatchery', label: 'Entire hatchery' }, ...tanks.tanks.map((tank) => ({ value: tank.id, label: tank.name }))]} />
+              <FilterDropdown label={modalKind === 'OPERATION' ? 'Operation type' : 'Event type'} summary={activityType || 'Select type'} icon={<ListFilter size={16} color={colors.teal} />} triggerStyle={{ height: 44, backgroundColor: colors.glassControl }} singleLine value={activityType} expanded={expandedFormFilter === 'type'} onToggle={() => setExpandedFormFilter((current) => current === 'type' ? null : 'type')} onChange={(value) => { setActivityType(value); setExpandedFormFilter(null); }} options={(modalKind === 'OPERATION' ? ACTIVITY_OPERATION_TYPES : ACTIVITY_EVENT_TYPES).map((type) => ({ value: type, label: type }))} />
+            </View>
+            {modalKind === 'OPERATION' && activityType === 'Water change / exchange' && <View style={layout.dates}>
+              <View style={layout.modalField}><Text style={layout.label}>Water replaced (%)</Text><TextInput accessibilityLabel="Water replaced (%)" value={waterChangePercent} onChangeText={setWaterChangePercent} placeholder="e.g. 20" placeholderTextColor={colors.muted} keyboardType="decimal-pad" style={layout.modalInput} /></View>
+              <View style={layout.modalField}><Text style={layout.label}>Water source (optional)</Text><TextInput accessibilityLabel="Water source (optional)" value={waterSource} onChangeText={setWaterSource} placeholder="e.g. treated reservoir" placeholderTextColor={colors.muted} style={layout.modalInput} /></View>
+            </View>}
+            {modalKind === 'ENVIRONMENT' && <FilterDropdown label="Observed impact" summary={impact || 'Select impact'} icon={<ListFilter size={16} color={colors.teal} />} triggerStyle={{ height: 44, backgroundColor: colors.glassControl }} singleLine value={impact} expanded={expandedFormFilter === 'impact'} onToggle={() => setExpandedFormFilter((current) => current === 'impact' ? null : 'impact')} onChange={(value) => { setImpact(value); setExpandedFormFilter(null); }} options={['Low', 'Moderate', 'High', 'Unknown'].map((value) => ({ value, label: value }))} />}
+            <View style={layout.modalField}>
+              <Text style={layout.label}>Notes</Text>
+              <TextInput accessibilityLabel="Notes" placeholder={modalKind === 'OPERATION' ? 'What was done? Include observations or follow-up needed.' : 'When did it occur? What changed around the tank?'} style={[layout.modalInput, layout.modalNotes]} placeholderTextColor={colors.muted} value={notes} onChangeText={setNotes} multiline numberOfLines={4} />
+            </View>
+            {formError ? <Text accessibilityRole="alert" style={layout.modalError}>{formError}</Text> : null}
+            {createLog.isError && <Text accessibilityRole="alert" style={layout.modalError}>{createLog.error.message}</Text>}
+            <View style={[layout.actions, width < 360 && layout.stackedActions]}>
+              <Pressable accessibilityRole="button" onPress={() => setModalKind(null)} style={[layout.modalButton, width < 360 && { flex: 0 }, { backgroundColor: colors.glassControl }]}><Text style={layout.glassActionLabel}>Cancel</Text></Pressable>
+              <Pressable accessibilityRole="button" disabled={createLog.isPending} onPress={submitLog} style={[layout.modalButton, width < 360 && { flex: 0 }, { opacity: createLog.isPending ? 0.5 : 1 }]}><LinearGradient colors={primaryButtonGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /><Text style={[layout.glassActionLabel, { color: colors.onPrimary }]}>{createLog.isPending ? 'Saving…' : 'Save entry'}</Text></Pressable>
+            </View>
           </ScrollView>
-        </View>
-      </Portal>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     )}
   </Page>;
 }
@@ -864,9 +1043,8 @@ export function HistoryScreen() {
   const { width } = useWindowDimensions();
   const tabBarHeight = useBottomTabBarHeight();
   const layout = createLogScreenStyles(colors);
-  const record = createRecordStyles(colors);
   const { tanks, tankId, setTankId } = useTankSelection();
-  const [page, setPage] = useState(1);
+  const [visibleCount, setVisibleCount] = useState(5);
   const [parameter, setParameter] = useState<'all' | 'temperature' | 'do' | 'ph'>('all');
   const [sortKey, setSortKey] = useState<'timestamp' | MeasuredParameter>('timestamp');
   const [ascending, setAscending] = useState(false);
@@ -880,27 +1058,22 @@ export function HistoryScreen() {
   const parameterLabel = parameterOptions.find((option) => option.value === parameter)?.label ?? 'All measured';
   const query = useQuery({
     queryKey: ['history', tankId, from, to, parameter],
-    queryFn: () => api.listReadings({
-      tankId,
+    queryFn: () => loadAllReadings(api, {
+      tankId: tankId!,
       from: `${from}T00:00:00+08:00`,
-      to: `${to}T23:59:59+08:00`,
-      ...(parameter !== 'all' && { parameter }),
+      to: `${to}T23:59:59.999+08:00`,
     }),
     enabled: Boolean(tankId),
   });
   const parameterValue = (reading: Reading, param: 'do' | 'temperature' | 'ph') => param === 'do' ? reading.doMgL : reading[param];
-  const rows = (query.data ?? []).filter((row) => parameter === 'all' || Number.isFinite(parameterValue(row, parameter))).sort((a, b) => {
+  const rows = (query.data?.rows ?? []).filter((row) => parameter === 'all' || Number.isFinite(parameterValue(row, parameter))).sort((a, b) => {
     const difference = sortKey === 'timestamp' ? a.timestamp.localeCompare(b.timestamp) : parameterValue(a, sortKey) - parameterValue(b, sortKey);
     return ascending ? difference : -difference;
   });
-  const pageCount = Math.max(1, Math.ceil(rows.length / 5));
-  const currentPage = Math.min(page, pageCount);
-  const firstPage = Math.max(1, Math.min(currentPage - 1, pageCount - 2));
-  const pageNumbers = Array.from({ length: Math.min(3, pageCount) }, (_, index) => firstPage + index);
-  const pageRows = rows.slice((currentPage - 1) * 5, currentPage * 5);
+  const visibleRows = rows.slice(0, visibleCount);
   useEffect(() => {
-    setPage((current) => Math.min(current, pageCount));
-  }, [pageCount]);
+    setVisibleCount(5);
+  }, [tankId, from, to, parameter, sortKey, ascending]);
   return <Page bottomPadding={tabBarHeight + uiScale.spacing[4]}>
     <Title>History</Title>
     <View style={layout.cards}>
@@ -909,52 +1082,53 @@ export function HistoryScreen() {
           <Text style={{ color: colors.ink, fontWeight: '700' }}>Filter by:</Text>{filtersOpen ? <ChevronUp size={20} color={colors.muted} /> : <ChevronDown size={20} color={colors.muted} />}
         </Pressable>
         {filtersOpen && <View style={{ paddingBottom: uiScale.spacing[2], gap: uiScale.spacing[3] }}>
-          <FilterDropdown label="Tank" summary={tankLabel} icon={<Droplets size={16} color={colors.teal} />} options={tankOptions} value={tankId} expanded={expandedFilter === 'tank'} onToggle={() => setExpandedFilter((current) => current === 'tank' ? null : 'tank')} onChange={(value) => { setTankId(value); setPage(1); }} />
-          <FilterDropdown label="Date range" summary={`${from} to ${to}`} icon={<CalendarDays size={16} color={colors.teal} />} expanded={expandedFilter === 'dates'} onToggle={() => setExpandedFilter((current) => current === 'dates' ? null : 'dates')}>
-            <View style={layout.dates}>
-              <CalendarFilterField label="From date (PHT)" value={from} onChangeText={(value) => { setFrom(value); setPage(1); }} />
-              <CalendarFilterField label="To date (PHT)" value={to} onChangeText={(value) => { setTo(value); setPage(1); }} />
+          <View style={{ flexDirection: width < 360 ? 'column' : 'row', alignItems: width < 360 ? 'stretch' : 'flex-start', gap: uiScale.spacing[2] }}>
+          <FilterDropdown label="Tank" summary={tankLabel} icon={<Droplets size={14} color={colors.teal} />} options={tankOptions} value={tankId} expanded={expandedFilter === 'tank'} onToggle={() => setExpandedFilter((current) => current === 'tank' ? null : 'tank')} onChange={(value) => { setTankId(value); setVisibleCount(5); }} />
+          <FilterDropdown label="Parameter" summary={parameterLabel} icon={<ListFilter size={14} color={colors.teal} />} options={parameterOptions} value={parameter} expanded={expandedFilter === 'parameter'} onToggle={() => setExpandedFilter((current) => current === 'parameter' ? null : 'parameter')} onChange={(value) => { const selected = parameterOptions.find((option) => option.value === value); if (selected) { setParameter(selected.value); setVisibleCount(5); } }} />
+          </View>
+          <FilterDropdown label="Date range" summary={`${from} to ${to}`} icon={<CalendarDays size={14} color={colors.teal} />} expanded={expandedFilter === 'dates'} onToggle={() => setExpandedFilter((current) => current === 'dates' ? null : 'dates')}>
+            <View style={[layout.dates, width < 360 && { flexDirection: 'column', alignItems: 'stretch' }]}>
+              <CalendarFilterField label="From date (PHT)" value={from} onChangeText={(value) => { setFrom(value); setVisibleCount(5); }} />
+              <CalendarFilterField label="To date (PHT)" value={to} onChangeText={(value) => { setTo(value); setVisibleCount(5); }} />
             </View>
           </FilterDropdown>
-          <FilterDropdown label="Parameter" summary={parameterLabel} icon={<ListFilter size={16} color={colors.teal} />} options={parameterOptions} value={parameter} expanded={expandedFilter === 'parameter'} onToggle={() => setExpandedFilter((current) => current === 'parameter' ? null : 'parameter')} onChange={(value) => { const selected = parameterOptions.find((option) => option.value === value); if (selected) { setParameter(selected.value); setPage(1); } }} />
         </View>}
       </View>
-      <Card title="Readings">
-        {query.isLoading ? <StateMessage message="Loading readings…" loading /> : query.isError ? <><StateMessage message="Could not load readings." /><Button label="Retry" secondary onPress={() => void query.refetch()} /></> : <>
-          <Text style={layout.count}>{rows.length} readings{rows.length > pageRows.length ? ` · Showing ${pageRows.length}` : ''}</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>
-            {([{ key: 'timestamp', label: 'Time' }, { key: 'temperature', label: 'Temperature' }, { key: 'do', label: 'DO' }, { key: 'ph', label: 'pH' }] as const).map(({ key, label }) => <Pressable key={key} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} onPress={() => {
-              if (sortKey === key) setAscending((value) => !value);
-              else { setSortKey(key); setAscending(false); }
-            }} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: uiScale.spacing[2] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{label}{sortKey === key ? ascending ? ' ↑' : ' ↓' : ''}</Text></Pressable>)}
+      <Card title="Readings" style={{ width: '100%', minWidth: 0 }}>
+        {!tankId ? <StateMessage message="No tank is selected." /> : query.isLoading ? <StateMessage message="Loading readings…" loading /> : query.isError ? <><StateMessage message={`Could not load readings: ${query.error.message}`} /><Button label="Retry" secondary onPress={() => void query.refetch()} /></> : <>
+          <Text style={layout.count}>{rows.length} readings</Text>
+          {query.data?.truncated && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Some readings could not be loaded. Choose a shorter range for complete results.</Text>}
+          <View style={{ width: '100%', minWidth: 0, gap: uiScale.spacing[3] }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: uiScale.spacing[2] }}>
+              {([{ key: 'timestamp', label: 'Time' }, { key: 'temperature', label: 'Temperature' }, { key: 'do', label: 'DO' }, { key: 'ph', label: 'pH' }] as const).map(({ key, label }) => <Pressable key={key} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} onPress={() => {
+                if (sortKey === key) setAscending((value) => !value);
+                else { setSortKey(key); setAscending(false); }
+              }} style={{ minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: sortKey === key ? colors.teal : colors.border, borderRadius: uiScale.radius.pill, backgroundColor: sortKey === key ? colors.selected : colors.glassControl, paddingHorizontal: uiScale.spacing[3] }}><Text style={{ color: sortKey === key ? colors.teal : colors.ink, fontSize: uiScale.type.caption }}>{label}{sortKey === key ? ascending ? ' ↑' : ' ↓' : ''}</Text></Pressable>)}
+            </View>
+            {rows.length === 0 ? <StateMessage message="No readings match the selected filters." spacious /> : <View style={{ width: '100%', minWidth: 0, gap: uiScale.spacing[3] }}>
+              <View style={{ width: '100%', minWidth: 0, gap: uiScale.spacing[3] }}>{visibleRows.map((row) => <RecordRow key={row.id}
+                icon={<Activity size={20} color={colors.teal} />}
+                title={`${formatManilaDateTime(row.timestamp)} PHT`}
+                caption={tanks.find((tank) => tank.id === row.tankId)?.name ?? 'Unknown tank'}>
+                <RecordMetrics items={[{ label: 'Temp °C', value: Number.isFinite(row.temperature) ? row.temperature.toFixed(2) : '—' }, { label: 'DO mg/L', value: Number.isFinite(row.doMgL) ? row.doMgL.toFixed(2) : '—' }, { label: 'pH', value: Number.isFinite(row.ph) ? row.ph.toFixed(2) : '—' }]} />
+              </RecordRow>)}</View>
+              {rows.length > visibleCount && <Button label="Load more" secondary onPress={() => setVisibleCount((count) => Math.min(rows.length, count + 5))} />}
+            </View>}
           </View>
-          {rows.length === 0 ? <StateMessage message="No readings match the selected filters." spacious /> : <>
-          <View>{pageRows.map((row) => <View key={row.id} style={record.row}>
-            <Text style={record.title}>{formatManilaDateTime(row.timestamp)} PHT</Text>
-            <Text style={record.caption}>{tanks.find((tank) => tank.id === row.tankId)?.name ?? 'Unknown tank'}</Text>
-            <View style={record.metrics}>
-              {([{ label: 'Temp (°C)', value: row.temperature }, { label: 'DO (mg/L)', value: row.doMgL }, { label: 'pH', value: row.ph }]).map((metric) => <View key={metric.label} style={record.metric}>
-                <Text style={record.caption}>{metric.label}</Text>
-                <Text style={[record.value, { textAlign: 'right' }]}>{Number.isFinite(metric.value) ? metric.value.toFixed(2) : '—'}</Text>
-              </View>)}
-            </View>
-          </View>)}</View>
-          {pageCount > 1 && <View style={{ alignItems: 'center', gap: uiScale.spacing[2], paddingTop: uiScale.spacing[3] }}>
-            <Text style={{ color: colors.muted }}>Page {currentPage} of {pageCount}</Text>
-            <View style={{ flexDirection: 'row', gap: uiScale.spacing[1] }}>
-              {[{ label: 'Previous page', text: '‹', target: currentPage - 1, disabled: currentPage === 1 }, ...pageNumbers.map((number) => ({ label: `Page ${number}`, text: `${number}`, target: number, disabled: false })), { label: 'Next page', text: '›', target: currentPage + 1, disabled: currentPage === pageCount }].map((item) => {
-                const selected = item.target === currentPage && !item.disabled;
-                return <Pressable key={item.label} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{ disabled: item.disabled, selected }} disabled={item.disabled} onPress={() => setPage(item.target)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: selected ? colors.teal : colors.border, borderRadius: uiScale.radius.control, backgroundColor: selected ? colors.selected : 'transparent', opacity: item.disabled ? 0.5 : 1 }}>
-                  <Text style={{ color: selected ? colors.teal : colors.ink, fontWeight: '700' }}>{item.text}</Text>
-                </Pressable>;
-              })}
-            </View>
-          </View>}
-          </>}
         </>}
       </Card>
     </View>
   </Page>;
+}
+
+function saveReportMetadata(report: ReportModel, reportType: ReportModel['format']) {
+  void api.saveReport({
+    id: report.id,
+    reportType,
+    tankIds: report.tanks.map((tank) => tank.id),
+    rangeFrom: report.range.from,
+    rangeTo: report.range.to,
+  }).catch((error) => console.error('Could not save report metadata:', error));
 }
 
 export function ReportsScreen() {
@@ -996,6 +1170,7 @@ export function ReportsScreen() {
       : selectedIds.length > 1 ? `${selectedIds.length} tanks selected` : 'Select tanks';
   const selectedSectionCount = sections.length;
   const datasetLabel = datasetOptions.find((option) => option.value === dataset)?.label ?? 'Raw readings';
+  const [reportId] = useState(() => generateReportId());
   const start = new Date(`${from}T00:00:00+08:00`);
   const end = new Date(`${to}T23:59:59.999+08:00`);
   const validRange = /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) &&
@@ -1004,28 +1179,41 @@ export function ReportsScreen() {
   const preview = useQuery({
     queryKey: ['report-preview', user?.id, user?.role, selectedIds, from, to],
     enabled: validRange && selectedIds.length > 0 && Boolean(user),
+    staleTime: 60_000,
     queryFn: async () => {
-      const [readings, alerts, thresholds, activityLogs, calibrationLogs, validationRows] = await Promise.all([
-        Promise.all(selectedIds.map((id) => api.listReadings({ tankId: id, from: start.toISOString(), to: end.toISOString() }))),
+      const [readingResults, alerts, thresholds, activityLogs, calibrationLogs, validationRows] = await Promise.all([
+        Promise.all(selectedIds.map((id) => loadAllReadings(api, {
+          tankId: id,
+          from: start.toISOString(),
+          to: end.toISOString(),
+        }))),
         Promise.all(selectedIds.map((id) => api.listAlerts(id))),
         listConfiguredThresholds(),
         api.listActivityLogs(),
         canAccess(user?.role ?? null, 'canCalibrate') ? api.listCalibrationLogs() : Promise.resolve([]),
         canAccess(user?.role ?? null, 'validation') ? Promise.all(selectedIds.map((id) => api.listValidationRows(id))).then((rows) => rows.flat()) : Promise.resolve([]),
       ]);
-      if (readings.some((rows) => rows.length >= 500) || alerts.some((rows) => rows.length >= 1000) ||
-          activityLogs.length >= 1000 || calibrationLogs.length >= 1000 || validationRows.length >= 1000) {
-        throw new Error('The server data limit was reached; the report could be incomplete.');
-      }
-      return { readings: readings.flat(), alerts: alerts.flat(), thresholds, activityLogs, calibrationLogs, validationRows };
+      return {
+        readings: readingResults.flatMap((result) => result.rows),
+        alerts: alerts.flat(),
+        thresholds,
+        activityLogs,
+        calibrationLogs,
+        validationRows,
+        truncated: readingResults.some((result) => result.truncated) ||
+          alerts.some((rows) => rows.length >= 1000) ||
+          activityLogs.length >= 1000 ||
+          calibrationLogs.length >= 1000 ||
+          validationRows.length >= 1000,
+      };
     },
   });
   const model = preview.data && validRange && selectedIds.length && user && selectedIds.every((id) => tanks.some((tank) => tank.id === id))
     ? buildReport({ tankIds: selectedIds, from: start.toISOString(), to: end.toISOString(), sections, format: 'pdf', generatedBy: { name: user.name, role: user.role } }, {
       tanks, ...preview.data, advisories: {}, deviceStatuses: [],
-    }) : null;
+    }, undefined, reportId) : null;
   const datasetRows = model ? reportDatasetRows(model, dataset) : null;
-  const matched = datasetRows ? datasetRows.length - 1 : null;
+  const matched = datasetRows ? datasetRows.length - 1 : preview.data ? 0 : null;
   async function shareReport() {
     setSharing(true);
     try {
@@ -1038,7 +1226,8 @@ export function ReportsScreen() {
       if (!result.data) throw new Error('Could not prepare report data.');
       const report = buildReport({ tankIds: selectedIds, from: start.toISOString(), to: end.toISOString(), sections, format: 'pdf', generatedBy: { name: user.name, role: user.role } }, {
         tanks, ...result.data, advisories: {}, deviceStatuses: [],
-      });
+      }, undefined, reportId);
+      saveReportMetadata(report, 'pdf');
       const file = await createReportFile(report);
       const fileUri = `${FileSystem.documentDirectory}hydrosense-report-${Date.now()}.${file.extension}`;
       await FileSystem.writeAsStringAsync(fileUri, fromByteArray(file.bytes), { encoding: FileSystem.EncodingType.Base64 });
@@ -1064,6 +1253,7 @@ export function ReportsScreen() {
       });
       const rows = reportDatasetRows(report, dataset);
       if (rows.length === 1) throw new Error('There are no records in the selected dataset and date range.');
+      if (model) saveReportMetadata(model, 'csv');
       const fileUri = `${FileSystem.documentDirectory}hydrosense-${dataset}-${Date.now()}.csv`;
       await FileSystem.writeAsStringAsync(fileUri, toCsv(rows), { encoding: FileSystem.EncodingType.UTF8 });
       await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Share HydroSense dataset' });
@@ -1093,16 +1283,18 @@ export function ReportsScreen() {
       </View>
       <Text style={{ color: colors.muted, lineHeight: 20 }}>Period: {from} to {to} PHT</Text>
       <HatcheryPicker />
-      <FilterDropdown label="CSV file data" summary={datasetLabel} icon={<Database size={16} color={colors.teal} />} options={datasetOptions} value={dataset} expanded={expandedFilter === 'dataset'} onToggle={() => setExpandedFilter((current) => current === 'dataset' ? null : 'dataset')} onChange={(value) => {
+      <FilterDropdown label="CSV file data" summary={datasetLabel} icon={<Database size={14} color={colors.teal} />} options={datasetOptions} value={dataset} expanded={expandedFilter === 'dataset'} onToggle={() => setExpandedFilter((current) => current === 'dataset' ? null : 'dataset')} onChange={(value) => {
         const selected = datasetOptions.find((option) => option.value === value);
         if (selected) {
           setDataset(selected.value);
           setExpandedFilter(null);
         }
       }} />
+      <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>CSV includes the selected dataset, tanks, and date range; report sections apply to the preview and PDF.</Text>
       {dataset === 'validation' && <Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>Validation comparisons have no date field and cannot be filtered by period.</Text>}
       {tanksLoading ? <StateMessage message="Loading tanks…" loading /> : tanksError ? <><StateMessage message={`Could not load tanks: ${tanksError.message}`} /><Button label="Retry tank list" secondary onPress={refetchTanks} /></> : tanks.length === 0 ? <StateMessage message="No tanks are available for this account." /> : null}
-      {tanks.length > 0 && <FilterDropdown label="Tanks included in PDF" summary={selectedTankLabel} icon={<Droplets size={16} color={colors.teal} />} expanded={expandedFilter === 'tanks'} onToggle={() => setExpandedFilter((current) => current === 'tanks' ? null : 'tanks')}>
+      <View style={{ flexDirection: width < 360 ? 'column' : 'row', alignItems: width < 360 ? 'stretch' : 'flex-start', gap: uiScale.spacing[2] }}>
+      {tanks.length > 0 && <FilterDropdown label="Tanks included in PDF" summary={selectedTankLabel} icon={<Droplets size={14} color={colors.teal} />} expanded={expandedFilter === 'tanks'} onToggle={() => setExpandedFilter((current) => current === 'tanks' ? null : 'tanks')}>
         <View style={{ gap: uiScale.spacing[2] }}>
           {tanks.map((tank) => <ReportChoice key={tank.id} kind="checkbox" label={tank.name} selected={selectedIds.includes(tank.id)} onPress={() => setSelectedTanks((current) => {
             const existing = (current ?? (tankId ? [tankId] : [])).filter((id) => tanks.some((available) => available.id === id));
@@ -1110,14 +1302,15 @@ export function ReportsScreen() {
           })} />)}
         </View>
       </FilterDropdown>}
-      <FilterDropdown label="PDF report sections" summary={selectedSectionCount ? `${selectedSectionCount} selected` : 'Select sections'} icon={<ListFilter size={16} color={colors.teal} />} expanded={expandedFilter === 'sections'} onToggle={() => setExpandedFilter((current) => current === 'sections' ? null : 'sections')}>
+      <FilterDropdown label="PDF report sections" summary={selectedSectionCount ? `${selectedSectionCount} selected` : 'Select sections'} icon={<ListFilter size={14} color={colors.teal} />} expanded={expandedFilter === 'sections'} onToggle={() => setExpandedFilter((current) => current === 'sections' ? null : 'sections')}>
         <View style={{ gap: uiScale.spacing[2] }}>
           {sectionOptions.map(({ value, label }) => <ReportChoice key={value} kind="checkbox" label={label} selected={sections.includes(value)} onPress={() => setSections((current) => current.includes(value) ? current.filter((section) => section !== value) : [...current, value])} />)}
         </View>
       </FilterDropdown>
+      </View>
       <View style={{ gap: uiScale.spacing[2] }}>
         <Text style={{ color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700' }}>Date Range</Text>
-        <View style={{ flexDirection: 'row', gap: uiScale.spacing[3] }}>
+        <View style={{ flexDirection: width < 360 ? 'column' : 'row', alignItems: width < 360 ? 'stretch' : 'flex-start', gap: uiScale.spacing[2] }}>
           <View style={{ flex: 1, minWidth: 0 }}><CalendarFilterField label="From date (PHT)" value={from} onChangeText={setFrom} /></View>
           <View style={{ flex: 1, minWidth: 0 }}><CalendarFilterField label="To date (PHT)" value={to} onChangeText={setTo} /></View>
         </View>
@@ -1125,7 +1318,7 @@ export function ReportsScreen() {
     </Card>
     {sections.includes('statistics') && <Card title="Readings in Range">
       <Text style={{ color: colors.muted }}>Percentage of valid readings within configured thresholds</Text>
-      {!tanks.length ? <StateMessage message="No tanks are available for this hatchery." /> : !validRange || !selectedIds.length ? <StateMessage message="Select a tank and valid dates to view the analysis." /> : preview.isLoading ? <StateMessage message="Preparing analysis…" loading /> : preview.isError ? <><StateMessage message={`Could not prepare analysis: ${preview.error.message}`} /><Button label="Retry" secondary onPress={() => void preview.refetch()} /></> : model?.statistics.map((stat) => <View key={stat.parameter} style={{ gap: 5, marginTop: 10 }}>
+      {!tanks.length ? <StateMessage message="No tanks are available for this hatchery." /> : !validRange || !selectedIds.length ? <StateMessage message="Select a tank and valid dates to view the analysis." /> : preview.isLoading || preview.isFetching ? <StateMessage message="Preparing analysis…" loading /> : preview.isError ? null : model?.statistics.map((stat) => <View key={stat.parameter} style={{ gap: 5, marginTop: 10 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: colors.ink }}>{stat.parameter === 'temperature' ? 'Temperature' : stat.parameter === 'do' ? 'DO' : 'pH'}</Text><Text style={{ color: colors.ink }}>{stat.percentInRange === null ? 'No data' : `${stat.percentInRange.toFixed(1)}%`}</Text></View>
         <View style={{ height: 16, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' }}><View style={{ height: '100%', width: `${stat.percentInRange ?? 0}%`, backgroundColor: '#087c78' }} /></View>
       </View>)}
@@ -1133,14 +1326,13 @@ export function ReportsScreen() {
     <Card title="Report Preview" action={user && can(user.role, 'exportReports') ? <Pressable accessibilityRole="button" accessibilityLabel="Print or save PDF report" accessibilityState={{ disabled: reportDisabled }} disabled={reportDisabled} onPress={() => setDownloadConfirmation('pdf')} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: uiScale.radius.control, backgroundColor: colors.surface, opacity: reportDisabled ? 0.5 : 1 }}><Printer size={18} color={colors.teal} /></Pressable> : undefined}>
       {!validRange ? <StateMessage message="Enter a valid start and end date." /> : !tanks.length ? <StateMessage message="No tanks are available for this hatchery." /> : !selectedIds.length ? <StateMessage message="Select a tank to generate the report." /> : preview.isLoading ? <StateMessage message="Preparing report…" loading /> : preview.isError ? <><StateMessage message={preview.error instanceof Error ? preview.error.message : 'Could not prepare report.'} /><Button label="Retry" secondary onPress={() => void preview.refetch()} /></> : model && <>
         <View style={{ gap: uiScale.spacing[2] }}>
-          <Text style={caption}>Report ID</Text><Text selectable style={{ color: colors.ink }}>{model.id}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: uiScale.spacing[2] }}><Text style={{ color: colors.ink, fontWeight: '700', flexShrink: 1 }}>Report ID</Text><Text selectable style={{ flex: 1, minWidth: 0, color: colors.ink, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', textAlign: 'right' }}>{model.id}</Text></View>
           <DataRow label="Prepared by" value={`${model.generatedBy.name} (${model.generatedBy.role})`} />
           <DataRow label="Period" value={`${from} to ${to} PHT`} />
           <View style={{ gap: uiScale.spacing[1], paddingVertical: uiScale.spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <Text style={{ color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700' }}>Tanks</Text>
             {model.tanks.map((tank, index) => <View key={tank.id} style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: uiScale.spacing[2], borderTopWidth: index ? 1 : 0, borderColor: colors.border, paddingVertical: uiScale.spacing[1] }}>
-              <Text style={{ color: colors.muted, width: 56 }}>Tank {index + 1}</Text>
-              <Text style={{ flex: 1, minWidth: 0, color: colors.ink, fontWeight: '600' }}>{tank.name}</Text>
+              <View style={{ flex: 1, minWidth: 0, gap: uiScale.spacing[1] }}><Text style={{ color: colors.ink, fontWeight: '700' }}>{tank.name}</Text><Text style={{ color: colors.muted, fontSize: uiScale.type.caption }}>{hatcheryLabel(tank.site)}</Text></View>
             </View>)}
           </View>
           <DataRow label="Generated" value={`${formatManilaDateTime(model.generatedAt)} PHT`} />
@@ -1167,12 +1359,11 @@ export function ReportsScreen() {
           {canAccess(user?.role ?? null, 'canCalibrate') && <View style={summaryTile}><Text style={caption}>Calibration</Text><Text style={numeric}>{model.calibrationLogs.length}</Text></View>}
           {canAccess(user?.role ?? null, 'validation') && <View style={summaryTile}><Text style={caption}>Validation</Text><Text style={numeric}>{model.validationRows.length}</Text></View>}
         </View>
-        {sections.includes('raw-readings') && <View>
+        {sections.includes('raw-readings') && <View style={{ gap: uiScale.spacing[3] }}>
           <Text style={caption}>Showing first {Math.min(10, model.rawReadings.length)} of {model.rawReadings.length} readings</Text>
-          {model.rawReadings.slice(0, 10).map((row) => <View key={row.id} style={{ paddingVertical: uiScale.spacing[3], borderBottomWidth: 1, borderColor: colors.border, gap: uiScale.spacing[1] }}>
-            <Text style={{ color: colors.ink }}>{formatManilaDateTime(row.timestamp)} · {model.tanks.find((tank) => tank.id === row.tankId)?.name ?? 'Unknown tank'}</Text>
-            <Text style={numeric}>Temp {row.temperature.toFixed(2)} · DO {row.doMgL.toFixed(2)} · pH {row.ph.toFixed(2)}</Text>
-          </View>)}
+          {model.rawReadings.slice(0, 10).map((row) => <RecordRow key={row.id} icon={<Activity size={20} color={colors.teal} />} title={formatManilaDateTime(row.timestamp)} caption={model.tanks.find((tank) => tank.id === row.tankId)?.name ?? 'Unknown tank'}>
+            <RecordMetrics items={[{ label: 'Temp °C', value: row.temperature.toFixed(2) }, { label: 'DO mg/L', value: row.doMgL.toFixed(2) }, { label: 'pH', value: row.ph.toFixed(2) }]} />
+          </RecordRow>)}
         </View>}
         {user && !can(user.role, 'exportReports') && <Text style={{ color: colors.muted }}>Operators may view reports; export is available to managers and administrators.</Text>}
       </>}
