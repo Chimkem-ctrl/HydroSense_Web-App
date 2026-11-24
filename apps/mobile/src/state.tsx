@@ -10,6 +10,7 @@ import type { HatcheryLocation } from '@hydrosense/shared';
 import { api } from './services/client';
 import { setMobileAccessToken } from './services/client';
 import { clearMobileQueryCache } from './services/queryClient';
+import { hatcheryLabel } from './management';
 
 const SESSION_KEY = 'hydrosense.mobile.session.v1';
 const ACCESS_TOKEN_KEY = 'hydrosense.mobile.access-token.v1';
@@ -190,7 +191,8 @@ export function TankProvider({ children }: PropsWithChildren) {
     allTanks,
     hatchery,
     setHatchery,
-    locations: hatcheryLocations(allTanks),
+    locations: hatcheryLocations(allTanks).map((location) => ({ ...location, 
+    name: hatcheryLabel(location.id) })),
     tankId,
     setTankId: setSelectedId,
     isLoading: Boolean(user) && (!ready || query.isLoading),

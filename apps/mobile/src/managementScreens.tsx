@@ -33,6 +33,9 @@ function useProfile() {
 function value(text?: string | null) {
   return text?.trim() || 'N/A';
 }
+function capitalize(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 function ChangePasswordRow({ userId, email }: { userId: string; email: string }) {
   const { colors } = useTheme();
@@ -234,7 +237,7 @@ export function ProfileScreen() {
           <ProfileRow label="Phone" text={value(profile.data?.emergencyContactPhone)} />
         </Card>
         <Card title="Account">
-          <ProfileRow label="Account status" text={value(profile.data?.status)} />
+          <ProfileRow label="Account status" text={capitalize(value(profile.data?.status))} />
           <ProfileRow label="Account created" text={profile.data?.createdAt ? `${formatManilaDateTime(profile.data.createdAt)} PHT` : 'Not provided'} />
         </Card>
       </>}

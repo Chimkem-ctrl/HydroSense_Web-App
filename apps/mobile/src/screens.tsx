@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Dialog, Portal } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ClipboardList, Database, Droplets, Eye, FileDown, FileText, ListFilter, Maximize2, MessageCircle, MoreHorizontal, Plus, Printer, Trash2, UserRound, Users, Waves, Wifi } from 'lucide-react-native';
+import { Activity, AlertCircle, AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ClipboardList, Database, Droplets, Eye, FileDown, FileText, ListFilter, MapPin, Maximize2, MessageCircle, MoreHorizontal, Plus, Printer, Trash2, UserRound, Users, Waves, Wifi } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { fromByteArray } from 'base64-js';
@@ -45,6 +45,7 @@ import type { MainTabParamList, RootStackParamList } from './navigation';
 import { api, getAccountProfile, getConfiguredThreshold, listConfiguredThresholds } from './services/client';
 import { canAccess } from './access';
 import { hatcheryLabel } from './management';
+import { HATCHERIES } from './services/auth';
 import { useSession, useTankSelection } from './state';
 import { Button, CalendarFilterField, Card, Chip, createFormStyles, createRecordStyles, DataRow, FilterField, GlassDialog, Page, RedesignedContext, StateMessage, Title } from './components/ui';
 import { AlertFilters } from './components/AlertFilters';
@@ -161,7 +162,7 @@ export function HomeScreen() {
   const openCount = alerts.data?.filter((item) => item.status !== 'resolved').length ?? 0;
   return <Page>
     <View style={{ gap: uiScale.spacing[1] }}><Text style={{ color: colors.muted, fontSize: uiScale.type.caption, fontWeight: '700', letterSpacing: 1 }}>WATER QUALITY MONITORING</Text><Text style={{ color: colors.ink, fontSize: uiScale.type.title, fontWeight: '500' }}>Welcome, {user?.name}.</Text></View>
-    <Title icon={<Activity size={23} color={colors.teal} />} detail={tank ? `${tank.name} · ${tank.site} · rearing day ${getRaisingDay(tank.rearingStartDate)}/21` : 'Live water-quality status'}>Live Monitor</Title>
+    <Title icon={<Activity size={23} color={colors.teal} />} detail={tank ? hatcheryLabel(tank.site) : 'Live water-quality status'} >Live Monitor</Title>
     <TankPicker />
     {tanksLoading || (Boolean(tankId) && isLoading) || (Boolean(tankId) && thresholds.isLoading) ? <StateMessage message="Loading latest readings and thresholds…" loading /> : tanksError ? null : !tankId ? null : isError || thresholds.isError ? <Card><StateMessage message={`Could not load readings or thresholds: ${(readingError ?? thresholds.error)?.message ?? 'Check your connection.'}`} /><Button label="Retry" onPress={() => { void refetch(); void thresholds.refetch(); }} secondary /></Card> : reading && statuses && thresholds.data ? <>
       {freshness?.stale && <View accessibilityLiveRegion="polite" style={{ backgroundColor: mode === 'dark' ? '#3d354d' : '#fff7e6', borderColor: mode === 'dark' ? '#b5a68f' : '#d4bd94', borderWidth: 1, borderRadius: uiScale.radius.control, paddingVertical: uiScale.spacing[3], paddingHorizontal: uiScale.spacing[4] }}>
@@ -218,6 +219,7 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
   const [rearingStartDate, setRearingStartDate] = useState(() => getManilaDateString());
   const [deviceId, setDeviceId] = useState('');
   const [tankToRemove, setTankToRemove] = useState<{ id: string; name: string } | null>(null);
+  const [siteOpen, setSiteOpen] = useState(false);
   const profile = useQuery({
     queryKey: ['profile', user?.id],
     queryFn: () => {
@@ -238,11 +240,15 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
       const tankSite = user?.role === 'manager' ? profile.data?.site?.trim() : site.trim();
       if (user?.role === 'manager' && !tankSite) throw new Error('Your account has no assigned hatchery. Contact an administrator.');
       if (!name.trim() || !tankSite || !deviceId.trim()) throw new Error('Enter a tank name, hatchery and hardware ID.');
+      const tankName = name.trim().toLowerCase();
+  const hardwareId = deviceId.trim().toLowerCase();
+  if (allTanks.some((item) => hatcheryId(item.site) === hatcheryId(tankSite) && item.name.trim().toLowerCase() === tankName)) throw new Error(`A tank named "${name.trim()}" already exists at this location.`);
+  if (allTanks.some((item) => item.deviceId.trim().toLowerCase() === hardwareId)) throw new Error(`Hardware ID "${deviceId.trim()}" is already linked to another tank.`);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(rearingStartDate) || !Number.isFinite(Date.parse(`${rearingStartDate}T00:00:00Z`)) || new Date(`${rearingStartDate}T00:00:00Z`).toISOString().slice(0, 10) !== rearingStartDate) throw new Error('Enter a valid rearing start date in YYYY-MM-DD format.');
       return api.createTank({ name: name.trim(), site: tankSite, rearingStartDate, deviceId: deviceId.trim() }, user?.name ?? '');
     },
     onSuccess: async (tank) => {
-      setName(''); setSite(''); setDeviceId(''); setFormOpen(false);
+      setName(''); setSite(''); setSiteOpen(false); setDeviceId('');
       setTankId(tank.id);
       await refresh();
     },
@@ -267,9 +273,9 @@ export function TanksScreen({ navigation }: Props<'Tanks'>) {
         <Page>
           <Title icon={<Waves size={23} color={colors.teal} />} detail="Link monitoring hardware to a tank">Register Tank</Title>
           <Field label="Tank name" value={name} onChangeText={setName} />
-          {user?.role === 'manager' ? profile.isLoading ? <StateMessage message="Loading assigned hatchery…" loading /> : profile.isError ? <><StateMessage message={`Could not load assigned hatchery: ${profile.error.message}`} /><Button label="Retry hatchery" secondary onPress={() => void profile.refetch()} /></> : <DataRow label="Hatchery" value={hatcheryLabel(profile.data?.site)} /> : <Field label="Hatchery" value={site} onChangeText={setSite} />}
-          <Field label="Rearing start date (YYYY-MM-DD)" value={rearingStartDate} onChangeText={setRearingStartDate} />
-          <Field label="Hardware ID" value={deviceId} onChangeText={setDeviceId} />
+            {user?.role === 'manager' ? profile.isLoading ? <StateMessage message="Loading assigned hatchery…" loading /> : profile.isError ? <><StateMessage message={`Could not load assigned hatchery: ${profile.error.message}`} /><Button label="Retry hatchery" secondary onPress={() => void profile.refetch()} /></> : <DataRow label="Hatchery" value={hatcheryLabel(profile.data?.site)} /> : <View style={{ flexDirection: 'row' }}><FilterDropdown label="Hatchery location" summary={site || 'Select a location'} icon={<MapPin size={16} color={colors.teal} />} options={HATCHERIES.map((item) => ({ value: item.name, label: item.name }))} value={site} expanded={siteOpen} onToggle={() => setSiteOpen((open) => !open)} onChange={(value) => { setSite(value); setSiteOpen(false); }} /></View>}
+        <Field label="Rearing start date (YYYY-MM-DD)" value={rearingStartDate} onChangeText={setRearingStartDate} />
+        <Field label="Hardware ID" value={deviceId} onChangeText={setDeviceId} />
           {register.isError && <Text accessibilityRole="alert" style={{ color: colors.critical }}>{register.error.message}</Text>}
           <Button label={register.isPending ? 'Registering…' : 'Register tank'} disabled={register.isPending || (user?.role === 'manager' && (profile.isLoading || profile.isError))} onPress={() => register.mutate()} />
           <Button label="Cancel" secondary onPress={() => setFormOpen(false)} disabled={register.isPending} />
@@ -498,10 +504,9 @@ export function TrendsScreen() {
         <TrendChart readings={readings.data ?? []} parameter={key} />
         <Text style={{ color: colors.muted }}>Mean {stats.mean === null ? '—' : stats.mean.toFixed(2)} · In range {stats.percentInRange === null ? '—' : `${stats.percentInRange.toFixed(1)}%`} · {stats.readings} valid</Text>
         {stats.invalidReadings > 0 && <Text style={{ color: colors.warning }}>{stats.invalidReadings} invalid readings excluded. Check probe.</Text>}
-        <Text style={{ color: colors.muted }}>Lines break at invalid or missing samples. Times shown in Asia/Manila.</Text>
       </Card>;
     })}
-    <Modal visible={expanded !== null} animationType="slide" onRequestClose={() => setExpanded(null)}><SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}><Page><Title icon={<Activity size={23} color={colors.teal} />} detail="Times shown in Asia/Manila">{`${parameters.find((item) => item.key === expanded)?.label ?? 'Trend'} Trend`}</Title>{expanded && <Card><TrendChart readings={readings.data ?? []} parameter={expanded} expanded /></Card>}<Button label="Close" secondary onPress={() => setExpanded(null)} /></Page></SafeAreaView></Modal>
+    <Modal visible={expanded !== null} animationType="slide" onRequestClose={() => setExpanded(null)}><SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}><Page><Title icon={<Activity size={23} color={colors.teal} />} >{`${parameters.find((item) => item.key === expanded)?.label ?? 'Trend'} Trend`}</Title>{expanded && <Card><TrendChart readings={readings.data ?? []} parameter={expanded} expanded /></Card>}<Button label="Close" secondary onPress={() => setExpanded(null)} /></Page></SafeAreaView></Modal>
   </Page>;
 }
 
@@ -519,9 +524,6 @@ export function StatusScreen() {
       {devices.map(({ device, tank }) => <Card key={device.deviceId} title={tank.name}>
         <DataRow label="Device" value={device.deviceId} />
         <DataRow label="Connection" value={device.online ? 'Online' : 'Offline'} detail={`Last seen ${formatManilaDateTime(device.lastSeen)} PHT`} />
-        <DataRow label="Battery" value={device.batteryPct != null ? `${device.batteryPct}%` : 'Unavailable'} detail={`Power source: ${device.powerSource}`} />
-        <DataRow label="Wi-Fi signal" value={`${device.wifiRssi} dBm`} />
-        <DataRow label="Pending offline records" value={`${device.pendingSyncCount}`} />
         <DataRow label="Wi-Fi signal" value={hasReportedField(device, 'wifiRssi') ? `${device.wifiRssi} dBm` : 'Unavailable'} />
         <DataRow label="Pending offline records" value={hasReportedField(device, 'pendingSyncCount') ? `${device.pendingSyncCount}` : 'Unavailable'} />
         {device.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.map(formatMeasuredParameterLabel).join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
@@ -614,7 +616,7 @@ export function ActivityLogsScreen() {
       if (!FileSystem.documentDirectory || !(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
       const csv = toCsv([
         ['Hatchery', 'Time (PHT)', 'Kind', 'Type', 'Tank / scope', 'Details', 'Operator', 'Water change (%)', 'Water source', 'Impact', 'DO (mg/L)', 'Temperature (°C)', 'pH', 'Salinity (ppt)', 'Ammonia (mg/L)', 'Method'],
-        ...filteredLogs.map((log) => [activityHatcheryName(log, allTanks), log.occurredAt && Number.isFinite(Date.parse(log.occurredAt)) ? formatManilaDateTime(log.occurredAt) : 'Unavailable', log.kind ?? '', log.type ?? '', log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId ?? '', log.notes ?? '', log.operator ?? '', log.waterChangePercent, log.waterSource, log.impact, log.manualReadings?.dissolvedOxygen, log.manualReadings?.temperature, log.manualReadings?.ph, log.manualReadings?.salinity, log.manualReadings?.ammonia, log.manualReadings?.method]),
+        ...filteredLogs.map((log) => [hatcheryLabel(activityHatcheryName(log, allTanks)), log.occurredAt && Number.isFinite(Date.parse(log.occurredAt)) ? formatManilaDateTime(log.occurredAt) : 'Unavailable', log.kind ?? '', log.type ?? '', log.tankId === 'hatchery' ? 'Hatchery-wide' : tankNames.get(log.tankId) ?? log.tankId ?? '', log.notes ?? '', log.operator ?? '', log.waterChangePercent, log.waterSource, log.impact, log.manualReadings?.dissolvedOxygen, log.manualReadings?.temperature, log.manualReadings?.ph, log.manualReadings?.salinity, log.manualReadings?.ammonia, log.manualReadings?.method]),
       ]);
       const encoded = encodeURIComponent(csv).replace(/%([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
       const fileUri = `${FileSystem.documentDirectory}hydrosense-activity-logs-${Date.now()}.csv`;

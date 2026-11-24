@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, UserRound, UsersRound } from 'lucide-react';
-import { can, formatManilaDateTime, formatMeasuredParameterLabel, hatcheryId, resolveAlertWithActivityLog, validateAcknowledgeNote } from '@hydrosense/shared';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { can, formatManilaDateTime, formatMeasuredParameterLabel, resolveAlertWithActivityLog, validateAcknowledgeNote } from '@hydrosense/shared';
 import type { AlertItem } from '@hydrosense/shared';
 import { api } from '../app/api';
 import { useRole } from '../app/auth/RoleContext';
 import { useSelectedTank } from '../app/tank/TankContext';
-import { usePendingRequests, useTanks } from '../app/data/hooks';
 import { PageHeading } from '../components/common/PageHeading';
 import { ConfirmActionDialog } from '../components/common/ConfirmActionDialog';
 import { Select } from '../components/common/Select';
 import { StatusBadge } from '../components/readings/StatusBadge';
 import { EmptyState, ErrorState, LoadingState, StaleQueryState } from '../components/common/States';
+import { useTanks } from '../app/data/hooks';
 
 type AlertTab = AlertItem['status'];
 type AlertPeriod = '7d' | '30d' | 'all';
@@ -34,10 +33,8 @@ function parameterUnit(parameter: string) {
 
 export default function AlertsPage() {
   const { role, userName } = useRole();
-  const { tankId, hatchery } = useSelectedTank();
+  const { tankId } = useSelectedTank();
   const tanks = useTanks();
-  const pendingRequests = usePendingRequests();
-  const visibleRequests = (pendingRequests.data ?? []).filter((request) => hatchery === 'all' || Boolean(request.hatcheryId && hatcheryId(request.hatcheryId) === hatchery));
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<AlertTab>('open');
   const [severity, setSeverity] = useState<'all' | AlertItem['severity']>('all');
@@ -142,23 +139,7 @@ export default function AlertsPage() {
       <PageHeading title="Alerts Center" description={`Review alerts, record notes, and check response history for ${tankNames.get(tankId) ?? 'the selected tank'}.`} />
       {activityError && <p className="state-error" role="alert">The alert was resolved, but its activity log could not be saved: {activityError}</p>}
       <StaleQueryState updatedAt={query.dataUpdatedAt} />
-      {role === 'admin' && tab === 'open' && (pendingRequests.isLoading || pendingRequests.isError || visibleRequests.length > 0) && (
-        <section className="card stack account-requests-card" aria-label="Pending account requests">
-          <header className="account-requests-header">
-            <h2 className="card-title">Pending Account Requests</h2>
-            {!pendingRequests.isLoading && !pendingRequests.isError && <Link className="button" to="/admin/users"><UsersRound size={16} aria-hidden="true" />Review account requests</Link>}
-          </header>
-          {pendingRequests.isLoading ? <LoadingState label="Loading account requests" /> : pendingRequests.isError ? <ErrorState error={pendingRequests.error} onRetry={() => void pendingRequests.refetch()} /> : visibleRequests.map((request) => (
-            <div className="account-request-alert" key={request.id}>
-              <UserRound size={18} aria-hidden="true" />
-              <div>
-                <strong>New account request: {request.firstName} {request.lastName}</strong>
-                <p className="small muted">Submitted {formatManilaDateTime(request.createdAt)} PHT</p>
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
+         
       {!query.isLoading && !query.isError && <section className={`alerts-status-banner ${statusCounts.open ? 'has-open-alerts' : 'no-open-alerts'}`} role="status">
         <strong>{statusCounts.open ? `${statusCounts.open} open alert${statusCounts.open === 1 ? '' : 's'} need attention.` : 'No open alerts.'}</strong>
         <span>{statusCounts.open

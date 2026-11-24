@@ -2,6 +2,7 @@ import { Workbook } from 'exceljs/dist/exceljs.bare';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { formatMeasuredParameterLabel, toCsv } from '@hydrosense/shared';
 import type { ReportModel } from '@hydrosense/shared';
+import { hatcheryLabel } from '../management';
 
 type ReportRow = [string, string, string];
 export type ReportDataset = 'readings' | 'alerts' | 'activity' | 'calibration' | 'validation';
@@ -25,7 +26,7 @@ export function reportRows(report: ReportModel): ReportRow[] {
   const rows: ReportRow[] = [
     ['Report', 'ID', report.id],
     ['Report', 'Tanks', report.tanks.map((tank) => tank.name).join(', ')],
-    ['Report', 'Hatchery', [...new Set(report.tanks.map((tank) => tank.site))].join(', ')],
+    ['Report', 'Hatchery', [...new Set(report.tanks.map((tank) => hatcheryLabel(tank.site)))].join(', ')],
     ['Report', 'Period', `${report.range.from} - ${report.range.to}`],
     ['Report', 'Prepared by', `${report.generatedBy.name} (${report.generatedBy.role})`],
   ];

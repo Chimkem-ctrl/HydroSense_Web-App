@@ -251,7 +251,7 @@ export function StateMessage({ message, loading, spacious = false }: { message: 
 export function DataRow({ label, value, detail, valueColor }: { label: string; value: string; detail?: string; valueColor?: string }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  return <View style={styles.dataRow}><View style={{ flex: 1 }}><Text style={styles.dataLabel}>{label}</Text>{detail ? <Text style={styles.muted}>{detail}</Text> : null}</View><Text style={[styles.dataValue, valueColor ? { color: valueColor } : null]}>{value}</Text></View>;
+  return <View style={styles.dataRow}><View style={{ flex: 1 }}><Text style={styles.dataLabel}>{label}</Text>{detail ? <Text style={styles.dataDetail}>{detail}</Text> : null}</View><Text style={[styles.dataValue, valueColor ? { color: valueColor } : null]}>{value}</Text></View>;
 }
 
 export const createFormStyles = (colors: Palette) => StyleSheet.create({
@@ -317,6 +317,7 @@ const createStyles = (colors: Palette) => StyleSheet.create({
   state: { padding: 18, alignItems: 'center', gap: 10 },
   spaciousState: { padding: uiScale.spacing[5] },
   dataRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: uiScale.spacing[3], gap: uiScale.spacing[2] },
+  dataDetail: { color: colors.muted, fontSize: uiScale.type.caption, lineHeight: 18 },
   dataLabel: { color: colors.ink, fontWeight: '700', fontSize: 14 },
   dataValue: { color: colors.ink, fontWeight: '700', fontSize: uiScale.type.body, flexShrink: 1, textAlign: 'right', fontVariant: ['tabular-nums'] },
 });

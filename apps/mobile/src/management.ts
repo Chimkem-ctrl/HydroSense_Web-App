@@ -1,8 +1,11 @@
+import { hatcheryId } from '@hydrosense/shared';
 import { HATCHERIES } from './services/auth';
 
 export function hatcheryLabel(site?: string | null): string {
   const value = site?.trim();
-  return HATCHERIES.find((hatchery) => hatchery.id === value)?.name ?? (value || 'Unassigned');
+  if (!value) return 'Unassigned';
+  const id = hatcheryId(value);
+  return HATCHERIES.find((hatchery) => hatchery.id === id)?.name ?? value;
 }
 
 export function groupByHatchery<T>(items: T[], getSite: (item: T) => string | null | undefined): Map<string, T[]> {

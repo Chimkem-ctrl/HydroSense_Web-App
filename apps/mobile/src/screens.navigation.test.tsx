@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
+  allTanks: [] as Array<{ id: string; name: string; site: string; deviceId: string; rearingStartDate: string }>,
   role: 'manager' as 'operator' | 'manager' | 'admin',
   values: [] as unknown[],
   index: 0,
@@ -47,7 +48,7 @@ vi.mock('@tanstack/react-query', () => ({
 }));
 vi.mock('lucide-react-native', () => Object.fromEntries([
   'Activity', 'AlertCircle', 'AlertTriangle', 'CalendarDays', 'CheckCircle2', 'ChevronDown', 'ChevronRight', 'ChevronUp',
-  'ClipboardList', 'Database', 'Droplets', 'Eye', 'FileDown', 'FileText', 'ListFilter', 'Maximize2', 'MessageCircle',
+  'ClipboardList', 'Database', 'Droplets', 'Eye', 'FileDown', 'FileText', 'ListFilter', 'MapPin','Maximize2', 'MessageCircle',
   'MoreHorizontal', 'Plus', 'Printer', 'Trash2', 'UserRound', 'Users', 'Waves', 'Wifi',
 ].map((name) => [name, name])));
 vi.mock('expo-file-system/legacy', () => ({}));
@@ -55,7 +56,7 @@ vi.mock('expo-sharing', () => ({}));
 vi.mock('./services/client', () => ({ api: { createTank: state.createTank }, getAccountProfile: vi.fn() }));
 vi.mock('./state', () => ({
   useSession: () => ({ user: { id: 'user', name: 'Test User', role: state.role } }),
-  useTankSelection: () => ({ tanks: [], allTanks: [], setTankId: state.setTankId, isLoading: false, error: null }),
+  useTankSelection: () => ({ tanks: [], allTanks:state.allTanks, setTankId: state.setTankId, isLoading: false, error: null }),
 }));
 vi.mock('./theme', () => ({ uiScale: { radius: { pill: 999 }, spacing: [0, 4, 8, 12, 16], type: { body: 14 } }, useTheme: () => ({ colors: {} }) }));
 vi.mock('./components/ui', () => ({
