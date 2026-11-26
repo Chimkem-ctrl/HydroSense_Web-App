@@ -39,6 +39,7 @@ import {
   prepareTrendRows,
   readingAge,
   readingFreshness,
+  recentWifiSignal,
   rearingDay,
   resolveAlertWithActivityLog,
   safeRangeGauge,
@@ -163,7 +164,7 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
   const [networkConnected, setNetworkConnected] = useState<boolean | null>(null);
   const [setupError, setSetupError] = useState('');
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, []);
   useEffect(() => NetInfo.addEventListener((state) => setNetworkConnected(state.isConnected)), []);
@@ -171,7 +172,7 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
   const { tankId, tanks, isLoading: tanksLoading, error: tanksError } = useTankSelection();
   const { data: reading, isLoading, isError, error: readingError, refetch } = useQuery({ queryKey: ['latest-reading', tankId], queryFn: () => api.getLatestReading(tankId), enabled: Boolean(tankId) });
   const thresholds = useQuery({ queryKey: ['configured-thresholds'], queryFn: listConfiguredThresholds });
-  const devices = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses() });
+  const devices = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses(), refetchInterval: 30_000 });
   const alerts = useQuery({ queryKey: ['alerts', tankId], queryFn: () => api.listAlerts(tankId), enabled: Boolean(tankId) });
   const tank = tanks.find((item) => item.id === tankId);
   const statuses = reading && thresholds.data ? getReadingStatuses(reading, thresholds.data) : null;
@@ -179,7 +180,8 @@ export function HomeScreen({ navigation }: Props<'Home'>) {
   const freshness = reading ? readingFreshness(reading.timestamp, networkConnected === false ? false : device?.online, now) : null;
   const invalidReading = reading && (['temperature', 'do', 'ph'] as const).some((parameter) => !isValidMeasurement(parameter, parameterValue(reading, parameter)));
   const recentAlerts = [...(alerts.data ?? [])].filter((alert) => alert.tankId === tankId).sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0)).slice(0, 4);
-  const wifiSignal = device && hasReportedField(device, 'wifiRssi') && Number.isFinite(device.wifiRssi) ? `${device.wifiRssi} dBm` : 'Unavailable';
+  const signal = networkConnected === false ? null : recentWifiSignal(device, now);
+  const wifiSignal = signal === null ? 'Unavailable' : `${signal} dBm`;
   const lastReport = device?.lastSeen && Number.isFinite(Date.parse(device.lastSeen)) ? `${formatManilaDateTime(device.lastSeen)} PHT` : 'Unavailable';
   const pendingSync = device && hasReportedField(device, 'pendingSyncCount') && Number.isFinite(device.pendingSyncCount) ? `${device.pendingSyncCount}` : device?.storageAvailable === false ? 'SD unavailable' : 'Unavailable';
   return <Page>
@@ -661,8 +663,13 @@ export function TrendsScreen() {
 
 export function StatusScreen() {
   const { colors } = useTheme();
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, []);
   const { tanks, hatchery, isLoading, error, refetch } = useTankSelection();
-  const statuses = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses() });
+  const statuses = useQuery({ queryKey: ['device-statuses'], queryFn: () => api.listDeviceStatuses(), refetchInterval: 30_000 });
   const devices = getAssignedDevices(statuses.data ?? [], tanks)
     .filter(({ tank }) => hatchery === 'all' || hatcheryId(tank.site) === hatchery);
   const reportedDevices = devices.flatMap(({ device }) => device ? [device] : []);
@@ -674,7 +681,7 @@ export function StatusScreen() {
       {devices.map(({ device, tank }) => <Card key={tank.id} title={tank.name}>
         <DataRow label="Device" value={tank.deviceId || 'No device assigned'} />
         <DataRow label="Connection" value={!device ? 'Never reported' : typeof device.online !== 'boolean' ? 'Unavailable' : device.online ? 'Online' : 'Offline'} detail={device?.lastSeen && Number.isFinite(Date.parse(device.lastSeen)) ? `Last seen ${formatManilaDateTime(device.lastSeen)} PHT` : undefined} />
-        <DataRow label="Wi-Fi signal" value={device && hasReportedField(device, 'wifiRssi') && Number.isFinite(device.wifiRssi) ? `${device.wifiRssi} dBm` : 'Unavailable'} />
+        <DataRow label="Wi-Fi signal" value={recentWifiSignal(device, now) === null ? 'Unavailable' : `${device?.wifiRssi} dBm`} />
         <DataRow label="Pending offline records" value={device && hasReportedField(device, 'pendingSyncCount') && Number.isFinite(device.pendingSyncCount) ? `${device.pendingSyncCount}` : 'Unavailable'} />
         {device?.invalidParameters && device.invalidParameters.length > 0 && <Text accessibilityRole="alert" style={{ color: colors.warning }}>Check probe: {device.invalidParameters.map(formatMeasuredParameterLabel).join(', ')}{device.probeCheckedAt ? ` · ${formatManilaDateTime(device.probeCheckedAt)} PHT` : ''}</Text>}
       </Card>)}

@@ -9,9 +9,20 @@ import { getManilaDateString, getRaisingDay } from '../format';
 describe('measured status display', () => {
   it('keeps values within the safe range normal and identifies near-limit readings', () => {
     expect(getParameterStatus('temperature', 28).level).toBe('normal');
-    expect(getParameterStatus('temperature', 30.2).level).toBe('warning');
+    expect(getParameterStatus('temperature', 32.2).level).toBe('warning');
     expect(getParameterStatus('do', 3).level).toBe('critical');
     expect(getParameterStatus('ph', 15)).toMatchObject({ label: 'Check probe', icon: 'warning' });
+  });
+
+  it.each([
+    ['temperature', 26, 32, 25.9, 32.1],
+    ['do', 4, 8, 3.9, 8.1],
+    ['ph', 7.5, 8.3, 7.4, 8.4],
+  ] as const)('uses the default %s bounds inclusively', (parameter, min, max, below, above) => {
+    expect(getParameterStatus(parameter, min).distance).toContain('from minimum');
+    expect(getParameterStatus(parameter, max).distance).toContain('from maximum');
+    expect(getParameterStatus(parameter, below).distance).toContain('below minimum');
+    expect(getParameterStatus(parameter, above).distance).toContain('above maximum');
   });
 });
 

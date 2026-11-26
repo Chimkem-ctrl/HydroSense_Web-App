@@ -29,9 +29,9 @@ alone are not an authorization boundary.
 
 Managers can view users in their assigned hatchery only. Deploying the
 updated API function is required for its role checks; these source changes do
-not modify an already deployed backend. The default temperature safe range is
-26–30°C for new/default configurations; existing saved thresholds remain in
-effect and are not changed automatically.
+not modify an already deployed backend. New/default measured thresholds are
+26–32 °C, 4–8 mg/L dissolved oxygen, and pH 7.5–8.3; existing saved
+thresholds remain in effect and are not changed automatically.
 
 ## Setup
 
@@ -182,7 +182,8 @@ The live client reconnects after disconnect. Do not send hardware control comman
 
 ## Product behavior
 
-- Default measured-parameter ranges: temperature (26–30 °C), dissolved oxygen (≥4 mg/L), and pH (6–8). Configured thresholds take precedence.
+- Default measured-parameter ranges: temperature (26–32 °C), dissolved oxygen (4–8 mg/L), and pH (7.5–8.3). Configured thresholds take precedence; readings near a limit may still show a warning.
+- Wi-Fi signal is the latest reported value, not an instantaneous measurement. It is unavailable when the device is offline or its last report is at least two minutes old; the separate online status uses a 15-minute window.
 - Salinity target (28–33 ppt) and ammonia are not measured. They appear only as advisory chips with inputs and the fired rule in a popover.
 - Asia/Manila timestamps, 24-hour time, 3-hour mock reading cadence, and overnight chart shading (22:00–06:00).
 - Operator, manager and admin navigation is role-gated. Managers and admins can add/remove tanks and associate monitoring hardware.

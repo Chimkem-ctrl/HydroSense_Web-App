@@ -305,14 +305,18 @@ Acknowledgement/resolution body:
 | `GET`, `POST` | `/v1/calibrations?tank_id=` | Approved account | List or create calibration records |
 | `GET`, `PUT` | `/v1/validation/tolerances` | Read: approved; Write: manager/admin | Validation tolerances |
 
+New databases start with temperature 26–32 °C, dissolved oxygen 4–8 mg/L,
+and pH 7.5–8.3. Existing saved thresholds are not changed by updating the
+source; a manager or admin can update them if desired.
+
 Threshold update body:
 
 ```json
 {
   "thresholds": [
-    { "parameter": "temperature", "min": 26, "max": 30 },
-    { "parameter": "do", "min": 5 },
-    { "parameter": "ph", "min": 7.2, "max": 8.5 }
+    { "parameter": "temperature", "min": 26, "max": 32 },
+    { "parameter": "do", "min": 4, "max": 8 },
+    { "parameter": "ph", "min": 7.5, "max": 8.3 }
   ],
   "changedBy": "Jane Doe"
 }

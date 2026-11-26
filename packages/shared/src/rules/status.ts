@@ -9,9 +9,9 @@ export interface ParameterStatus {
 }
 
 export const DEFAULT_THRESHOLDS: Threshold[] = [
-  { parameter: 'temperature', min: 26, max: 30 },
-  { parameter: 'do', min: 4 },
-  { parameter: 'ph', min: 6, max: 8 },
+  { parameter: 'temperature', min: 26, max: 32 },
+  { parameter: 'do', min: 4, max: 8 },
+  { parameter: 'ph', min: 7.5, max: 8.3 },
 ];
 
 const PARAMETER_UNITS: Record<MeasuredParameter, string> = {

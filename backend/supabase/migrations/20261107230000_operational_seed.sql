@@ -1,6 +1,6 @@
 insert into public.tanks (id, name, site, rearing_start_date, device_id)
 values
-  ('00000000-0000-0000-0000-000000000001', 'Tank 01', 'Camiguin, Sagay Multispecies Hatchery', '2026-11-01', 'HS-001'),
+  ('00000000-0000-0000-0000-000000000001', 'Tank 01', 'Camiguin, Benoni Experimental Station', '2026-11-01', 'HS-001'),
   ('00000000-0000-0000-0000-000000000002', 'Tank 02', 'Camiguin, Sagay Multispecies Hatchery', '2026-11-01', 'HS-002'),
   ('00000000-0000-0000-0000-000000000003', 'Tank 03', 'Camiguin, Sagay Multispecies Hatchery', '2026-11-01', 'HS-003')
 on conflict (id) do update set

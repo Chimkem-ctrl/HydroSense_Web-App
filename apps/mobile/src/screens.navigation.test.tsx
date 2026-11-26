@@ -130,7 +130,7 @@ beforeEach(() => {
 describe('monitoring and report views', () => {
   const tank = { id: 'tank-a', name: 'Tank Alpha', site: 'Sagay', deviceId: 'device-a', rearingStartDate: '2024-01-01' };
   const reading = { id: 'reading', tankId: tank.id, timestamp: '2024-01-01T00:00:00Z', temperature: 28, doMgL: 5, ph: 7 };
-  const device = { deviceId: tank.deviceId, online: true, lastSeen: '2024-01-01T00:00:00Z', wifiRssi: -60, pendingSyncCount: 3, reportedFields: ['wifiRssi', 'pendingSyncCount'] };
+  const device = { deviceId: tank.deviceId, online: true, lastSeen: new Date().toISOString(), wifiRssi: -60, pendingSyncCount: 3, reportedFields: ['wifiRssi', 'pendingSyncCount'] };
   const alert = { id: 'alert', tankId: tank.id, parameter: 'temperature', value: 32, threshold: '30', severity: 'critical', status: 'resolved', createdAt: '2024-01-02T01:48:00Z', acknowledgedAt: '2024-01-02T02:48:00Z' };
   beforeEach(() => {
     state.selectedTank = tank;
@@ -163,6 +163,7 @@ describe('monitoring and report views', () => {
 
   it('shows stale or invalid banners directly after the selector and default device telemetry', () => {
     state.values = [Date.parse('2024-01-02T00:00:00Z'), null];
+    state.queryData['device-statuses'] = [{ ...device, lastSeen: '2024-01-02T00:00:00Z' }];
     let screen = elements(renderHome());
     expect(textValues(screen)).toContain('Reading status unavailable while offline');
     expect(textValues(screen)).toContain('Last reading 24 h ago.');
@@ -179,6 +180,13 @@ describe('monitoring and report views', () => {
     state.index = 0;
     state.queryData['latest-reading'] = reading;
     expect(textValues(elements(renderHome()))).not.toContain('Check probe: invalid sensor reading');
+  });
+
+  it('does not show old Wi-Fi signal for an offline device', () => {
+    state.queryData['device-statuses'] = [{ ...device, online: false }];
+    const connection = elements(renderHome()).find((node) => node.type === 'Card' && node.props.title === 'Device Connection')!;
+    const rows = elements(connection).filter((node) => node.type === 'DataRow');
+    expect(rows.find((node) => node.props.label === 'Wi-Fi')?.props.value).toBe('Unavailable');
   });
 
   it('shows the latest four tank alerts and navigates to all alerts', () => {

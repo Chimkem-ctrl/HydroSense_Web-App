@@ -83,9 +83,9 @@ export default function Gallery() {
 
         <div className="ds-section-heading"><div><p className="ds-eyebrow">01 · READINGS</p><h2>Hero readings</h2></div><span>Measured parameters only</span></div>
         <div className="ds-grid ds-grid-3">
-          <HeroReading label="Temperature" value="29.7" unit="°C" level="normal" detail="Safe 28–32 °C · updated 11:00 PHT" />
-          <HeroReading label="DO" value="4.3" unit="mg/L" level="warning" detail="Safe ≥4 mg/L · updated 11:00 PHT" />
-          <HeroReading label="pH" value="5.6" unit="pH" level="critical" detail="Safe 6–8 pH · updated 11:00 PHT" />
+          <HeroReading label="Temperature" value="29.7" unit="°C" level="normal" detail="Safe 26–32 °C · updated 11:00 PHT" />
+          <HeroReading label="DO" value="4.3" unit="mg/L" level="warning" detail="Safe 4–8 mg/L · updated 11:00 PHT" />
+          <HeroReading label="pH" value="5.6" unit="pH" level="critical" detail="Safe 7.5–8.3 pH · updated 11:00 PHT" />
         </div>
 
         <div className="ds-grid ds-grid-2">

@@ -96,6 +96,9 @@ describe('ReportsPage filters dropdown', () => {
   });
 
   it('shows valid in-range percentages in the report chart and hides it with statistics', async () => {
+    vi.mocked(api.listReadings).mockResolvedValue([{
+      id: 'reading-1', tankId: 'tank-1', timestamp: new Date().toISOString(), temperature: 28, doMgL: 5, ph: 7.9,
+    }]);
     renderReportsPage();
     const chart = await screen.findByRole('img', { name: /Readings in range: Temperature 100.0%/ });
     expect(within(chart).getByText('DO')).toBeInTheDocument();

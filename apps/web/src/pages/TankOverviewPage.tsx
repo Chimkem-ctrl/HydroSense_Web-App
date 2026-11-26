@@ -1,8 +1,8 @@
 import { Plus, Signal, Wifi, WifiOff, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { can, formatManilaDateTime, getRaisingDay, isValidMeasurement } from '@hydrosense/shared';
+import { can, formatManilaDateTime, getRaisingDay, isValidMeasurement, recentWifiSignal } from '@hydrosense/shared';
 import type { AlertItem, Reading, Tank } from '@hydrosense/shared';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../app/api';
@@ -94,6 +94,11 @@ export default function TankOverviewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const devices = useDeviceStatuses();
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
   const [showRegisterForm, setShowRegisterForm] = useState(false);
@@ -225,6 +230,7 @@ export default function TankOverviewPage() {
                 <tbody>
                   {filteredRows.map(({ tank, reading, alerts }) => {
                     const device = devices.data?.find((item) => item.deviceId === tank.deviceId);
+                    const signal = recentWifiSignal(device, now);
                     const hasRecentReading = Boolean(reading && Date.now() - new Date(reading.timestamp).getTime() <= 15 * 60 * 1000);
                     const online = Boolean(device?.online || hasRecentReading);
                     const deviceStatus = online ? 'Online' : device ? 'Offline' : 'Status unavailable';
@@ -240,7 +246,7 @@ export default function TankOverviewPage() {
                       <td>{reading ? <><time dateTime={reading.timestamp}>{formatManilaDateTime(reading.timestamp)} PHT</time></> : '—'}</td>
                       <td><span className={`connection-pill ${online ? 'connection-online' : 'connection-offline'}`}>{online ? <Wifi size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}{deviceStatus}</span></td>
                       <td>{device ? <time dateTime={device.lastSeen}>{formatManilaDateTime(device.lastSeen)} PHT</time> : '—'}</td>
-                      <td>{device ? <span className="health-signal"><Signal size={16} aria-hidden="true" />{wifiLabel(device.wifiRssi)}, {device.wifiRssi} dBm</span> : '—'}</td>
+                      <td>{signal !== null ? <span className="health-signal"><Signal size={16} aria-hidden="true" />{wifiLabel(signal)}, {signal} dBm</span> : 'Unavailable'}</td>
                       <td className="table-numeric">{device?.pendingSyncCount ?? '—'}</td>
                       <td><div className="tank-table-actions">
                         <button type="button" className="button" onClick={() => { setTankId(tank.id); navigate('/'); }}>Open</button>

@@ -160,7 +160,7 @@ create table public.audit_logs (
 );
 
 insert into public.thresholds(parameter, min_value, max_value) values
-  ('temperature', 26, 30), ('do', 4, null), ('ph', 6, 8);
+  ('temperature', 26, 32), ('do', 4, 8), ('ph', 7.5, 8.3);
 insert into public.advisory_settings(id) values (true);
 insert into public.validation_tolerances(id) values (true);
 

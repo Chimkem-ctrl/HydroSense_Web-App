@@ -253,7 +253,7 @@ describe('threshold review', () => {
     const heading = await screen.findByRole('heading', { name: 'Measured Parameter Thresholds' });
     expect(await screen.findByText('Reference values only. Calibration is logged above.')).toBeInTheDocument();
     expect(screen.getByText('Reference values only. Calibration is logged above.').parentElement).toBe(heading.parentElement);
-    expect(screen.getByRole('row', { name: 'Temperature (°C) 26 °C 30 °C' })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: 'Temperature (°C) 26 °C 32 °C' })).toBeInTheDocument();
     expect(screen.getByRole('row', { name: 'DO (mg/L) 4 mg/L Not set' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Minimum')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Maximum')).not.toBeInTheDocument();

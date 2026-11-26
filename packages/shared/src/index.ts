@@ -2,6 +2,7 @@ export * from './types';
 export * from './roles';
 export * from './activity';
 export * from './hatcheries';
+export * from './deviceTelemetry';
 export * from './phone';
 export * from './address';
 export * from './reports';

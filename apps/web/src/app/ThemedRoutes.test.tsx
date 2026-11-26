@@ -725,7 +725,7 @@ describe('themed dashboard routes', () => {
   it('updates the live reading summary and tank selection from the measured values', async () => {
     vi.spyOn(api, 'getLatestReading').mockImplementation(async (tankId) => ({
       id: `${tankId}-reading`, tankId, timestamp: new Date().toISOString(),
-      temperature: tankId === 'tank-a' ? 28 : 35, doMgL: 6, ph: 7,
+      temperature: tankId === 'tank-a' ? 28 : 35, doMgL: 6, ph: 7.9,
     }));
     window.history.replaceState({}, '', '/');
     render(<App />);
@@ -751,7 +751,7 @@ describe('themed dashboard routes', () => {
     ]);
     vi.spyOn(api, 'getLatestReading').mockResolvedValue(null);
     vi.spyOn(api, 'listDeviceStatuses').mockResolvedValue([
-      { deviceId: 'device-a', online: false, lastSeen: '2020-01-01T00:00:00Z', wifiRssi: 0, pendingSyncCount: 0, batteryPct: null, powerSource: 'grid' },
+      { deviceId: 'device-a', online: false, lastSeen: '2020-01-01T00:00:00Z', wifiRssi: -59, pendingSyncCount: 0, batteryPct: null, powerSource: 'grid', reportedFields: ['wifiRssi'] },
       { deviceId: 'device-b', online: true, lastSeen: new Date().toISOString(), wifiRssi: -62, pendingSyncCount: 0, batteryPct: null, powerSource: 'grid', reportedFields: ['wifiRssi'], storageAvailable: false },
     ]);
     window.history.replaceState({}, '', '/');
@@ -759,6 +759,7 @@ describe('themed dashboard routes', () => {
     expect(await screen.findByText('No reading is available for this tank.')).toBeInTheDocument();
     expect(screen.getByLabelText('ESP32 Offline')).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Device Connection' })).getByText('Offline')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Device Connection' })).queryByText('-59 dBm')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Tank B' }));
     expect(await screen.findByLabelText('ESP32 Online')).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Device Connection' })).getByText('Online')).toBeInTheDocument();

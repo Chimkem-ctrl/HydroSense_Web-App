@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Clock3, Wifi, WifiOff } from 'lucide-react';
-import { formatManilaDateTime, formatMeasuredParameterLabel, getReadingStatuses, isValidMeasurement, readingAge, readingFreshness } from '@hydrosense/shared';
+import { formatManilaDateTime, formatMeasuredParameterLabel, getReadingStatuses, isValidMeasurement, readingAge, readingFreshness, recentWifiSignal } from '@hydrosense/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -19,7 +19,7 @@ export default function LiveMonitorPage() {
   const { userName } = useRole();
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, []);
   const tanks = useTanks();
@@ -31,7 +31,8 @@ export default function LiveMonitorPage() {
   const device = devices.data?.find((item) => item.deviceId === tank?.deviceId);
   const deviceOnline = device?.online === true;
   const connectionStatus = typeof device?.online === 'boolean' ? deviceOnline ? 'Online' : 'Offline' : 'Unavailable';
-  const wifiSignal = device?.reportedFields?.includes('wifiRssi') && Number.isFinite(device.wifiRssi) ? `${device.wifiRssi} dBm` : 'Unavailable';
+  const signal = recentWifiSignal(device, now);
+  const wifiSignal = signal === null ? 'Unavailable' : `${signal} dBm`;
   const lastReport = device?.lastSeen && Number.isFinite(Date.parse(device.lastSeen)) ? `${formatManilaDateTime(device.lastSeen)} PHT` : 'Unavailable';
   const pendingSync = device?.reportedFields?.includes('pendingSyncCount') && Number.isFinite(device.pendingSyncCount) ? `${device.pendingSyncCount}` : device?.storageAvailable === false ? 'SD unavailable' : 'Unavailable';
   const freshness = reading.data ? readingFreshness(reading.data.timestamp, device?.online, now) : null;
