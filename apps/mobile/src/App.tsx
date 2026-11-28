@@ -222,6 +222,7 @@ function AppNavigation() {
       {user && <Image source={authenticatedBackgrounds[mode]} resizeMode="cover" style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.15 }] }]} accessible={false} />}
     </BlurTargetView>
     <BlurTargetContext.Provider value={blurTarget}>
+    {user && <CriticalAlertModal />}
     <NavigationContainer ref={navigationRef} linking={linking} theme={{ ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme), colors: { ...(mode === 'dark' ? NavigationDarkTheme : NavigationLightTheme).colors, primary: colors.teal, background: user ? 'transparent' : colors.canvas, card: colors.surface, text: colors.ink, border: colors.border } }}>
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <LiveSync />
@@ -241,7 +242,6 @@ function AppNavigation() {
       </Stack.Navigator>
     </NavigationContainer>
     <ConnectionNotice online={online} />
-    {user && <CriticalAlertModal />}
     </BlurTargetContext.Provider>
   </View></SplashGate>;
 }

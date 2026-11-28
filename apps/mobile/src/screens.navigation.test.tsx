@@ -90,6 +90,7 @@ vi.mock('./services/reportFiles', () => ({ reportDatasetRows: () => [[]] }));
 import { AlertDetailScreen, AlertsScreen, HistoryScreen, HomeScreen, MoreScreen, ReportsScreen, StatusScreen, TanksScreen, TrendsScreen } from './screens';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { MainTabParamList } from './navigation';
+import { CriticalAlertModal } from './components/CriticalAlertModal';
 
 function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
   if (!isValidElement<Record<string, unknown>>(node)) return [];
@@ -330,6 +331,39 @@ describe('mobile navigation', () => {
     const screen = elements(AlertsScreen(props as unknown as BottomTabScreenProps<MainTabParamList, 'Alerts'>));
     expect(state.queries).not.toContain('pending-accounts');
     expect(screen.some((item) => item.type === 'Card' && item.props.title === 'Account Requests')).toBe(false);
+  });
+
+  it('shows tank names instead of database IDs on alert cards and critical banners', () => {
+    const firstTank = { ...state.selectedTank!, name: 'Tank 01' };
+    const secondTank = { ...firstTank, id: 'tank-b', name: 'Tank 02' };
+    state.selectedTank = firstTank;
+    state.additionalTanks = [secondTank];
+    state.allTanks = [firstTank, secondTank];
+    state.queryData.alerts = [
+      { id: 'alert-one', tankId: firstTank.id, parameter: 'temperature', value: 32, threshold: '30', severity: 'critical', status: 'open', createdAt: '2024-01-02T00:00:00Z' },
+      { id: 'alert-two', tankId: secondTank.id, parameter: 'ph', value: 5, threshold: '6', severity: 'warning', status: 'open', createdAt: '2024-01-01T00:00:00Z' },
+    ];
+
+    const alerts = elements(AlertsScreen(props as unknown as BottomTabScreenProps<MainTabParamList, 'Alerts'>));
+    const alertText = alerts.filter((node) => node.type === 'Text').flatMap((node) =>
+      Array.isArray(node.props.children)
+        ? node.props.children.filter((child): child is string => typeof child === 'string')
+        : typeof node.props.children === 'string' ? [node.props.children] : [],
+    );
+    expect(alertText).toContain('Tank 01');
+    expect(alertText).toContain('Tank 02');
+    expect(alertText).not.toContain('tank-a');
+    expect(alertText).not.toContain('tank-b');
+
+    state.index = 0;
+    const criticalBanner = elements(CriticalAlertModal());
+    const criticalText = criticalBanner.filter((node) => node.type === 'Text').flatMap((node) =>
+      Array.isArray(node.props.children)
+        ? node.props.children.filter((child): child is string => typeof child === 'string')
+        : typeof node.props.children === 'string' ? [node.props.children] : [],
+    ).join(' ');
+    expect(criticalText).toContain('Tank 01');
+    expect(criticalText).not.toContain('tank-a');
   });
 });
 
